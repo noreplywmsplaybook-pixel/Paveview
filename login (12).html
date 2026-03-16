@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PaveView — Sign In</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:.12em;color:#f5c842;text-align:center;margin-bottom:4px}
+.logo-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6e6a63;letter-spacing:.2em;text-transform:uppercase;text-align:center;margin-bottom:36px}
+.card{background:#141414;border:1px solid #242424;border-top:2px solid #f5c842;width:100%;max-width:400px;padding:32px}
+.tab-bar{display:flex;margin-bottom:24px;border-bottom:1px solid #242424}
+.tab{flex:1;padding:10px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#f5c842;border-bottom:2px solid #f5c842;margin-bottom:-1px}
+.field{margin-bottom:16px}
+.field label{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6e6a63;margin-bottom:6px}
+.field input{width:100%;background:#0d0d0d;border:1px solid #242424;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;font-size:14px;padding:10px 12px;outline:none;transition:border-color .15s}
+.field input:focus{border-color:#f5c842}
+.submit-btn{width:100%;background:#f5c842;color:#000;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.08em;padding:13px;border:none;cursor:pointer;text-transform:uppercase;transition:all .2s;margin-top:6px}
+.submit-btn:hover{background:#fff}
+.submit-btn:disabled{opacity:.5;cursor:not-allowed}
+.forgot{text-align:center;margin-top:14px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6e6a63;cursor:pointer;transition:color .15s}
+.forgot:hover{color:#f5c842}
+.msg{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:10px 12px;margin-top:14px;display:none}
+.msg.error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#ef4444}
+.msg.success{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);color:#22c55e}
+.msg.info{background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.2);color:#f5c842}
+.back-link{text-align:center;margin-top:20px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6e6a63}
+.back-link a{color:#f5c842;text-decoration:none}
+</style>
+</head>
+<body>
+
+<div class="logo">PaveView</div>
+<div class="logo-sub">Takeoff</div>
+
+<div class="card">
+  <div class="tab-bar">
+    <div class="tab">Sign In</div>
+  </div>
+  <div class="field">
+    <label>Email</label>
+    <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email">
+  </div>
+  <div class="field">
+    <label>Password</label>
+    <input type="password" id="login-password" placeholder="Your password" autocomplete="current-password">
+  </div>
+  <button class="submit-btn" id="btn-login" onclick="handleLogin()">Sign In →</button>
+  <div class="msg" id="login-msg"></div>
+  <div class="forgot" onclick="handleForgotPassword()">Forgot password?</div>
+</div>
+
+<div class="back-link"><a href="/">← Back to PaveView</a></div>
+
+<script>
+const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg ' + type;
+  el.style.display = 'block';
+}
+
+function setLoading(loading) {
+  const btn = document.getElementById('btn-login');
+  btn.disabled = loading;
+  btn.textContent = loading ? 'Signing in…' : 'Sign In →';
+}
+
+async function handleLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) { showMsg('login-msg', 'Please fill in all fields.', 'error'); return; }
+  setLoading(true);
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    showMsg('login-msg', error.message, 'error');
+    setLoading(false);
+    return;
+  }
+  await checkPurchaseAndRedirect(data.user.id);
+}
+
+async function handleForgotPassword() {
+  const email = document.getElementById('login-email').value.trim();
+  if (!email) { showMsg('login-msg', 'Enter your email above first.', 'error'); return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: 'https://paveview.vercel.app/success.html'
+  });
+  if (error) {
+    showMsg('login-msg', error.message, 'error');
+  } else {
+    showMsg('login-msg', 'Password reset email sent — check your inbox.', 'success');
+  }
+}
+
+async function checkPurchaseAndRedirect(userId) {
+  const { data, error } = await sb.from('purchases').select('id,product,status').eq('user_id', userId).eq('status', 'active').limit(1);
+  if (error || !data || !data.length) {
+    showMsg('login-msg', 'No active purchase found. Contact support@paveview.io', 'error');
+    setLoading(false);
+    return;
+  }
+  window.location.href = '/app.html';
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) await checkPurchaseAndRedirect(session.user.id);
+})();
+</script>
+</body>
+</html>
