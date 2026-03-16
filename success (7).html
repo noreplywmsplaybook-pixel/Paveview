@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PaveView — Set Up Your Account</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:.12em;color:#f5c842;text-align:center;margin-bottom:4px}
+.logo-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6e6a63;letter-spacing:.2em;text-transform:uppercase;text-align:center;margin-bottom:36px}
+.card{background:#141414;border:1px solid #242424;width:100%;max-width:420px;padding:36px;text-align:center}
+.card.green{border-top:2px solid #22c55e}
+.card.yellow{border-top:2px solid #f5c842}
+.icon{font-size:48px;margin-bottom:16px}
+.card h1{font-family:'Bebas Neue',sans-serif;font-size:32px;color:#fff;letter-spacing:.04em;margin-bottom:10px}
+.card p{font-size:14px;color:#6e6a63;line-height:1.65;margin-bottom:24px}
+.card p strong{color:#e8e4dc}
+.email-display{font-family:'IBM Plex Mono',monospace;font-size:13px;color:#f5c842;background:#0d0d0d;border:1px solid #242424;padding:10px 14px;margin-bottom:24px;word-break:break-all}
+.divider{border:none;border-top:1px solid #242424;margin:24px 0}
+.section-title{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#6e6a63;margin-bottom:16px;text-align:left}
+.field{margin-bottom:14px;text-align:left}
+.field label{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6e6a63;margin-bottom:5px}
+.field input{width:100%;background:#0d0d0d;border:1px solid #242424;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;font-size:14px;padding:10px 12px;outline:none;transition:border-color .15s}
+.field input:focus{border-color:#f5c842}
+.submit-btn{width:100%;background:#f5c842;color:#000;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.08em;padding:14px;border:none;cursor:pointer;text-transform:uppercase;transition:all .2s;margin-top:4px}
+.submit-btn:hover{background:#fff}
+.submit-btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:10px 12px;margin-top:12px;display:none;text-align:left}
+.msg.error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#ef4444}
+.msg.success{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);color:#22c55e}
+.skip-link{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6e6a63;margin-top:14px;display:block}
+.skip-link a{color:#f5c842;text-decoration:none}
+.steps{text-align:left;margin-bottom:8px}
+.step{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;font-size:13px;color:#6e6a63;line-height:1.5}
+.step-num{font-family:'IBM Plex Mono',monospace;font-size:10px;background:#f5c842;color:#000;width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;font-weight:600}
+</style>
+</head>
+<body>
+
+<div class="logo">PaveView</div>
+<div class="logo-sub">Takeoff</div>
+
+<div class="card green" id="card-check-email" style="display:none">
+  <div class="icon">✅</div>
+  <h1>Payment Successful!</h1>
+  <p>Your purchase is confirmed. We've sent an activation email to <strong id="purchase-email"></strong></p>
+  <div class="divider"></div>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><span>Check your inbox for an email from PaveView</span></div>
+    <div class="step"><div class="step-num">2</div><span>Click the activation link in that email</span></div>
+    <div class="step"><div class="step-num">3</div><span>Set your password and launch the tool</span></div>
+  </div>
+  <p style="margin-top:16px;font-size:12px">Can't find it? Check your spam folder. Email comes from <strong>noreply@mail.app.supabase.io</strong></p>
+  <div class="skip-link">Already have an account? <a href="login.html">Sign in here</a></div>
+</div>
+
+<div class="card yellow" id="card-set-password" style="display:none">
+  <div class="icon">🔐</div>
+  <h1>Set Your Password</h1>
+  <p>Almost there. Create a password for your PaveView account.</p>
+  <div class="email-display" id="invite-email"></div>
+  <hr class="divider">
+  <div class="section-title">Create Password</div>
+  <div class="field">
+    <label>Password</label>
+    <input type="password" id="password" placeholder="Min 6 characters" autocomplete="new-password">
+  </div>
+  <div class="field">
+    <label>Confirm Password</label>
+    <input type="password" id="password2" placeholder="Repeat password" autocomplete="new-password">
+  </div>
+  <button class="submit-btn" id="btn-set" onclick="setPassword()">Set Password &amp; Launch Tool →</button>
+  <div class="msg" id="msg"></div>
+</div>
+
+<div class="card" id="card-loading">
+  <div class="icon">⏳</div>
+  <h1>Loading...</h1>
+  <p>Just a moment.</p>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+function show(id) {
+  ['card-loading','card-check-email','card-set-password'].forEach(c => {
+    document.getElementById(c).style.display = c === id ? 'block' : 'none';
+  });
+}
+
+function showMsg(text, type) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = 'msg ' + type;
+  el.style.display = 'block';
+}
+
+async function setPassword() {
+  const p1 = document.getElementById('password').value;
+  const p2 = document.getElementById('password2').value;
+  if (!p1) { showMsg('Enter a password.', 'error'); return; }
+  if (p1.length < 6) { showMsg('Password must be at least 6 characters.', 'error'); return; }
+  if (p1 !== p2) { showMsg('Passwords do not match.', 'error'); return; }
+  const btn = document.getElementById('btn-set');
+  btn.disabled = true;
+  btn.textContent = 'Setting password...';
+  const { error } = await sb.auth.updateUser({ password: p1 });
+  if (error) {
+    showMsg(error.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Set Password & Launch Tool →';
+    return;
+  }
+  showMsg('Password set! Launching your tool...', 'success');
+  setTimeout(() => window.location.href = 'app.html', 1500);
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Enter') setPassword(); });
+
+(async () => {
+  const hash = window.location.hash;
+  const params = new URLSearchParams(hash.replace('#', ''));
+  const accessToken = params.get('access_token');
+  const refreshToken = params.get('refresh_token');
+  const type = params.get('type');
+
+  if (accessToken && (type === 'invite' || type === 'recovery' || type === 'signup')) {
+    const { data, error } = await sb.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken || ''
+    });
+    if (error) {
+      show('card-loading');
+      document.getElementById('card-loading').innerHTML = '<div class="icon">❌</div><h1>Link Expired</h1><p>This activation link has expired or already been used. <a href="login.html" style="color:#f5c842">Go to login</a></p>';
+      return;
+    }
+    document.getElementById('invite-email').textContent = data.user?.email || '';
+    show('card-set-password');
+    return;
+  }
+
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) { window.location.href = 'app.html'; return; }
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const email = urlParams.get('prefilled_email') || '';
+  document.getElementById('purchase-email').textContent = email || 'the address you used at checkout';
+  show('card-check-email');
+})();
+</script>
+</body>
+</html>
