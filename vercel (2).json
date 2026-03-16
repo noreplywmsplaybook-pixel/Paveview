@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "cleanUrls": false,
+  "trailingSlash": false,
+  "redirects": [
+    { "source": "/auth", "destination": "/login.html", "permanent": false },
+    { "source": "/login", "destination": "/login.html", "permanent": false },
+    { "source": "/dashboard", "destination": "/dashboard.html", "permanent": false },
+    { "source": "/app", "destination": "/app.html", "permanent": false },
+    { "source": "/success", "destination": "/success.html", "permanent": false }
+  ]
+}
