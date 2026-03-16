@@ -1,0 +1,8 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="refresh" content="0;url=/login.html">
+<script>window.location.replace('/login.html');</script>
+</head>
+<body></body>
+</html>
