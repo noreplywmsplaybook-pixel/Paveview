@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PaveView — Sign In</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:.12em;color:#f5c842;text-align:center;margin-bottom:4px}
+.logo-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6e6a63;letter-spacing:.2em;text-transform:uppercase;text-align:center;margin-bottom:36px}
+.card{background:#141414;border:1px solid #242424;border-top:2px solid #f5c842;width:100%;max-width:400px;padding:32px}
+.tabs{display:flex;margin-bottom:24px;border-bottom:1px solid #242424}
+.tab{flex:1;padding:10px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;color:#6e6a63;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s}
+.tab.active{color:#f5c842;border-bottom-color:#f5c842}
+.form-section{display:none}
+.form-section.active{display:block}
+.field{margin-bottom:16px}
+.field label{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6e6a63;margin-bottom:6px}
+.field input{width:100%;background:#0d0d0d;border:1px solid #242424;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;font-size:14px;padding:10px 12px;outline:none;transition:border-color .15s}
+.field input:focus{border-color:#f5c842}
+.submit-btn{width:100%;background:#f5c842;color:#000;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.08em;padding:13px;border:none;cursor:pointer;text-transform:uppercase;transition:all .2s;margin-top:6px}
+.submit-btn:hover{background:#fff}
+.submit-btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:10px 12px;margin-top:14px;display:none}
+.msg.error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#ef4444}
+.msg.success{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);color:#22c55e}
+.msg.info{background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.2);color:#f5c842}
+.divider{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#444;margin:16px 0}
+.back-link{text-align:center;margin-top:20px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6e6a63}
+.back-link a{color:#f5c842;text-decoration:none}
+.back-link a:hover{text-decoration:underline}
+.loading{display:flex;align-items:center;justify-content:center;gap:10px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6e6a63;padding:20px}
+.spinner{width:16px;height:16px;border:2px solid #242424;border-top-color:#f5c842;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div class="logo">PaveView</div>
+<div class="logo-sub">Takeoff</div>
+
+<div class="card">
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('login')">Sign In</div>
+    <div class="tab" onclick="showTab('signup')">Create Account</div>
+  </div>
+
+  <!-- LOGIN -->
+  <div class="form-section active" id="tab-login">
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="submit-btn" id="btn-login" onclick="handleLogin()">Sign In →</button>
+    <div class="msg" id="login-msg"></div>
+  </div>
+
+  <!-- SIGNUP -->
+  <div class="form-section" id="tab-signup">
+    <div class="field">
+      <label>Full Name</label>
+      <input type="text" id="signup-name" placeholder="Your name" autocomplete="name">
+    </div>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="signup-password" placeholder="Min 6 characters" autocomplete="new-password">
+    </div>
+    <button class="submit-btn" id="btn-signup" onclick="handleSignup()">Create Account →</button>
+    <div class="msg" id="signup-msg"></div>
+  </div>
+</div>
+
+<div class="back-link">
+  <a href="index.html">← Back to PaveView</a>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqb6sXaJzgafUw5A';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+function showTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', (i===0&&tab==='login')||(i===1&&tab==='signup')));
+  document.getElementById('tab-login').classList.toggle('active', tab==='login');
+  document.getElementById('tab-signup').classList.toggle('active', tab==='signup');
+}
+
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg ' + type;
+  el.style.display = 'block';
+}
+
+function setLoading(btnId, loading) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = loading;
+  btn.textContent = loading ? 'Please wait…' : (btnId === 'btn-login' ? 'Sign In →' : 'Create Account →');
+}
+
+async function checkPurchaseAndRedirect(userId) {
+  // Check if user has a purchase record
+  const { data, error } = await sb
+    .from('purchases')
+    .select('id, product, status')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .limit(1);
+
+  if (error) {
+    console.error('Purchase check error:', error);
+    // If table doesn't exist yet or error, still let them through
+    // (you can tighten this later)
+    window.location.href = 'app.html';
+    return;
+  }
+
+  if (data && data.length > 0) {
+    // Has purchase — go to app
+    window.location.href = 'app.html';
+  } else {
+    // No purchase — send to pricing page
+    window.location.href = 'index.html#pricing';
+  }
+}
+
+async function handleLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) { showMsg('login-msg', 'Please fill in all fields.', 'error'); return; }
+  setLoading('btn-login', true);
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    showMsg('login-msg', error.message, 'error');
+    setLoading('btn-login', false);
+  } else {
+    showMsg('login-msg', 'Signed in! Loading your tools…', 'success');
+    await checkPurchaseAndRedirect(data.user.id);
+  }
+}
+
+async function handleSignup() {
+  const name = document.getElementById('signup-name').value.trim();
+  const email = document.getElementById('signup-email').value.trim();
+  const password = document.getElementById('signup-password').value;
+  if (!name || !email || !password) { showMsg('signup-msg', 'Please fill in all fields.', 'error'); return; }
+  if (password.length < 6) { showMsg('signup-msg', 'Password must be at least 6 characters.', 'error'); return; }
+  setLoading('btn-signup', true);
+  const { data, error } = await sb.auth.signUp({
+    email, password,
+    options: { data: { full_name: name } }
+  });
+  if (error) {
+    showMsg('signup-msg', error.message, 'error');
+    setLoading('btn-signup', false);
+  } else if (data.user && !data.session) {
+    // Email confirmation required
+    showMsg('signup-msg', 'Check your email to confirm your account, then come back to sign in.', 'info');
+    setLoading('btn-signup', false);
+  } else {
+    showMsg('signup-msg', 'Account created! Checking your access…', 'success');
+    await checkPurchaseAndRedirect(data.user.id);
+  }
+}
+
+// Allow Enter key to submit
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const activeTab = document.getElementById('tab-login').classList.contains('active');
+    if (activeTab) handleLogin(); else handleSignup();
+  }
+});
+
+// Check if already logged in on page load
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) await checkPurchaseAndRedirect(session.user.id);
+})();
+</script>
+</body>
+</html>
