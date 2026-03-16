@@ -44,8 +44,7 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
 
 <div class="card">
   <div class="tabs">
-    <div class="tab active" onclick="showTab('login')">Sign In</div>
-    <div class="tab" onclick="showTab('signup')">Create Account</div>
+    <div class="tab active">Sign In</div>
   </div>
 
   <!-- LOGIN -->
@@ -60,26 +59,7 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
     </div>
     <button class="submit-btn" id="btn-login" onclick="handleLogin()">Sign In →</button>
     <div class="msg" id="login-msg"></div>
-  </div>
-
-  <!-- SIGNUP -->
-  <div class="form-section" id="tab-signup">
-    <div class="field">
-      <label>Full Name</label>
-      <input type="text" id="signup-name" placeholder="Your name" autocomplete="name">
-    </div>
-    <div class="field">
-      <label>Email</label>
-      <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email">
-    </div>
-    <div class="field">
-      <label>Password</label>
-      <input type="password" id="signup-password" placeholder="Min 6 characters" autocomplete="new-password">
-    </div>
-    <button class="submit-btn" id="btn-signup" onclick="handleSignup()">Create Account →</button>
-    <div class="msg" id="signup-msg"></div>
-  </div>
-</div>
+  </div></div>
 
 <div class="back-link">
   <a href="index.html">← Back to PaveView</a>
@@ -87,14 +67,9 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
 
 <script>
 const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqb6sXaJzgafUw5A';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-function showTab(tab) {
-  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', (i===0&&tab==='login')||(i===1&&tab==='signup')));
-  document.getElementById('tab-login').classList.toggle('active', tab==='login');
-  document.getElementById('tab-signup').classList.toggle('active', tab==='signup');
-}
 
 function showMsg(id, text, type) {
   const el = document.getElementById(id);
@@ -106,7 +81,7 @@ function showMsg(id, text, type) {
 function setLoading(btnId, loading) {
   const btn = document.getElementById(btnId);
   btn.disabled = loading;
-  btn.textContent = loading ? 'Please wait…' : (btnId === 'btn-login' ? 'Sign In →' : 'Create Account →');
+  btn.textContent = loading ? 'Please wait…' : 'Sign In →';
 }
 
 async function checkPurchaseAndRedirect(userId) {
@@ -122,13 +97,13 @@ async function checkPurchaseAndRedirect(userId) {
     console.error('Purchase check error:', error);
     // If table doesn't exist yet or error, still let them through
     // (you can tighten this later)
-    window.location.href = 'dashboard.html';
+    window.location.href = 'app.html';
     return;
   }
 
   if (data && data.length > 0) {
     // Has purchase — go to app
-    window.location.href = 'dashboard.html';
+    window.location.href = 'app.html';
   } else {
     // No purchase — send to pricing page
     window.location.href = 'index.html#pricing';
@@ -150,35 +125,11 @@ async function handleLogin() {
   }
 }
 
-async function handleSignup() {
-  const name = document.getElementById('signup-name').value.trim();
-  const email = document.getElementById('signup-email').value.trim();
-  const password = document.getElementById('signup-password').value;
-  if (!name || !email || !password) { showMsg('signup-msg', 'Please fill in all fields.', 'error'); return; }
-  if (password.length < 6) { showMsg('signup-msg', 'Password must be at least 6 characters.', 'error'); return; }
-  setLoading('btn-signup', true);
-  const { data, error } = await sb.auth.signUp({
-    email, password,
-    options: { data: { full_name: name } }
-  });
-  if (error) {
-    showMsg('signup-msg', error.message, 'error');
-    setLoading('btn-signup', false);
-  } else if (data.user && !data.session) {
-    // Email confirmation required
-    showMsg('signup-msg', 'Check your email to confirm your account, then come back to sign in.', 'info');
-    setLoading('btn-signup', false);
-  } else {
-    showMsg('signup-msg', 'Account created! Checking your access…', 'success');
-    await checkPurchaseAndRedirect(data.user.id);
-  }
-}
-
 // Allow Enter key to submit
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter') {
     const activeTab = document.getElementById('tab-login').classList.contains('active');
-    if (activeTab) handleLogin(); else handleSignup();
+    handleLogin();
   }
 });
 

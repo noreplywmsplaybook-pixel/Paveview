@@ -282,6 +282,17 @@ select.sc-inp{cursor:pointer;width:46px}
 #auth-check .acr{display:flex;align-items:center;gap:10px;font-size:11px;color:#6e6a63}
 #auth-check .acspin{width:16px;height:16px;border:2px solid #1e1e1e;border-top-color:#f5c842;border-radius:50%;animation:acspin .7s linear infinite}
 @keyframes acspin{to{transform:rotate(360deg)}}
+
+/* Measurements panel */
+.meas-item{padding:8px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border2);font-size:11px}
+.meas-icon{font-size:12px;flex-shrink:0}
+.meas-info{flex:1;min-width:0}
+.meas-label-inp{background:transparent;border:none;border-bottom:1px solid transparent;color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:10px;width:100%;outline:none;padding:1px 0;transition:border-color .15s}
+.meas-label-inp:focus{border-bottom-color:var(--stripe);color:var(--stripe)}
+.meas-sqft{font-family:'IBM Plex Mono',monospace;font-size:9px;color:#555;margin-top:1px}
+.meas-del{color:#333;cursor:pointer;font-size:12px;flex-shrink:0;transition:color .15s}
+.meas-del:hover{color:var(--red)}
+.meas-empty{padding:12px;font-size:10px;color:#444;text-align:center;font-family:'IBM Plex Mono',monospace}
 </style>
 </head>
 <body>
@@ -306,7 +317,7 @@ select.sc-inp{cursor:pointer;width:46px}
     <button class="btn" id="btn-settings-open">⚙ Settings</button>
     <button class="btn y" id="btn-report-open">⬛ Report</button>
     <div class="hd"></div>
-    <button class="btn" onclick="window.location.href='dashboard.html'">⌂ Dashboard</button>
+    <button class="btn" onclick="window.location.href='/dashboard.html'">⌂ Dashboard</button>
     <button class="btn" id="btn-signout">Sign Out</button>
   </div>
 </div>
@@ -348,6 +359,9 @@ select.sc-inp{cursor:pointer;width:46px}
     <div class="ps" style="padding-bottom:0"><div class="pt">Zones</div></div>
     <div id="zone-list"></div>
     <button class="add-zone-btn" id="btn-add-zone">+ Add Zone</button>
+    <!-- MEASUREMENTS -->
+    <div class="ps" style="padding-bottom:0;margin-top:4px"><div class="pt">Measurements</div></div>
+    <div id="meas-list"><div class="meas-empty">Draw a rectangle or circle to measure</div></div>
   </div>
 
   <!-- CANVAS -->
@@ -600,13 +614,15 @@ select.sc-inp{cursor:pointer;width:46px}
         <button class="rtog active" id="rtog-client" onclick="setReportView('client')">📋 Client</button>
         <button class="rtog" id="rtog-contractor" onclick="setReportView('contractor')">🔧 Contractor</button>
       </div>
-      <div style="margin-left:auto;display:flex;gap:6px">
+      <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+        <span id="save-report-msg" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#22c55e;display:none">✓ Saved</span>
+        <button class="btn" id="btn-save-report">💾 Save</button>
         <button class="btn" id="btn-report-close">✕ Close</button>
         <button class="btn y" id="btn-print">🖨 Print / PDF</button>
       </div>
     </div>
-    <!-- Interactive map panel (no-print) -->
-    <div id="rmap-wrap" class="no-print" style="background:#0a0a0a;border-bottom:1px solid var(--border);position:relative;height:320px;overflow:hidden;cursor:grab">
+    <!-- Interactive map panel -->
+    <div id="rmap-wrap" style="background:#0a0a0a;border:1px solid var(--border);position:relative;height:420px;overflow:hidden;cursor:grab;margin-bottom:0">
       <canvas id="rmap-canvas" style="position:absolute;top:0;left:0"></canvas>
       <div id="rmap-overlay" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:none" class="no-print"></div>
       <div style="position:absolute;top:8px;right:8px;display:flex;gap:4px" class="no-print">
@@ -615,6 +631,10 @@ select.sc-inp{cursor:pointer;width:46px}
         <button id="rmap-fit" class="btn" style="padding:3px 8px;font-size:10px">FIT</button>
       </div>
       <div style="position:absolute;top:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:#555" class="no-print">SCROLL TO ZOOM · DRAG TO PAN</div>
+    </div>
+    <!-- Map legend / layer toggles -->
+    <div id="rmap-legend" style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px;background:#0f0f0f;border:1px solid var(--border);border-top:none;margin-bottom:20px">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#555;letter-spacing:.15em;text-transform:uppercase;align-self:center;margin-right:4px">SHOW:</span>
     </div>
     <div class="mbody"><div id="report-content"></div></div>
   </div>
@@ -641,6 +661,7 @@ let currentPdf=null, selPages=new Set();
 let rulerPos=null;
 let rectStart=null;
 let circleStart=null;
+let measurements=[]; // {id, label, type, pts, sqft}
 
 const COLORS=['#f5c842','#3b82f6','#22c55e','#ef4444','#a855f7','#f97316','#06b6d4','#ec4899','#84cc16','#d97706'];
 
@@ -849,7 +870,7 @@ ic.addEventListener('mousemove',e=>{
 
 ic.addEventListener('mousedown',e=>{
   if(!imgW)return;
-  if(e.button===1||e.button===2||spaceDown||mode==='pan'){isPanning=true;ic.style.cursor='grabbing';return}
+  if(e.button===1||e.button===2||(e.button===0&&(spaceDown||mode==='pan'))){isPanning=true;ic.style.cursor='grabbing';return}
   if(e.button!==0)return;
   const p=getPos(e);
   const now=Date.now();
@@ -909,14 +930,14 @@ ic.addEventListener('mouseup',e=>{
   if(rectStart&&mode==='rect'){
     const p=getPos(e);
     if(Math.abs(p.x-rectStart.x)>5&&Math.abs(p.y-rectStart.y)>5){
-      inProg=[{x:rectStart.x,y:rectStart.y},{x:p.x,y:rectStart.y},{x:p.x,y:p.y},{x:rectStart.x,y:p.y}];
-      closeZone();
+      const rPts=[{x:rectStart.x,y:rectStart.y},{x:p.x,y:rectStart.y},{x:p.x,y:p.y},{x:rectStart.x,y:p.y}];
+      addMeasurement('rect', rPts);
     }
     rectStart=null;
   }
   if(circleStart&&mode==='circle'){
     const p=getPos(e);const r=dist(circleStart,p);
-    if(r>5){const pts=[];for(let i=0;i<32;i++){const a=(i/32)*Math.PI*2;pts.push({x:circleStart.x+Math.cos(a)*r,y:circleStart.y+Math.sin(a)*r});}inProg=pts;closeZone();}
+    if(r>5){const pts=[];for(let i=0;i<32;i++){const a=(i/32)*Math.PI*2;pts.push({x:circleStart.x+Math.cos(a)*r,y:circleStart.y+Math.sin(a)*r});}addMeasurement('circle',pts);}
     circleStart=null;
   }
   updateStats();renderAll();
@@ -1007,6 +1028,63 @@ function renderZoneList(){
   });
 }
 
+
+// ── MEASUREMENTS ──
+function addMeasurement(type, pts) {
+  const sc=getScale();
+  const area=polyArea(pts)*sc*sc;
+  const id='m'+Date.now();
+  measurements.push({id, label: type==='rect'?'Rectangle':'Circle', type, pts, sqft: Math.round(area)});
+  renderMeasurements();
+  renderAll();
+}
+
+function renderMeasurements() {
+  const list=document.getElementById('meas-list');
+  if(!list)return;
+  if(!measurements.length){list.innerHTML='<div class="meas-empty">Draw a rectangle or circle to measure</div>';return;}
+  list.innerHTML='';
+  measurements.forEach((m,i)=>{
+    const el=document.createElement('div');
+    el.className='meas-item';
+    el.innerHTML=`<span class="meas-icon">${m.type==='rect'?'▭':'◯'}</span>
+      <div class="meas-info">
+        <input class="meas-label-inp" value="${m.label}" placeholder="Label this measurement" data-id="${m.id}">
+        <div class="meas-sqft">${m.sqft.toLocaleString()} sq ft</div>
+      </div>
+      <span class="meas-del" data-id="${m.id}">✕</span>`;
+    el.querySelector('.meas-label-inp').addEventListener('input',e=>{
+      const meas=measurements.find(x=>x.id===e.target.dataset.id);
+      if(meas)meas.label=e.target.value;
+    });
+    el.querySelector('.meas-del').addEventListener('click',e=>{
+      measurements=measurements.filter(x=>x.id!==e.target.dataset.id);
+      renderMeasurements();renderAll();
+    });
+    list.appendChild(el);
+  });
+}
+
+function renderMeasurementShapes(ctx) {
+  measurements.forEach(m=>{
+    if(m.pts.length<3)return;
+    ctx.beginPath();
+    m.pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));
+    ctx.closePath();
+    ctx.fillStyle='rgba(255,255,255,0.06)';ctx.fill();
+    ctx.strokeStyle='#888';ctx.lineWidth=1.5;
+    ctx.setLineDash([6,3]);ctx.stroke();ctx.setLineDash([]);
+    // Label
+    const cx2=m.pts.reduce((s,p)=>s+p.x,0)/m.pts.length;
+    const cy2=m.pts.reduce((s,p)=>s+p.y,0)/m.pts.length;
+    ctx.font='500 11px IBM Plex Mono,monospace';ctx.textAlign='center';ctx.textBaseline='middle';
+    const lbl=m.label+' · '+m.sqft.toLocaleString()+' sf';
+    const tw=ctx.measureText(lbl).width;
+    ctx.fillStyle='rgba(0,0,0,.75)';ctx.fillRect(cx2-tw/2-5,cy2-8,tw+10,16);
+    ctx.fillStyle='#aaa';ctx.fillText(lbl,cx2,cy2);
+  });
+}
+
 // ── MODE ──
 const modeMap={
   'pan':'btn-pan','draw':'btn-draw','rect':'btn-rect','circle':'btn-circle','obstruct':'btn-obstruct',
@@ -1014,7 +1092,7 @@ const modeMap={
   'stall':'btn-stall','ada':'btn-ada','bollard':'btn-bollard',
   'stopblock':'btn-stopblock','stencil':'btn-stencil'
 };
-const modeClass={'pan':'ta','draw':'ta','rect':'ta','circle':'ta','obstruct':'ta-r','linear':'ta','crosswalk':'ta-g','ada-hatch':'ta-b','stall':'ta','ada':'ta-b','bollard':'ta-o','stopblock':'ta-r','stencil':'ta-p'};
+const modeClass={'pan':'ta','draw':'ta','rect':'ta-m','circle':'ta-m','obstruct':'ta-r','linear':'ta','crosswalk':'ta-g','ada-hatch':'ta-b','stall':'ta','ada':'ta-b','bollard':'ta-o','stopblock':'ta-r','stencil':'ta-p'};
 const modeLabel={'pan':'Pan','draw':'Zone','rect':'Rectangle','circle':'Circle','obstruct':'Obstruction','linear':'Linear ft','crosswalk':'Crosswalk','ada-hatch':'ADA Hatch','stall':'Stall','ada':'ADA Stall','bollard':'Bollard','stopblock':'Stop Block','stencil':'Stencil'};
 
 function setMode(m){
@@ -1140,8 +1218,14 @@ function renderZones(){
     dCtx.fillStyle='rgba(0,0,0,.8)';dCtx.fillRect((x1+x2)/2-tw/2-5,y1-20,tw+10,14);
     dCtx.fillStyle='#f5c842';dCtx.fillText(lbl,(x1+x2)/2,y1-7);
   }
+  // Check legend toggle state
+  const _layerOn=(key)=>{
+    const btn=document.querySelector('[data-layer="'+key+'"]');
+    return !btn||btn.dataset.active!=='false';
+  };
+
   // Zones
-  zones.forEach(z=>{
+  if(_layerOn('zones')) zones.forEach(z=>{
     if(!z.closed||z.pts.length<3)return;
     const isA=z.id===activeZone?.id;
     dCtx.beginPath();z.pts.forEach((p,i)=>i===0?dCtx.moveTo(p.x,p.y):dCtx.lineTo(p.x,p.y));dCtx.closePath();
@@ -1185,6 +1269,8 @@ function renderZones(){
     dCtx.fillStyle='rgba(0,0,0,.75)';dCtx.fillRect(cx2-nw/2-4,cy2-24,nw+8,13);
     dCtx.fillStyle='#fff';dCtx.fillText(z.name,cx2,cy2-17);
   });
+  // Measurements
+  renderMeasurementShapes(dCtx);
   // Markers
   markers.forEach((m,idx)=>{
     const isH=hovering&&hovering.type==='marker'&&hovering.idx===idx;
@@ -1373,27 +1459,54 @@ function closeModal(id){document.getElementById(id).classList.remove('open')}
 
 // ── BUTTONS ──
 document.getElementById('btn-undo').onclick=()=>{
+  // Priority 1: undo last in-progress point
   if(inProg.length>0){inProg.pop();render();return}
   if(inHatch.length>0){inHatch.pop();render();return}
   if(inLinear.length>0){inLinear.pop();render();return}
+  // Priority 2: remove last placed marker
   if(markers.length>0){markers.pop();updateStats();renderAll();return}
+  // Priority 3: remove last completed hatch/linear
   if(hatchZones.length>0){hatchZones.pop();updateStats();renderAll();return}
   if(linearSegs.length>0){linearSegs.pop();updateStats();renderAll();return}
+  // Priority 4: reopen last completed zone for editing
   const lastClosed=[...zones].reverse().find(z=>z.closed);
-  if(lastClosed){activeZone=lastClosed;inProg=[...lastClosed.pts];lastClosed.pts=[];lastClosed.closed=false;lastClosed.locked=false;setMode(lastClosed.obstruct?'obstruct':'draw');renderZoneList();updateStats();renderAll();return;}
-  else{const last=zones.filter(z=>z.closed).pop();if(last){last.closed=false;last.locked=false;inProg=[...last.pts];last.pts=[];activeZone=last;renderZoneList();updateStats();renderAll()}}
+  if(lastClosed){
+    activeZone=lastClosed;
+    inProg=[...lastClosed.pts];
+    lastClosed.pts=[];lastClosed.closed=false;lastClosed.locked=false;
+    setMode(lastClosed.obstruct?'obstruct':'draw');
+    renderZoneList();updateStats();renderAll();
+  }
 };
 document.getElementById('btn-clear').onclick=()=>{
+  // Level 1: clear in-progress drawing
   if(inProg.length>0||inHatch.length>0||inLinear.length>0){
     inProg=[];inHatch=[];inLinear=[];
-    if(activeZone&&!activeZone.closed)activeZone.pts=[];
+    if(activeZone&&!activeZone.closed){activeZone.pts=[];activeZone.closed=false;}
     render();return;
   }
-  if((zones.length>0||markers.length>0)&&confirm('Clear all measurements?')){
-    zones=[];markers=[];hatchZones=[];linearSegs=[];inProg=[];inHatch=[];inLinear=[];
-    activeZone=null;addZone();
+  // Level 2: clear last completed item
+  if(markers.length>0){
+    if(confirm('Remove last placed marker?')){markers.pop();updateStats();renderAll();}
+    return;
   }
-  renderZoneList();updateStats();renderAll();
+  if(linearSegs.length>0){
+    if(confirm('Remove last linear segment?')){linearSegs.pop();updateStats();renderAll();}
+    return;
+  }
+  if(hatchZones.length>0){
+    if(confirm('Remove last hatch zone?')){hatchZones.pop();updateStats();renderAll();}
+    return;
+  }
+  if(zones.length>0){
+    const lastClosed=[...zones].reverse().find(z=>z.closed);
+    if(lastClosed&&confirm('Remove zone "'+lastClosed.name+'"?')){
+      zones=zones.filter(z=>z.id!==lastClosed.id);
+      if(activeZone?.id===lastClosed.id){activeZone=zones[zones.length-1]||null;}
+      renderZoneList();updateStats();renderAll();
+    }
+    return;
+  }
 };
 document.getElementById('btn-add-zone').onclick=()=>{
   if(inProg.length>=3)closeZone();
@@ -1448,7 +1561,33 @@ document.getElementById('btn-report-open').onclick=()=>{
 };
 document.getElementById('btn-report-close').onclick=()=>closeModal('report-modal');
 document.getElementById('report-modal').addEventListener('click',e=>{if(e.target===document.getElementById('report-modal'))closeModal('report-modal')});
-document.getElementById('btn-print').onclick=()=>window.print();
+document.getElementById('btn-print').onclick=()=>{
+  // Snapshot the interactive map canvas to a static image before printing
+  const canvas=document.getElementById('rmap-canvas');
+  const wrap=document.getElementById('rmap-wrap');
+  if(canvas&&wrap){
+    const img=document.createElement('img');
+    img.src=canvas.toDataURL('image/png');
+    img.id='rmap-print-img';
+    img.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover';
+    canvas.style.display='none';
+    wrap.appendChild(img);
+    // Remove no-print class temporarily so map shows in PDF
+    wrap.classList.remove('no-print');
+    setTimeout(()=>{
+      window.print();
+      // Restore after print dialog closes
+      setTimeout(()=>{
+        canvas.style.display='';
+        const pi=document.getElementById('rmap-print-img');
+        if(pi)pi.remove();
+        wrap.classList.add('no-print');
+      },1000);
+    },200);
+  } else {
+    window.print();
+  }
+};
 
 function buildReport(){
   const sc=getScale(),u=document.getElementById('scale-unit').value;
@@ -1635,6 +1774,38 @@ function rmapInit(){
     rmapZoom=nz;rmapDraw();
   };
   document.getElementById('rmap-fit').onclick=rmapFit;
+
+  // Build legend toggles
+  const legend=document.getElementById('rmap-legend');
+  if(legend){
+    const layers=[
+      {key:'zones',   label:'Zones',      color:'#f5c842'},
+      {key:'stalls',  label:'Stalls',     color:'#f5c842'},
+      {key:'ada',     label:'ADA',        color:'#3b82f6'},
+      {key:'hatch',   label:'Crosswalks', color:'#22c55e'},
+      {key:'linear',  label:'Linear',     color:'#06b6d4'},
+      {key:'bollard', label:'Bollards',   color:'#f97316'},
+      {key:'stop',    label:'Stop Blocks',color:'#ef4444'},
+      {key:'meas',    label:'Measurements',color:'#888'},
+    ];
+    // Remove existing toggles (keep the label span)
+    while(legend.children.length>1) legend.removeChild(legend.lastChild);
+    layers.forEach(l=>{
+      const btn=document.createElement('button');
+      btn.className='btn';
+      btn.dataset.layer=l.key;
+      btn.style.cssText=`padding:2px 8px;font-size:9px;border-color:${l.color};color:${l.color}`;
+      btn.textContent='● '+l.label;
+      btn.onclick=()=>{
+        const active=btn.dataset.active!=='false';
+        btn.dataset.active=active?'false':'true';
+        btn.style.opacity=active?'0.35':'1';
+        rmapDraw(null);
+      };
+      btn.dataset.active='true';
+      legend.appendChild(btn);
+    });
+  }
 }
 
 function rmapFit(){
@@ -1695,8 +1866,14 @@ function rmapDraw(hlId){
     ctx.strokeStyle='#06b6d4';ctx.lineWidth=2/rmapZoom;ctx.setLineDash([6/rmapZoom,3/rmapZoom]);ctx.stroke();ctx.setLineDash([]);
   });
 
+  // Check legend toggle state
+  const _layerOn=(key)=>{
+    const btn=document.querySelector('[data-layer="'+key+'"]');
+    return !btn||btn.dataset.active!=='false';
+  };
+
   // Zones
-  zones.forEach(z=>{
+  if(_layerOn('zones')) zones.forEach(z=>{
     if(!z.closed||z.pts.length<3)return;
     const isHL=z.id===hlId;
     ctx.beginPath();z.pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));ctx.closePath();
@@ -1727,8 +1904,28 @@ function rmapDraw(hlId){
     ctx.fillStyle='#fff';ctx.font=`400 ${fs*.85}px IBM Plex Mono,monospace`;ctx.fillText(aLbl,cx2,cy2+fs+4);
   });
 
-  // Markers
+  // Measurements
+  renderMeasurementShapes(dCtx);
+  // Measurements on map
+  if(_layerOn('meas')) measurements.forEach(m=>{
+    if(m.pts.length<3)return;
+    ctx.beginPath();m.pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));ctx.closePath();
+    ctx.fillStyle='rgba(255,255,255,0.06)';ctx.fill();
+    ctx.strokeStyle='#888';ctx.lineWidth=1.5/rmapZoom;ctx.setLineDash([6/rmapZoom,3/rmapZoom]);ctx.stroke();ctx.setLineDash([]);
+    const cx2=m.pts.reduce((s,p)=>s+p.x,0)/m.pts.length;
+    const cy2=m.pts.reduce((s,p)=>s+p.y,0)/m.pts.length;
+    ctx.font=`500 ${Math.max(9,11/rmapZoom)}px IBM Plex Mono,monospace`;ctx.textAlign='center';ctx.textBaseline='middle';
+    const mw=ctx.measureText(m.label).width;
+    ctx.fillStyle='rgba(0,0,0,.75)';ctx.fillRect(cx2-mw/2-4,cy2-7,mw+8,14);
+    ctx.fillStyle='#aaa';ctx.fillText(m.label,cx2,cy2);
+  });
+
+  // Markers (filtered by legend)
   markers.forEach(m=>{
+    if(m.type==='stall'&&!_layerOn('stalls'))return;
+    if(m.type==='ada'&&!_layerOn('ada'))return;
+    if(m.type==='bollard'&&!_layerOn('bollard'))return;
+    if(m.type==='stopblock'&&!_layerOn('stop'))return;
     const col={stall:'#f5c842',ada:'#3b82f6',bollard:'#f97316',stopblock:'#ef4444',stencil:'#a855f7'}[m.type]||'#fff';
     const r=Math.max(4,7/rmapZoom);
     ctx.beginPath();ctx.arc(m.x,m.y,r,0,Math.PI*2);ctx.fillStyle=col;ctx.fill();
@@ -1737,6 +1934,67 @@ function rmapDraw(hlId){
 
   ctx.restore();
 }
+
+
+// ── SAVE REPORT ──
+document.getElementById('btn-save-report').onclick=async()=>{
+  const btn=document.getElementById('btn-save-report');
+  const msg=document.getElementById('save-report-msg');
+  btn.disabled=true;btn.textContent='Saving...';
+
+  try{
+    const _sb=supabase.createClient(
+      'https://rqgyqqyxlwjpbdkapvpz.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A'
+    );
+    const{data:{session}}=await _sb.auth.getSession();
+    if(!session){btn.disabled=false;btn.textContent='💾 Save';alert('Sign in to save reports.');return;}
+
+    const sc=getScale();
+    const closed=zones.filter(z=>z.closed&&!z.obstruct);
+    let totalSqft=0;
+    closed.forEach(z=>totalSqft+=polyArea(z.pts)*sc*sc);
+
+    const depth=sv('s-depth')||3,comp=sv('s-comp')||1.05,base=sv('s-base')||6;
+    const pa=sv('s-pa')||85,pb=sv('s-pb')||22,pl=sv('s-pl')||1.25;
+    const tons=closed.reduce((t,z)=>{const a=polyArea(z.pts)*sc*sc;return t+(a*(depth/12)*145/2000*comp);},0);
+    const baseTons=closed.reduce((t,z)=>{const a=polyArea(z.pts)*sc*sc;return t+(a*(base/12)*110/2000);},0);
+    const totalCost=tons*pa+baseTons*pb+totalSqft*pl;
+
+    const stallC=markers.filter(m=>m.type==='stall').length+(typeof manualCounts!=='undefined'?manualCounts.stall||0:0);
+    const adaC=markers.filter(m=>m.type==='ada').length+(typeof manualCounts!=='undefined'?manualCounts.ada||0:0);
+
+    const projName=document.getElementById('proj-name')?.value||'Untitled Project';
+    const jobType=document.getElementById('job-type')?.value||'paving';
+
+    const projectData={
+      totalSqft:Math.round(totalSqft),
+      totalCost:Math.round(totalCost),
+      stallCount:stallC,
+      adaCount:adaC,
+      jobType,
+      zones:closed.map(z=>({name:z.name,color:z.color,sqft:Math.round(polyArea(z.pts)*sc*sc)})),
+      measurements:measurements.map(m=>({label:m.label,type:m.type,sqft:m.sqft})),
+      depth,comp,base,pa,pb,pl,
+    };
+
+    const{error}=await _sb.from('projects').insert({
+      user_id:session.user.id,
+      name:projName,
+      data:projectData,
+      created_at:new Date().toISOString()
+    });
+
+    if(error)throw error;
+
+    btn.textContent='💾 Save';btn.disabled=false;
+    msg.style.display='inline';
+    setTimeout(()=>msg.style.display='none',3000);
+  }catch(e){
+    btn.disabled=false;btn.textContent='💾 Save';
+    alert('Save failed: '+e.message);
+  }
+};
 
 // ── INIT ──
 setMode('draw');
@@ -1782,9 +2040,9 @@ document.getElementById('btn-settings-save').onclick=()=>{
   try{
     const sb=supabase.createClient(SB_URL,SB_KEY);
     const{data:{session}}=await sb.auth.getSession();
-    if(!session){window.location.replace('login.html');return;}
+    if(!session){window.location.replace('/login.html');return;}
     const{data:p}=await sb.from('purchases').select('id').eq('user_id',session.user.id).eq('status','active').limit(1);
-    if(!p||!p.length){window.location.replace('index.html#pricing');return;}
+    if(!p||!p.length){window.location.replace('/index.html');return;}
   }catch(e){console.warn('auth:',e);}
   document.getElementById('auth-check').remove();
 })();

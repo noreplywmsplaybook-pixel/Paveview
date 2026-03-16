@@ -247,7 +247,7 @@ h1 { animation-delay:.2s; }
   <div class="nav-right">
     <a href="#features" class="nav-link">Features</a>
     <a href="#pricing" class="nav-link">Pricing</a>
-    <a href="auth.html" class="nav-link">Login</a>
+    <a href="/login.html" class="nav-link">Login</a>
     <a href="#pricing" class="nav-cta">Get Access</a>
   </div>
 </nav>
@@ -414,7 +414,7 @@ h1 { animation-delay:.2s; }
           <li>Access to all future updates</li>
         </ul>
         <a href="#" class="price-cta" id="buy-btn">Get Access Now — $1,000</a>
-        <p class="price-note">Secure payment via Stripe · Instant access after purchase<br>Questions? Email <a href="mailto:support@paveview.io" style="color:var(--stripe)">support@paveview.io</a></p>
+        <p class="price-note">Secure payment via Stripe · Instant access after purchase<br>Questions? Email <a href="/cdn-cgi/l/email-protection#3f4c4a4f4f504d4b7f4f5e495a49565a48115650" style="color:var(--stripe)"><span class="__cf_email__" data-cfemail="72010702021d00063202130417041b17055c1b1d">[email&#160;protected]</span></a></p>
       </div>
     </div>
   </div>
@@ -444,7 +444,7 @@ h1 { animation-delay:.2s; }
       </div>
       <div class="faq-item">
         <div class="faq-q">What if I need help getting started?</div>
-        <div class="faq-a">Email support@paveview.io and we'll get back to you same day. For most users the calibration step is the only thing that takes getting used to — after that first job it becomes second nature.</div>
+        <div class="faq-a">Email <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="84f7f1f4f4ebf6f0c4f4e5f2e1f2ede1f3aaedeb">[email&#160;protected]</a> and we'll get back to you same day. For most users the calibration step is the only thing that takes getting used to — after that first job it becomes second nature.</div>
       </div>
       <div class="faq-item">
         <div class="faq-q">Can multiple people on my crew use it?</div>
@@ -458,28 +458,16 @@ h1 { animation-delay:.2s; }
   <div class="footer-logo">PaveView</div>
   <div class="footer-copy">© 2025 PaveView · All rights reserved</div>
   <div class="footer-links">
-    <a href="auth.html">Login</a>
-    <a href="mailto:support@paveview.io">Support</a>
+    <a href="/login.html">Login</a>
+    <a href="/cdn-cgi/l/email-protection#a9dadcd9d9c6dbdde9d9c8dfccdfc0ccde87c0c6">Support</a>
   </div>
 </footer>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 const STRIPE_LINK = 'https://buy.stripe.com/5kQ5kE3OpgMk9a42zC6Vq0Y';
 
 // FAQ accordion
 document.querySelectorAll('.faq-q').forEach(q => {
   q.addEventListener('click', () => {
     const item = q.parentElement;
-    const wasOpen = item.classList.contains('open');
-    document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
-    if (!wasOpen) item.classList.add('open');
-  });
-});
-
-// Buy button → Stripe Payment Link
-document.getElementById('buy-btn').href = STRIPE_LINK;
-document.querySelector('.nav-cta').href = STRIPE_LINK;
-document.querySelector('.btn-primary').href = STRIPE_LINK;
-</script>
-</body>
-</html>
+    const wasOpen = i
