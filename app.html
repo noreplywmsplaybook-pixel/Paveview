@@ -1744,7 +1744,7 @@ setMode('draw');
 // ── Sign Out ──
 document.getElementById('btn-signout').onclick=async()=>{
   try{const _sb=supabase.createClient('https://rqgyqqyxlwjpbdkapvpz.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A');await _sb.auth.signOut();}catch(e){}
-  window.location.replace('login.html');
+  window.location.replace('/login.html');
 };
 
 // ── Stall Mode ──
