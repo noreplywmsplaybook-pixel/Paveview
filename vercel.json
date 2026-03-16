@@ -1,6 +1,8 @@
 {
   "version": 2,
-  "routes": [
-    { "src": "/(.*)", "dest": "/$1" }
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "redirects": [
+    { "source": "/auth", "destination": "/login.html", "permanent": false }
   ]
 }
