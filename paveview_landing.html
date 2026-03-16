@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PaveView Takeoff — Asphalt Estimating Software for Contractors</title>
+<meta name="description" content="Stop losing bids to slow takeoffs. PaveView Takeoff lets asphalt contractors measure parking lots, count stalls, and generate professional estimates in minutes.">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0a0a;--bg2:#111;--bg3:#1a1a1a;--stripe:#f5c842;--stripe2:rgba(245,200,66,.1);--text:#e8e4dc;--dim:#6e6a63;--border:#242424;--white:#fff}
+*{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:"IBM Plex Sans",sans-serif;overflow-x:hidden}
+nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(10,10,10,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);height:60px;display:flex;align-items:center;padding:0 5%;justify-content:space-between}
+.nav-logo{font-family:"Bebas Neue",sans-serif;font-size:22px;letter-spacing:.12em;color:var(--stripe);text-decoration:none}
+.nav-logo span{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--dim);letter-spacing:.2em;vertical-align:middle;margin-left:6px}
+.nav-cta{background:var(--stripe);color:#000;font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.08em;padding:9px 22px;text-decoration:none;font-weight:600;text-transform:uppercase;transition:all .2s}
+.nav-cta:hover{background:#fff}
+#hero{min-height:100vh;display:flex;align-items:center;padding:100px 5% 60px;position:relative;overflow:hidden}
+.hero-bg{position:absolute;inset:0;z-index:0;background:radial-gradient(ellipse 80% 60% at 60% 40%,rgba(245,200,66,.06) 0%,transparent 70%)}
+.hero-inner{max-width:1100px;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;position:relative;z-index:1;margin:0 auto}
+.hero-eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.2em;color:var(--stripe);text-transform:uppercase;margin-bottom:16px}
+h1{font-family:"Bebas Neue",sans-serif;font-size:clamp(42px,5.5vw,72px);line-height:.95;letter-spacing:.02em;color:var(--white);margin-bottom:22px}
+h1 span{color:var(--stripe)}
+.hero-sub{font-size:16px;color:var(--dim);line-height:1.7;margin-bottom:36px;max-width:480px}
+.hero-price-block{display:flex;align-items:baseline;gap:12px;margin-bottom:28px}
+.hero-price{font-family:"Bebas Neue",sans-serif;font-size:56px;color:var(--stripe);line-height:1}
+.hero-price-note{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--dim)}
+.cta-btn{display:inline-block;background:var(--stripe);color:#000;font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:600;letter-spacing:.08em;padding:16px 36px;text-decoration:none;text-transform:uppercase;transition:all .2s}
+.cta-btn:hover{background:#fff;transform:translateY(-2px)}
+.trust{display:flex;gap:20px;margin-top:28px;flex-wrap:wrap}
+.ti{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim)}
+/* mockup */
+.hero-visual{position:relative}
+.tool-preview{background:var(--bg2);border:1px solid var(--border);border-top:2px solid var(--stripe);overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.6)}
+.tp-bar{background:#0d0d0d;height:30px;display:flex;align-items:center;padding:0 10px;gap:5px;border-bottom:1px solid var(--border)}
+.tp-dot{width:7px;height:7px;border-radius:50%}
+.tp-body{display:grid;grid-template-columns:150px 1fr 140px;height:300px}
+.tp-l{background:var(--bg2);border-right:1px solid var(--border);padding:9px}
+.tp-c{background:#080808;position:relative;overflow:hidden}
+.tp-c::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 19px,rgba(245,200,66,.03) 19px,rgba(245,200,66,.03) 20px),repeating-linear-gradient(90deg,transparent,transparent 19px,rgba(245,200,66,.03) 19px,rgba(245,200,66,.03) 20px)}
+.fz{position:absolute;top:15px;left:10px;right:15px;bottom:20px;border:2px solid var(--stripe);background:rgba(245,200,66,.06);clip-path:polygon(0 10%,60% 0,100% 30%,95% 100%,40% 95%,0 70%)}
+.fl{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--stripe);background:rgba(0,0,0,.8);padding:3px 8px;white-space:nowrap}
+.fd{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--stripe);transform:translate(-50%,-50%)}
+.tp-r{background:var(--bg2);border-left:1px solid var(--border);padding:9px}
+.ts{padding:6px 0;border-bottom:1px solid var(--border)}
+.tsl{font-family:"IBM Plex Mono",monospace;font-size:7px;color:var(--dim);letter-spacing:.15em;text-transform:uppercase}
+.tsv{font-family:"Bebas Neue",sans-serif;font-size:17px;color:var(--stripe);line-height:1.1}
+.tg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-top:7px}
+.tgb{background:transparent;border:1px solid var(--border);padding:4px 2px;font-size:10px;text-align:center}
+.tgb.a{border-color:var(--stripe);background:var(--stripe2)}
+.tli{display:flex;align-items:center;gap:4px;padding:3px 0;border-bottom:1px solid var(--border)}
+.tld{width:5px;height:5px;border-radius:2px;flex-shrink:0}
+.tlt{font-size:8px;color:var(--dim);flex:1}
+.tlv{font-family:"IBM Plex Mono",monospace;font-size:8px;color:var(--stripe)}
+.badge{position:absolute;bottom:-14px;right:-14px;background:var(--stripe);color:#000;font-family:"Bebas Neue",sans-serif;font-size:14px;letter-spacing:.06em;padding:8px 14px}
+/* sections */
+section{padding:80px 5%}
+.si{max-width:1100px;margin:0 auto}
+.ey{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.2em;color:var(--stripe);text-transform:uppercase;margin-bottom:12px}
+h2{font-family:"Bebas Neue",sans-serif;font-size:clamp(32px,4vw,52px);color:var(--white);letter-spacing:.02em;line-height:1;margin-bottom:16px}
+.sub{font-size:15px;color:var(--dim);line-height:1.7;max-width:560px}
+#problem{background:var(--bg2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.pg{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);margin-top:48px}
+.pi{background:var(--bg2);padding:28px 24px}
+.pe{font-size:28px;margin-bottom:12px}
+.pt{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--text);font-weight:600;margin-bottom:8px;letter-spacing:.04em}
+.pd{font-size:13px;color:var(--dim);line-height:1.65}
+.fg{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:48px}
+.fc{background:var(--bg2);border:1px solid var(--border);padding:24px;transition:border-color .2s}
+.fc:hover{border-color:rgba(245,200,66,.3)}
+.fi{font-size:24px;margin-bottom:12px}
+.ftt{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--text);font-weight:600;margin-bottom:8px;letter-spacing:.04em}
+.fd2{font-size:13px;color:var(--dim);line-height:1.65}
+#how{background:var(--bg2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:48px;position:relative}
+.steps::before{content:"";position:absolute;top:22px;left:12%;right:12%;height:1px;background:var(--border);z-index:0}
+.step{text-align:center;padding:0 16px;position:relative;z-index:1}
+.sn{width:44px;height:44px;border-radius:50%;background:var(--bg);border:2px solid var(--stripe);color:var(--stripe);font-family:"Bebas Neue",sans-serif;font-size:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+.stitle{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--text);font-weight:600;margin-bottom:8px;letter-spacing:.04em;text-transform:uppercase}
+.sdesc{font-size:12px;color:var(--dim);line-height:1.6}
+#pricing{text-align:center}
+.pc{background:var(--bg2);border:1px solid var(--border);border-top:3px solid var(--stripe);max-width:440px;margin:48px auto 0;padding:40px}
+.pbadge{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--stripe);background:var(--stripe2);border:1px solid rgba(245,200,66,.3);padding:4px 12px;display:inline-block;margin-bottom:20px}
+.pname{font-family:"Bebas Neue",sans-serif;font-size:28px;color:var(--white);letter-spacing:.08em;margin-bottom:6px}
+.pamt{font-family:"Bebas Neue",sans-serif;font-size:72px;color:var(--stripe);line-height:1;margin:16px 0 6px}
+.pper{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--dim);margin-bottom:28px}
+.pf{list-style:none;text-align:left;margin-bottom:32px}
+.pf li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;color:var(--text);line-height:1.5}
+.pf li::before{content:"✓";color:var(--stripe);font-weight:bold;flex-shrink:0;margin-top:1px}
+.pcta{display:block;background:var(--stripe);color:#000;font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:600;letter-spacing:.08em;padding:16px;text-decoration:none;text-transform:uppercase;text-align:center;transition:all .2s}
+.pcta:hover{background:#fff}
+.pguar{font-size:12px;color:var(--dim);margin-top:14px;line-height:1.5}
+#faq{background:var(--bg2);border-top:1px solid var(--border)}
+.faq{display:grid;grid-template-columns:1fr 1fr;gap:0 40px;margin-top:40px}
+.fq{padding:18px 0;border-bottom:1px solid var(--border)}
+.fqq{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--text);font-weight:600;margin-bottom:7px;letter-spacing:.03em}
+.fqa{font-size:13px;color:var(--dim);line-height:1.65}
+footer{padding:36px 5%;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.fl{font-family:"Bebas Neue",sans-serif;font-size:18px;color:var(--stripe);letter-spacing:.12em}
+.fn{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--dim)}
+@media(max-width:768px){.hero-inner{grid-template-columns:1fr;gap:40px}.hero-visual{display:none}.pg{grid-template-columns:1fr}.fg{grid-template-columns:1fr}.steps{grid-template-columns:1fr 1fr;gap:24px}.steps::before{display:none}.faq{grid-template-columns:1fr}footer{flex-direction:column;gap:12px;text-align:center}}
+</style>
+</head>
+<body>
+<nav>
+  <a href="#" class="nav-logo">PaveView <span>Takeoff</span></a>
+  <a href="#pricing" class="nav-cta">Get Access — $500</a>
+</nav>
+
+<section id="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-inner">
+    <div>
+      <div class="hero-eyebrow">For Asphalt &amp; Paving Contractors</div>
+      <h1>Stop Guessing.<br><span>Start Winning</span><br>More Bids.</h1>
+      <p class="hero-sub">PaveView Takeoff lets you upload any parking lot plan, measure every zone, count stalls and bollards, and generate a professional proposal — in minutes, not hours.</p>
+      <div class="hero-price-block">
+        <div class="hero-price">$500</div>
+        <div class="hero-price-note">one-time purchase<br>no subscription ever</div>
+      </div>
+      <a href="#pricing" class="cta-btn">Get PaveView Takeoff</a>
+      <div class="trust">
+        <div class="ti">📄 Works with any PDF plan</div>
+        <div class="ti">🔒 One-time payment</div>
+        <div class="ti">⚡ Ready in 60 seconds</div>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="tool-preview">
+        <div class="tp-bar">
+          <div class="tp-dot" style="background:#ef4444"></div>
+          <div class="tp-dot" style="background:#f59e0b"></div>
+          <div class="tp-dot" style="background:#22c55e"></div>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#444;margin-left:6px">PaveView Takeoff</span>
+        </div>
+        <div class="tp-body">
+          <div class="tp-l">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--dim);letter-spacing:.15em;text-transform:uppercase;margin-bottom:8px">Zones</div>
+            <div class="tli"><div class="tld" style="background:#f5c842"></div><div class="tlt">Lot Area</div><div class="tlv">19,280</div></div>
+            <div class="tli"><div class="tld" style="background:#3b82f6"></div><div class="tlt">Drive Lane</div><div class="tlv">4,120</div></div>
+            <div class="tli"><div class="tld" style="background:#22c55e"></div><div class="tlt">Entry</div><div class="tlv">1,840</div></div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--dim);letter-spacing:.15em;text-transform:uppercase;margin:10px 0 6px">Tools</div>
+            <div class="tg">
+              <div class="tgb a">✏️</div><div class="tgb">🅿</div><div class="tgb">♿</div>
+              <div class="tgb">📐</div><div class="tgb">🚧</div><div class="tgb">🔤</div>
+            </div>
+          </div>
+          <div class="tp-c">
+            <div class="fz"></div>
+            <div class="fl">19,280 sq ft</div>
+            <div class="fd" style="top:28%;left:35%"></div>
+            <div class="fd" style="top:28%;left:48%"></div>
+            <div class="fd" style="top:28%;left:61%"></div>
+            <div class="fd" style="top:45%;left:35%"></div>
+            <div class="fd" style="top:45%;left:48%"></div>
+            <div class="fd" style="top:45%;left:61%"></div>
+            <div class="fd" style="top:62%;left:35%"></div>
+            <div class="fd" style="top:62%;left:48%"></div>
+          </div>
+          <div class="tp-r">
+            <div class="ts"><div class="tsl">Total Area</div><div class="tsv">25,240<span style="font-size:10px;color:var(--dim)"> sqft</span></div></div>
+            <div class="ts"><div class="tsl">Stalls</div><div class="tsv">47</div></div>
+            <div class="ts"><div class="tsl">ADA</div><div class="tsv" style="color:#3b82f6">3</div></div>
+            <div class="ts"><div class="tsl">Est. Cost</div><div class="tsv" style="color:#60a5fa">$41,200</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="badge">CALIBRATED ✓</div>
+    </div>
+  </div>
+</section>
+
+<section id="problem">
+  <div class="si">
+    <div class="ey">The Old Way Is Costing You</div>
+    <h2>Sound Familiar?</h2>
+    <div class="pg">
+      <div class="pi"><div class="pe">📏</div><div class="pt">Rolling a Wheel On-Site</div><div class="pd">Driving out just to measure costs time and fuel. If the plan changes, you're back out there again.</div></div>
+      <div class="pi"><div class="pe">🤔</div><div class="pt">Eyeballing Square Footage</div><div class="pd">Rough estimates mean underbidding and losing margin, or overbidding and losing the job. Neither is good.</div></div>
+      <div class="pi"><div class="pe">💸</div><div class="pt">Paying a Takeoff Service</div><div class="pd">$50–$200 per takeoff adds up fast. You're waiting 48 hours for results you could have in 10 minutes.</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="si">
+    <div class="ey">What PaveView Takeoff Does</div>
+    <h2>Everything You Need<br>to Bid Faster</h2>
+    <div class="fg">
+      <div class="fc"><div class="fi">📄</div><div class="ftt">Upload Any Plan PDF</div><div class="fd2">Drag and drop any multi-page PDF. Select the pages you need and start measuring immediately. Works with any engineer's plan format.</div></div>
+      <div class="fc"><div class="fi">📐</div><div class="ftt">Accurate Scale Calibration</div><div class="fd2">Click two points on the scale bar, or enter the written ratio (1" = 30'). A verification ruler confirms your calibration before you measure.</div></div>
+      <div class="fc"><div class="fi">✏️</div><div class="ftt">Multi-Zone Measurement</div><div class="fd2">Draw separate zones for the main lot, drive lanes, and aprons. Obstruction zones subtract automatically. Lock zones to protect finished work.</div></div>
+      <div class="fc"><div class="fi">🅿</div><div class="ftt">Stall &amp; Inventory Counting</div><div class="fd2">Click to place standard stalls, ADA stalls, bollards, parking stop blocks, and stencil markers. All counted automatically in your report.</div></div>
+      <div class="fc"><div class="fi">📏</div><div class="ftt">Linear ft Measurement</div><div class="fd2">Trace fire lane curbs and painted lines to get exact linear footage. Shows live footage as you draw — perfect for curb painting estimates.</div></div>
+      <div class="fc"><div class="fi">📋</div><div class="ftt">Professional Proposals</div><div class="fd2">Generate a detailed client proposal or contractor work order with zone snapshots, itemized scope, material quantities, and a signature block.</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="si">
+    <div class="ey">Simple 4-Step Process</div>
+    <h2>From Plan to Proposal<br>in Minutes</h2>
+    <div class="steps">
+      <div class="step"><div class="sn">1</div><div class="stitle">Upload Plan</div><div class="sdesc">Drop in your PDF plan. Select the layout page. Loads instantly.</div></div>
+      <div class="step"><div class="sn">2</div><div class="stitle">Calibrate Scale</div><div class="sdesc">Click the scale bar or enter the written ratio. Takes 30 seconds.</div></div>
+      <div class="step"><div class="sn">3</div><div class="stitle">Measure &amp; Mark</div><div class="sdesc">Draw zones, count stalls, mark bollards, measure linear footage.</div></div>
+      <div class="step"><div class="sn">4</div><div class="stitle">Generate Report</div><div class="sdesc">Hit Report. A professional proposal with snapshots is ready to print.</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="si">
+    <div class="ey">Simple Pricing</div>
+    <h2>One Price. Forever Access.</h2>
+    <p class="sub" style="margin:0 auto">No subscription. No per-report fees. Pay once, use it on every job.</p>
+    <div class="pc">
+      <div class="pbadge">PaveView Takeoff</div>
+      <div class="pname">Professional License</div>
+      <div class="pamt">$500</div>
+      <div class="pper">one-time — no subscription ever</div>
+      <ul class="pf">
+        <li>Unlimited plan uploads &amp; measurements</li>
+        <li>Multi-zone measurement with obstruction subtraction</li>
+        <li>Stall, ADA, bollard, stop block &amp; stencil counting</li>
+        <li>Linear ft measurement for curb painting</li>
+        <li>Crosswalk &amp; ADA hatch area measurement</li>
+        <li>Client proposals + contractor work orders</li>
+        <li>Zone snapshots in every report</li>
+        <li>Material quantity calculator (asphalt &amp; base)</li>
+        <li>Custom pricing per item type</li>
+        <li>Lifetime access — yours forever</li>
+      </ul>
+      <a href="STRIPE_CHECKOUT_URL" class="pcta" id="checkout-btn">Get Instant Access — $500</a>
+      <p class="pguar">🔒 Secure checkout via Stripe. Instant access after purchase.</p>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="si">
+    <div class="ey">Questions</div>
+    <h2>Frequently Asked</h2>
+    <div class="faq">
+      <div class="fq"><div class="fqq">What kind of plans does it work with?</div><div class="fqa">Any PDF or image file of a site plan. Works with plans from any engineering firm at any scale. If you can open it on your computer, you can upload it.</div></div>
+      <div class="fq"><div class="fqq">How accurate is the measurement?</div><div class="fqa">Within 1–2% of actual when calibrated correctly. Validated against contractor field measurements on real jobs. The built-in ruler tool lets you verify calibration visually.</div></div>
+      <div class="fq"><div class="fqq">Do I need to install anything?</div><div class="fqa">No. PaveView Takeoff runs entirely in your web browser. No downloads, no installation. Works on any computer with Chrome, Safari, or Edge.</div></div>
+      <div class="fq"><div class="fqq">Is this a subscription?</div><div class="fqa">No. Pay once and have access forever. No monthly fees, no per-report charges. We're building loyal contractors — not a subscription trap.</div></div>
+      <div class="fq"><div class="fqq">Can I use this on multiple computers?</div><div class="fqa">Yes. Your license is tied to your account, not your device. Log in from any computer at any time.</div></div>
+      <div class="fq"><div class="fqq">What about the full PaveView platform?</div><div class="fqa">Early Takeoff customers get a significant discount when full PaveView launches — including AI-powered lot detection and automatic imagery. You're locking in early access pricing now.</div></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="fl">PaveView</div>
+  <div class="fn">© 2025 PaveView. Built for the asphalt industry.</div>
+</footer>
+</body>
+</html>
