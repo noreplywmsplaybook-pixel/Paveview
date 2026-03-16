@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PaveView — Payment Successful</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:.12em;color:#f5c842;text-align:center;margin-bottom:4px}
+.logo-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6e6a63;letter-spacing:.2em;text-transform:uppercase;text-align:center;margin-bottom:36px}
+.card{background:#141414;border:1px solid #242424;border-top:2px solid #22c55e;width:100%;max-width:420px;padding:36px;text-align:center}
+.check{font-size:48px;margin-bottom:16px}
+.card h1{font-family:'Bebas Neue',sans-serif;font-size:32px;color:#fff;letter-spacing:.04em;margin-bottom:10px}
+.card p{font-size:14px;color:#6e6a63;line-height:1.65;margin-bottom:28px}
+.card p strong{color:#e8e4dc}
+.divider{border:none;border-top:1px solid #242424;margin:24px 0}
+.section-title{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#6e6a63;margin-bottom:16px;text-align:left}
+.field{margin-bottom:14px;text-align:left}
+.field label{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6e6a63;margin-bottom:5px}
+.field input{width:100%;background:#0d0d0d;border:1px solid #242424;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;font-size:14px;padding:10px 12px;outline:none;transition:border-color .15s}
+.field input:focus{border-color:#f5c842}
+.submit-btn{width:100%;background:#f5c842;color:#000;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.08em;padding:14px;border:none;cursor:pointer;text-transform:uppercase;transition:all .2s;margin-top:4px}
+.submit-btn:hover{background:#fff}
+.submit-btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:10px 12px;margin-top:12px;display:none;text-align:left}
+.msg.error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#ef4444}
+.msg.success{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);color:#22c55e}
+.skip-link{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6e6a63;margin-top:14px;display:block}
+.skip-link a{color:#f5c842;text-decoration:none}
+</style>
+</head>
+<body>
+
+<div class="logo">PaveView</div>
+<div class="logo-sub">Takeoff</div>
+
+<div class="card">
+  <div class="check">✅</div>
+  <h1>Payment Successful!</h1>
+  <p>Welcome to PaveView Takeoff. Create your account below to access the tool — your purchase is already linked to your email.</p>
+
+  <hr class="divider">
+
+  <div class="section-title">Create Your Account</div>
+
+  <div class="field">
+    <label>Full Name</label>
+    <input type="text" id="name" placeholder="Your name" autocomplete="name">
+  </div>
+  <div class="field">
+    <label>Email</label>
+    <input type="email" id="email" placeholder="The email used at checkout" autocomplete="email">
+  </div>
+  <div class="field">
+    <label>Password</label>
+    <input type="password" id="password" placeholder="Min 6 characters" autocomplete="new-password">
+  </div>
+
+  <button class="submit-btn" id="btn-create" onclick="createAccount()">Create Account &amp; Launch Tool →</button>
+  <div class="msg" id="msg"></div>
+
+  <div class="skip-link">Already have an account? <a href="login.html">Sign in here</a></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+function showMsg(text, type) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = 'msg ' + type;
+  el.style.display = 'block';
+}
+
+async function createAccount() {
+  const name = document.getElementById('name').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+
+  if (!name || !email || !password) { showMsg('Please fill in all fields.', 'error'); return; }
+  if (password.length < 6) { showMsg('Password must be at least 6 characters.', 'error'); return; }
+
+  const btn = document.getElementById('btn-create');
+  btn.disabled = true;
+  btn.textContent = 'Creating account…';
+
+  const { data, error } = await sb.auth.signUp({
+    email, password,
+    options: { data: { full_name: name } }
+  });
+
+  if (error) {
+    // If user already exists, try signing them in instead
+    if (error.message.includes('already registered')) {
+      const { data: loginData, error: loginErr } = await sb.auth.signInWithPassword({ email, password });
+      if (loginErr) {
+        showMsg('Account exists — try signing in at the login page.', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Create Account & Launch Tool →';
+        return;
+      }
+      showMsg('Signed in! Launching your tool…', 'success');
+      setTimeout(() => window.location.href = 'dashboard.html', 1200);
+    } else {
+      showMsg(error.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Create Account & Launch Tool →';
+    }
+  } else if (data.user && !data.session) {
+    showMsg('Check your email to confirm your account, then sign in at the login page.', 'success');
+    btn.disabled = false;
+    btn.textContent = 'Create Account & Launch Tool →';
+  } else {
+    showMsg('Account created! Launching your tool…', 'success');
+    setTimeout(() => window.location.href = 'dashboard.html', 1200);
+  }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Enter') createAccount(); });
+
+// If already logged in, go straight to app
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) window.location.href = 'dashboard.html';
+})();
+</script>
+</body>
+</html>
