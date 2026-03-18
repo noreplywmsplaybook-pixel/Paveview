@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PaveView — Project</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#141416;--surface:#1c1c1e;--surface2:#222224;
+  --border:#2a2a2c;--border2:#1e1e20;
+  --text:#e8e6e0;--text2:#888;--text3:#444;
+  --accent:#d4a843;--accent-bg:rgba(212,168,67,.07);
+  --ok:#22c55e;--ok-bg:rgba(34,197,94,.08);--ok-border:rgba(34,197,94,.2);
+  --red:#ef4444;--blue:#3b82f6;--orange:#f97316;--green:#22c55e;
+}
+body.light{
+  --bg:#f0ede8;--surface:#fff;--surface2:#f8f6f2;
+  --border:#e5e1da;--border2:#ede9e2;
+  --text:#1a1714;--text2:#777;--text3:#bbb;
+  --accent:#b8860b;--accent-bg:rgba(184,134,11,.06);
+  --ok:#16a34a;--ok-bg:rgba(22,163,74,.07);--ok-border:rgba(22,163,74,.2);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;display:flex;flex-direction:column}
+/* AUTH CHECK */
+#auth-check{position:fixed;inset:0;background:#0a0a0a;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;font-family:'JetBrains Mono',monospace}
+#auth-check .al{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:#d4a843;margin-bottom:6px}
+#auth-check .as{font-size:9px;color:#444;letter-spacing:.2em;text-transform:uppercase;margin-bottom:20px}
+#auth-check .ar{display:flex;align-items:center;gap:10px;font-size:10px;color:#444}
+.spin{width:14px;height:14px;border:2px solid #1e1e1e;border-top-color:#d4a843;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* HEADER */
+#hdr{background:var(--surface);border-bottom:1px solid var(--border);height:46px;display:flex;align-items:center;padding:0 24px;gap:0;flex-shrink:0}
+.logo{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;letter-spacing:.06em;color:var(--text);padding-right:14px;border-right:1px solid var(--border);margin-right:14px}
+.logo em{color:var(--accent);font-style:normal}
+#breadcrumb{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:.06em;display:flex;align-items:center;gap:6px}
+#breadcrumb a{color:var(--text3);text-decoration:none}
+#breadcrumb a:hover{color:var(--accent)}
+#breadcrumb span{color:var(--text2)}
+.hright{margin-left:auto;display:flex;gap:6px;align-items:center}
+.btn{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.06em;padding:5px 12px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;text-transform:uppercase;transition:all .15s;text-decoration:none;display:inline-flex;align-items:center}
+.btn:hover{border-color:var(--text);color:var(--text)}
+.btn.accent{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600}
+.btn.accent:hover{opacity:.9}
+.btn.danger{border-color:rgba(239,68,68,.3);color:var(--red)}
+.btn.danger:hover{border-color:var(--red);background:rgba(239,68,68,.06)}
+.hdiv{width:1px;height:16px;background:var(--border);margin:0 4px}
+/* MAIN */
+#main{flex:1;padding:24px;max-width:1200px;margin:0 auto;width:100%;display:none}
+/* PROJECT HEADER CARD */
+#proj-header{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--accent);padding:20px 24px;margin-bottom:20px}
+.ph-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px}
+.ph-name{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--text)}
+.ph-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:.06em}
+.ph-actions{display:flex;gap:6px;align-items:center;flex-shrink:0}
+.ph-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.ph-stat{padding:10px 12px;background:var(--surface2);border:1px solid var(--border2)}
+.ph-stat-lbl{font-family:'JetBrains Mono',monospace;font-size:7px;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);margin-bottom:4px}
+.ph-stat-val{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--accent)}
+.ph-stat-val.blue{color:var(--blue)}
+.ph-stat-val.green{color:var(--green)}
+/* STATUS SELECTOR */
+#status-row{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+.status-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase}
+.status-opt{font-family:'JetBrains Mono',monospace;font-size:9px;padding:4px 12px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;transition:all .15s;letter-spacing:.06em}
+.status-opt:hover{border-color:var(--text2);color:var(--text2)}
+.status-opt.on{border-color:currentColor;font-weight:600}
+.status-opt[data-s="estimating"].on{color:var(--text2)}
+.status-opt[data-s="awarded"].on{color:var(--blue)}
+.status-opt[data-s="in_progress"].on{color:var(--accent)}
+.status-opt[data-s="complete"].on{color:var(--green)}
+.status-opt[data-s="cancelled"].on{color:var(--red)}
+/* REPORT TABS */
+#report-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px}
+.rtab{font-family:'JetBrains Mono',monospace;font-size:9px;padding:10px 16px;border-bottom:2px solid transparent;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:all .15s;margin-bottom:-1px}
+.rtab:hover{color:var(--text2)}
+.rtab.on{color:var(--text);border-bottom-color:var(--accent)}
+/* REPORT CONTENT */
+.report-panel{display:none}
+.report-panel.on{display:block}
+/* White paper report output */
+.report-paper{background:#fff;color:#111;font-family:'Syne',sans-serif;border:1px solid var(--border)}
+#loading-report{padding:40px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3)}
+/* Print controls */
+.print-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-bottom:none;margin-bottom:0}
+.print-bar-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase}
+/* Completion inputs card */
+#completion-card{background:var(--surface);border:1px solid var(--border);margin-bottom:16px}
+.comp-card-hdr{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.comp-card-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--text2)}
+.comp-grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.comp-field{padding:10px 16px;border-bottom:1px solid var(--border2);border-right:1px solid var(--border2)}
+.comp-field:nth-child(even){border-right:none}
+.comp-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:5px}
+.comp-inp{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Syne',sans-serif;font-size:11px;padding:6px 8px;outline:none}
+.comp-inp:focus{border-color:var(--accent)}
+select.comp-inp{cursor:pointer}
+/* Daily logs */
+#daily-log-section{background:var(--surface);border:1px solid var(--border);margin-bottom:16px}
+.dl-hdr{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.dl-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--text2)}
+#daily-logs-container{padding:0}
+.dl-row{border-bottom:1px solid var(--border2);display:grid;grid-template-columns:100px 1fr 60px 70px 70px auto;gap:0;align-items:center}
+.dl-row:last-child{border-bottom:none}
+.dl-cell{padding:8px 10px;border-right:1px solid var(--border2)}
+.dl-cell:last-child{border-right:none}
+.dl-cell input,.dl-cell select{width:100%;background:transparent;border:none;color:var(--text2);font-family:'JetBrains Mono',monospace;font-size:10px;outline:none;padding:0}
+.dl-cell input:focus,.dl-cell select:focus{color:var(--text)}
+.dl-row-hdr{background:var(--surface2)}
+.dl-row-hdr .dl-cell{font-family:'JetBrains Mono',monospace;font-size:7px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3)}
+/* Materials section within daily log */
+.dl-materials{display:none;grid-column:1/-1;background:var(--surface2);padding:8px 10px;border-top:1px solid var(--border2);display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.dl-mat-field{display:flex;flex-direction:column;gap:2px}
+.dl-mat-lbl{font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--text3);letter-spacing:.08em;text-transform:uppercase}
+.dl-mat-inp{background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 5px;outline:none;width:100%}
+.dl-mat-inp:focus{border-color:var(--accent)}
+/* Report paper shared styles (same as app.html) */
+.rpage{padding:36px 44px;border-bottom:3px solid #e5e7eb}
+.rpage:last-child{border-bottom:none}
+.rlh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px}
+.rco{font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#111;letter-spacing:.04em}
+.rco-sub{font-size:11px;color:#888;margin-top:2px}
+.rdoc-meta{font-size:11px;color:#888;text-align:right;margin-top:4px;line-height:1.8}
+.rstripe{height:2px;background:linear-gradient(90deg,#111 0%,#d4a843 50%,#111 100%);margin:14px 0}
+.rproj-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;color:#999;letter-spacing:.2em;text-transform:uppercase;margin-bottom:3px}
+.rproj-name{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#111;margin-bottom:16px}
+.rsumgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.rsc{border:1px solid #e5e7eb;border-top:3px solid #111;padding:10px;background:#fafafa}
+.rsc.gold{border-top-color:#d4a843}.rsc.blue{border-top-color:#3b82f6}.rsc.orange{border-top-color:#f97316}
+.rscl{font-family:'JetBrains Mono',monospace;font-size:8px;color:#999;letter-spacing:.15em;text-transform:uppercase;margin-bottom:3px}
+.rscv{font-family:'JetBrains Mono',monospace;font-size:18px;color:#111;line-height:1.1;font-weight:600}
+.rsec{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#999;letter-spacing:.2em;text-transform:uppercase;margin:18px 0 8px;padding-bottom:4px;border-bottom:1px solid #e5e7eb}
+.rtbl{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px}
+.rtbl th{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:#999;background:#f5f5f5;padding:6px 9px;border-bottom:2px solid #e5e7eb;text-align:left}
+.rtbl td{padding:8px 9px;border-bottom:1px solid #f0f0f0;color:#333}
+.rtbl td.num{font-family:'JetBrains Mono',monospace;font-size:10px;text-align:right}
+.rtbl tr.gtot td{background:#111;color:#d4a843;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:10px}
+.rzcard{border:1px solid #e5e7eb;margin-bottom:12px;overflow:hidden}
+.rzhdr{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f8f8f8;border-bottom:1px solid #e5e7eb}
+.rzswt{width:10px;height:10px;border-radius:1px;flex-shrink:0}
+.rzname{font-family:'Syne',sans-serif;font-size:14px;font-weight:600;color:#111}
+.rzmeta{font-family:'JetBrains Mono',monospace;font-size:9px;color:#888;margin-left:auto}
+.rzbody{padding:10px 12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.rzstat .rzsl{font-family:'JetBrains Mono',monospace;font-size:8px;color:#999;letter-spacing:.12em;text-transform:uppercase}
+.rzstat .rzsv{font-size:13px;font-weight:600;color:#111;margin-top:2px}
+.rsigblock{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:8px}
+.rsigline{height:1px;background:#111;margin-bottom:5px}
+.rsiglbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:#999;letter-spacing:.1em;text-transform:uppercase}
+.rfooter{font-size:9px;color:#999;margin-top:16px;line-height:1.6;border-top:1px solid #e5e7eb;padding-top:10px}
+.rinvgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.rinvcard{border:1px solid #e5e7eb;padding:12px;text-align:center}
+.rinvcnt{font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:600;color:#111;line-height:1}
+.rinvlbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:#999;letter-spacing:.15em;text-transform:uppercase;margin-top:2px}
+@media print{
+  #hdr,#status-row,#report-tabs,.print-bar,#completion-card,#daily-log-section,#proj-header,.hright{display:none!important}
+  .report-panel{display:block!important}
+  #main{padding:0;display:block!important}
+  .report-paper{border:none}
+  body{background:#fff}
+}
+</style>
+</head>
+<body>
+
+<div id="auth-check">
+  <div class="al">PaveView</div>
+  <div class="as">Project</div>
+  <div class="ar"><div class="spin"></div>Loading…</div>
+</div>
+
+<div id="hdr">
+  <span class="logo">PAVE<em>VIEW</em></span>
+  <div id="breadcrumb">
+    <a href="dashboard.html">Dashboard</a>
+    <span>›</span>
+    <span id="bc-name">Project</span>
+  </div>
+  <div class="hright">
+    <button class="btn" id="btn-edit">Edit Estimate</button>
+    <div class="hdiv"></div>
+    <button class="btn" onclick="window.print()">Print / PDF</button>
+    <button class="btn" id="btn-theme-proj" onclick="toggleThemeProj()">Light</button>
+    <button class="btn danger" id="btn-delete">Delete Project</button>
+  </div>
+</div>
+
+<div id="main">
+
+  <!-- PROJECT HEADER -->
+  <div id="proj-header">
+    <div class="ph-top">
+      <div>
+        <div class="ph-name" id="ph-name">—</div>
+        <div class="ph-meta" id="ph-meta">—</div>
+      </div>
+      <div class="ph-actions">
+        <div id="status-row">
+          <span class="status-lbl">Status</span>
+          <button class="status-opt on" data-s="estimating" onclick="setStatus('estimating')">Estimating</button>
+          <button class="status-opt" data-s="awarded" onclick="setStatus('awarded')">Awarded</button>
+          <button class="status-opt" data-s="in_progress" onclick="setStatus('in_progress')">In Progress</button>
+          <button class="status-opt" data-s="complete" onclick="setStatus('complete')">Complete</button>
+          <button class="status-opt" data-s="cancelled" onclick="setStatus('cancelled')">Cancelled</button>
+        </div>
+      </div>
+    </div>
+    <div class="ph-stats">
+      <div class="ph-stat"><div class="ph-stat-lbl">Total Area</div><div class="ph-stat-val" id="ph-sqft">—</div></div>
+      <div class="ph-stat"><div class="ph-stat-lbl">Est. Cost</div><div class="ph-stat-val" id="ph-cost">—</div></div>
+      <div class="ph-stat"><div class="ph-stat-lbl">Job Type</div><div class="ph-stat-val" id="ph-type" style="font-size:13px;margin-top:2px">—</div></div>
+      <div class="ph-stat"><div class="ph-stat-lbl">Stalls</div><div class="ph-stat-val blue" id="ph-stalls">—</div></div>
+      <div class="ph-stat"><div class="ph-stat-lbl">Created</div><div class="ph-stat-val" id="ph-date" style="font-size:12px;margin-top:4px">—</div></div>
+    </div>
+  </div>
+
+  <!-- REPORT TABS -->
+  <div id="report-tabs">
+    <div class="rtab on" data-tab="client" onclick="switchReport('client')">Client Report</div>
+    <div class="rtab" data-tab="contractor" onclick="switchReport('contractor')">Contractor</div>
+    <div class="rtab" data-tab="foreman" onclick="switchReport('foreman')">Foreman</div>
+    <div class="rtab" data-tab="completion" onclick="switchReport('completion')">Completion</div>
+  </div>
+
+  <!-- CLIENT REPORT -->
+  <div class="report-panel on" id="panel-client">
+    <div class="print-bar">
+      <span class="print-bar-lbl">Client Proposal</span>
+      <button class="btn accent" onclick="window.print()">Print / PDF</button>
+    </div>
+    <div class="report-paper" id="report-client"><div id="loading-report">Loading report…</div></div>
+  </div>
+
+  <!-- CONTRACTOR REPORT -->
+  <div class="report-panel" id="panel-contractor">
+    <div class="print-bar">
+      <span class="print-bar-lbl">Contractor Work Order</span>
+      <button class="btn accent" onclick="window.print()">Print / PDF</button>
+    </div>
+    <div class="report-paper" id="report-contractor"></div>
+  </div>
+
+  <!-- FOREMAN REPORT -->
+  <div class="report-panel" id="panel-foreman">
+    <div class="print-bar">
+      <span class="print-bar-lbl">Foreman Report — Fill in before job</span>
+      <button class="btn accent" onclick="window.print()">Print / PDF</button>
+    </div>
+    <div class="report-paper" id="report-foreman"></div>
+  </div>
+
+  <!-- COMPLETION REPORT -->
+  <div class="report-panel" id="panel-completion">
+
+    <!-- Input card -->
+    <div id="completion-card">
+      <div class="comp-card-hdr">
+        <span class="comp-card-title">Job Actuals — Enter after each day</span>
+        <button class="btn accent" id="btn-save-comp" onclick="saveCompletionData()">Save</button>
+      </div>
+      <div class="comp-grid">
+        <div class="comp-field">
+          <div class="comp-lbl">Job Status</div>
+          <select class="comp-inp" id="comp-status">
+            <option value="active">Estimating</option>
+            <option value="awarded">Awarded</option>
+            <option value="in_progress">In Progress</option>
+            <option value="complete">Complete</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div class="comp-field">
+          <div class="comp-lbl">Final Invoice ($)</div>
+          <input type="number" class="comp-inp" id="comp-invoice" placeholder="0" min="0">
+        </div>
+        <div class="comp-field">
+          <div class="comp-lbl">Actual Start Date</div>
+          <input type="date" class="comp-inp" id="comp-start">
+        </div>
+        <div class="comp-field">
+          <div class="comp-lbl">Change Order ($)</div>
+          <input type="number" class="comp-inp" id="comp-change-order" placeholder="0" min="0">
+        </div>
+        <div class="comp-field">
+          <div class="comp-lbl">Actual End Date</div>
+          <input type="date" class="comp-inp" id="comp-end">
+        </div>
+        <div class="comp-field">
+          <div class="comp-lbl">PM Notes</div>
+          <input type="text" class="comp-inp" id="comp-notes" placeholder="Internal notes…">
+        </div>
+      </div>
+    </div>
+
+    <!-- Daily logs -->
+    <div id="daily-log-section">
+      <div class="dl-hdr">
+        <span class="dl-title">Daily Field Reports</span>
+        <button class="btn" onclick="addDayLog()">+ Add Day Report</button>
+      </div>
+      <div class="dl-row dl-row-hdr">
+        <div class="dl-cell">Date</div>
+        <div class="dl-cell">Phase</div>
+        <div class="dl-cell">% Done</div>
+        <div class="dl-cell">Man Hrs</div>
+        <div class="dl-cell">Eq Hrs</div>
+        <div class="dl-cell">Materials ▾</div>
+      </div>
+      <div id="daily-logs-container"></div>
+    </div>
+
+    <!-- Completion report output -->
+    <div class="print-bar">
+      <span class="print-bar-lbl">Completion Report</span>
+      <button class="btn accent" onclick="window.print()">Print / PDF</button>
+    </div>
+    <div class="report-paper" id="report-completion"></div>
+
+  </div>
+
+</div><!-- /main -->
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SB_URL='https://rqgyqqyxlwjpbdkapvpz.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
+const sb=supabase.createClient(SB_URL,SB_KEY);
+let currentUser=null;
+let projectId=null;
+let projectData={};
+let dailyLogs=[];
+let compData={};
+
+// ── THEME ──
+function toggleThemeProj(){
+  const isLight=document.body.classList.toggle('light');
+  const btn=document.getElementById('btn-theme-proj');
+  if(btn)btn.textContent=isLight?'Dark':'Light';
+  localStorage.setItem('paveview_theme',isLight?'light':'dark');
+}
+(()=>{if(localStorage.getItem('paveview_theme')==='light'){document.body.classList.add('light');const b=document.getElementById('btn-theme-proj');if(b)b.textContent='Dark';}})();
+
+// ── INIT ──
+(async()=>{
+  const{data:{session}}=await sb.auth.getSession();
+  if(!session){window.location.replace('login.html');return;}
+  currentUser=session.user;
+
+  // Check purchase
+  const{data:p}=await sb.from('purchases').select('id').eq('user_id',currentUser.id).eq('status','active').limit(1);
+  if(!p||!p.length){window.location.replace('index.html');return;}
+
+  // Get project ID from URL
+  const params=new URLSearchParams(window.location.search);
+  projectId=params.get('id');
+  if(!projectId){window.location.replace('dashboard.html');return;}
+
+  // Load project
+  const{data:proj,error}=await sb.from('projects').select('*').eq('id',projectId).eq('user_id',currentUser.id).single();
+  if(error||!proj){window.location.replace('dashboard.html');return;}
+
+  // Parse project data
+  try{projectData=typeof proj.data==='string'?JSON.parse(proj.data):proj.data||{};}catch(e){projectData={};}
+
+  // Set page title and breadcrumb
+  const name=proj.name||'Untitled Project';
+  document.title='PaveView — '+name;
+  document.getElementById('bc-name').textContent=name;
+  document.getElementById('ph-name').textContent=name;
+
+  const created=new Date(proj.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+  const typeLabels={paving:'Paving',sealcoat:'Sealcoating',both:'Paving + Sealcoating',striping:'Striping Only'};
+  document.getElementById('ph-meta').textContent='Created '+created+' · ID: '+projectId.substring(0,8).toUpperCase();
+  document.getElementById('ph-sqft').textContent=projectData.totalSqft?projectData.totalSqft.toLocaleString()+' sf':'—';
+  document.getElementById('ph-cost').textContent=projectData.totalCost?'$'+projectData.totalCost.toLocaleString():'—';
+  document.getElementById('ph-type').textContent=typeLabels[projectData.jobType]||'Paving';
+  document.getElementById('ph-stalls').textContent=(projectData.stallCount||0)+(projectData.adaCount||0)||'—';
+  document.getElementById('ph-date').textContent=created;
+
+  // Wire Edit button
+  document.getElementById('btn-edit').onclick=()=>window.location.href='app.html?project='+projectId;
+  // Wire Delete button
+  document.getElementById('btn-delete').onclick=()=>deleteProject();
+
+  // Load completion data
+  loadCompletionData();
+
+  // Build initial reports
+  buildClientReport();
+  buildContractorReport();
+
+  // Show page
+  document.getElementById('auth-check').remove();
+  document.getElementById('main').style.display='block';
+})();
+
+// ── STATUS ──
+function setStatus(s){
+  document.querySelectorAll('.status-opt').forEach(b=>b.classList.toggle('on',b.dataset.s===s));
+  compData.status=s;
+  saveCompletionData();
+  // Also update comp-status select
+  const sel=document.getElementById('comp-status');
+  if(sel)sel.value=s==='estimating'?'active':s;
+}
+
+// ── SWITCH REPORT TAB ──
+function switchReport(tab){
+  document.querySelectorAll('.rtab').forEach(t=>t.classList.toggle('on',t.dataset.tab===tab));
+  document.querySelectorAll('.report-panel').forEach(p=>p.classList.toggle('on',p.id==='panel-'+tab));
+  if(tab==='foreman')buildForemanReport();
+  if(tab==='completion')buildCompletionReport();
+}
+
+// ── LOAD/SAVE COMPLETION DATA ──
+function loadCompletionData(){
+  try{
+    const saved=localStorage.getItem('paveview_completion_'+projectId);
+    if(saved){
+      const d=JSON.parse(saved);
+      dailyLogs=d.logs||[];
+      compData=d.compData||{};
+    }
+  }catch(e){dailyLogs=[];compData={};}
+
+  // Populate form fields
+  const cd=compData;
+  const statusMap={active:'estimating',awarded:'awarded',in_progress:'in_progress',complete:'complete',cancelled:'cancelled'};
+  const currentStatus=statusMap[cd.status]||'estimating';
+  document.querySelectorAll('.status-opt').forEach(b=>b.classList.toggle('on',b.dataset.s===currentStatus));
+  const sel=document.getElementById('comp-status');
+  if(sel)sel.value=cd.status||'active';
+  const inv=document.getElementById('comp-invoice');if(inv&&cd.invoice)inv.value=cd.invoice;
+  const co=document.getElementById('comp-change-order');if(co&&cd.changeOrder)co.value=cd.changeOrder;
+  const sd=document.getElementById('comp-start');if(sd&&cd.startDate)sd.value=cd.startDate;
+  const ed=document.getElementById('comp-end');if(ed&&cd.endDate)ed.value=cd.endDate;
+  const nt=document.getElementById('comp-notes');if(nt&&cd.notes)nt.value=cd.notes;
+
+  renderDailyLogs();
+}
+
+function saveCompletionData(){
+  compData.status=document.getElementById('comp-status')?.value||'active';
+  compData.invoice=parseFloat(document.getElementById('comp-invoice')?.value)||0;
+  compData.changeOrder=parseFloat(document.getElementById('comp-change-order')?.value)||0;
+  compData.startDate=document.getElementById('comp-start')?.value||'';
+  compData.endDate=document.getElementById('comp-end')?.value||'';
+  compData.notes=document.getElementById('comp-notes')?.value||'';
+  localStorage.setItem('paveview_completion_'+projectId,JSON.stringify({logs:dailyLogs,compData}));
+  buildCompletionReport();
+  // Sync status display
+  const statusMap={active:'estimating',awarded:'awarded',in_progress:'in_progress',complete:'complete',cancelled:'cancelled'};
+  const s=statusMap[compData.status]||'estimating';
+  document.querySelectorAll('.status-opt').forEach(b=>b.classList.toggle('on',b.dataset.s===s));
+}
+
+// ── DAILY LOGS ──
+function renderDailyLogs(){
+  const container=document.getElementById('daily-logs-container');
+  if(!container)return;
+  if(!dailyLogs.length){
+    container.innerHTML='<div style="padding:20px;text-align:center;font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--text3)">No day reports yet. Click + Add Day Report to begin.</div>';
+    return;
+  }
+  container.innerHTML=dailyLogs.map((l,i)=>`
+    <div style="border-bottom:1px solid var(--border2)">
+      <div class="dl-row">
+        <div class="dl-cell"><input type="date" value="${l.date||''}" onchange="dailyLogs[${i}].date=this.value;saveCompletionData()"></div>
+        <div class="dl-cell"><input type="text" placeholder="Phase name" value="${l.phase||''}" onchange="dailyLogs[${i}].phase=this.value;saveCompletionData()"></div>
+        <div class="dl-cell"><input type="number" placeholder="0" min="0" max="100" value="${l.pct||''}" onchange="dailyLogs[${i}].pct=parseFloat(this.value)||0;saveCompletionData()"></div>
+        <div class="dl-cell"><input type="number" placeholder="0" min="0" value="${l.mh||''}" onchange="dailyLogs[${i}].mh=parseFloat(this.value)||0;saveCompletionData()"></div>
+        <div class="dl-cell"><input type="number" placeholder="0" min="0" value="${l.eqHours||''}" onchange="dailyLogs[${i}].eqHours=parseFloat(this.value)||0;saveCompletionData()"></div>
+        <div class="dl-cell" style="display:flex;align-items:center;gap:6px">
+          <button onclick="toggleMaterials(${i})" style="font-family:'JetBrains Mono',monospace;font-size:8px;padding:2px 7px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;letter-spacing:.06em">Materials</button>
+          <button onclick="dailyLogs.splice(${i},1);renderDailyLogs();saveCompletionData()" style="font-family:'JetBrains Mono',monospace;font-size:8px;padding:2px 6px;border:1px solid rgba(239,68,68,.3);background:transparent;color:var(--red);cursor:pointer">✕</button>
+        </div>
+      </div>
+      <div id="mat-${i}" style="display:none;background:var(--surface2);padding:10px 12px;border-top:1px solid var(--border2);display:none">
+        <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:8px">
+          ${['tons:Asphalt (t)','sealer:Sealer (gal)','crackfill:Crackfill','sand:Sand (bags)','paint:Paint (gal)','additive:Additive (gal)','fuel:Fuel (gal)','extras:Extras ($)'].map(f=>{
+            const[key,lbl]=f.split(':');
+            return `<div><div style="font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:3px">${lbl}</div><input type="number" placeholder="0" min="0" value="${l[key]||''}" onchange="dailyLogs[${i}]['${key}']=parseFloat(this.value)||0;saveCompletionData()" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 5px;outline:none"></div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleMaterials(i){
+  const el=document.getElementById('mat-'+i);
+  if(el)el.style.display=el.style.display==='none'?'block':'none';
+}
+
+function addDayLog(){
+  dailyLogs.push({date:new Date().toISOString().split('T')[0],phase:'',pct:0,mh:0,eqHours:0,tons:0,sealer:0,crackfill:0,sand:0,paint:0,additive:0,fuel:0,extras:0});
+  renderDailyLogs();
+}
+
+// ── HELPERS ──
+function sv(id){return parseFloat(document.getElementById(id)?.value||0)||0;}
+function polyArea(pts){
+  let a=0;
+  for(let i=0,j=pts.length-1;i<pts.length;j=i++){a+=(pts[j][0]+pts[i][0])*(pts[j][1]-pts[i][1]);}
+  return Math.abs(a/2);
+}
+function getScale(){
+  const px=projectData.scalePx||70,ft=projectData.scaleFt||40;
+  return ft/px;
+}
+function varBadge(actual,bid){
+  if(!actual||!bid)return'—';
+  const pct=((actual-bid)/bid)*100;
+  const over=pct>0;
+  const col=over?'#ef4444':'#22c55e';
+  return`<span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:${col};font-weight:600">${over?'+':''}${Math.abs(pct).toFixed(1)}% ${over?'over':'under'}</span>`;
+}
+
+// ── BUILD CLIENT REPORT ──
+function buildClientReport(){
+  const el=document.getElementById('report-client');
+  if(!el)return;
+  const company=localStorage.getItem('paveview_company')||'Your Company Name';
+  const date=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  const sc=getScale();
+  const closed=(projectData.zones||[]).filter(z=>!z.obstruct);
+  const depth=projectData.depth||3,comp=projectData.comp||1.05,base=projectData.base||6;
+  const pa=projectData.pa||85,pb=projectData.pb||22,pl=projectData.pl||1.25;
+  let html='<div class="rpage">';
+  html+=`<div class="rlh"><div><div class="rco">${company}</div><div class="rco-sub">Professional Paving Contractors</div></div><div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#111;letter-spacing:.14em;text-align:right">CLIENT PROPOSAL</div><div class="rdoc-meta">Date: ${date}</div></div></div>`;
+  html+='<div class="rstripe"></div>';
+  html+='<div class="rproj-lbl">Project</div>';
+  html+=`<div class="rproj-name">${document.getElementById('ph-name').textContent}</div>`;
+  if(closed.length){
+    let totalSqft=0,totalTons=0,totalBase=0,totalCost=0;
+    html+='<div class="rsec">Scope of Work</div>';
+    closed.forEach(z=>{
+      const a=polyArea(z.pts||[])*sc*sc;
+      const tons=a*(depth/12)*145/2000*comp;
+      const baseTons=a*(base/12)*110/2000;
+      const cost=tons*pa+baseTons*pb+a*pl;
+      totalSqft+=a;totalTons+=tons;totalBase+=baseTons;totalCost+=cost;
+      html+=`<div class="rzcard"><div class="rzhdr"><div class="rzswt" style="background:${z.color||'#d4a843'}"></div><div class="rzname">${z.name||'Zone'}</div><div class="rzmeta">${Math.round(a).toLocaleString()} sq ft</div></div><div class="rzbody"><div class="rzstat"><div class="rzsl">Area</div><div class="rzsv">${Math.round(a).toLocaleString()} sq ft</div></div><div class="rzstat"><div class="rzsl">Depth</div><div class="rzsv">${depth}"</div></div><div class="rzstat"><div class="rzsl">Est. Tons</div><div class="rzsv">${tons.toFixed(1)}</div></div></div></div>`;
+    });
+    const stalls=(projectData.stallCount||0)+(projectData.adaCount||0);
+    html+=`<div class="rsumgrid"><div class="rsc gold"><div class="rscl">Total Area</div><div class="rscv">${Math.round(totalSqft).toLocaleString()}<span style="font-size:11px;color:#999"> sq ft</span></div></div><div class="rsc"><div class="rscl">Asphalt (tons)</div><div class="rscv">${totalTons.toFixed(1)}</div></div><div class="rsc blue"><div class="rscl">Parking Stalls</div><div class="rscv">${stalls||'—'}</div></div><div class="rsc gold"><div class="rscl">Total Estimate</div><div class="rscv">$${Math.round(totalCost).toLocaleString()}</div></div></div>`;
+  }
+  html+=`<div class="rsigblock"><div><div class="rsigline"></div><div class="rsiglbl">Authorized Signature / Date</div></div><div><div class="rsigline"></div><div class="rsiglbl">Client Signature / Date</div></div><div><div class="rsigline"></div><div class="rsiglbl">Project Start Date</div></div></div>`;
+  html+='</div>';
+  el.innerHTML=html;
+}
+
+// ── BUILD CONTRACTOR REPORT ──
+function buildContractorReport(){
+  const el=document.getElementById('report-contractor');
+  if(!el)return;
+  const company=localStorage.getItem('paveview_company')||'Your Company Name';
+  const date=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  const sc=getScale();
+  const closed=(projectData.zones||[]).filter(z=>!z.obstruct);
+  const depth=projectData.depth||3,comp=projectData.comp||1.05,base=projectData.base||6;
+  const pa=projectData.pa||85,pb=projectData.pb||22,pl=projectData.pl||1.25;
+  let totalCost=0;
+  let html='<div class="rpage">';
+  html+=`<div class="rlh"><div><div class="rco">${company}</div><div class="rco-sub">Internal Work Order</div></div><div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#111;letter-spacing:.14em;text-align:right">CONTRACTOR COPY</div><div class="rdoc-meta">Date: ${date}</div></div></div>`;
+  html+='<div class="rstripe"></div>';
+  html+=`<div class="rproj-name">${document.getElementById('ph-name').textContent}</div>`;
+  if(closed.length){
+    html+='<div class="rsec">Zone Breakdown</div>';
+    html+='<table class="rtbl"><thead><tr><th>Zone</th><th>Area</th><th>Depth</th><th>Tons</th><th>Base (tons)</th><th class="num">Cost</th></tr></thead><tbody>';
+    closed.forEach(z=>{
+      const a=polyArea(z.pts||[])*sc*sc;
+      const tons=a*(depth/12)*145/2000*comp;
+      const baseTons=a*(base/12)*110/2000;
+      const cost=tons*pa+baseTons*pb+a*pl;
+      totalCost+=cost;
+      html+=`<tr><td>${z.name||'Zone'}</td><td>${Math.round(a).toLocaleString()} sf</td><td>${depth}"</td><td>${tons.toFixed(1)}</td><td>${baseTons.toFixed(1)}</td><td class="num">$${Math.round(cost).toLocaleString()}</td></tr>`;
+    });
+    html+=`<tr class="gtot"><td colspan="5">TOTAL</td><td class="num">$${Math.round(totalCost).toLocaleString()}</td></tr>`;
+    html+='</tbody></table>';
+  }
+  html+=`<div class="rfooter">INTERNAL USE ONLY — Contains cost data. Do not distribute to client.</div>`;
+  html+='</div>';
+  el.innerHTML=html;
+}
+
+// ── BUILD FOREMAN REPORT ──
+function buildForemanReport(){
+  const el=document.getElementById('report-foreman');
+  if(!el)return;
+  const company=localStorage.getItem('paveview_company')||'Your Company Name';
+  const projName=document.getElementById('ph-name').textContent;
+  const date=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  let html='<div class="rpage">';
+  html+=`<div class="rlh"><div><div class="rco">${company}</div><div class="rco-sub">Foreman Job Sheet</div></div><div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#111;letter-spacing:.14em">FOREMAN COPY</div><div class="rdoc-meta">${date}</div></div></div>`;
+  html+='<div class="rstripe"></div>';
+  html+=`<div class="rproj-name">${projName}</div>`;
+  const sc=getScale();
+  const closed=(projectData.zones||[]).filter(z=>!z.obstruct);
+  const depth=projectData.depth||3,comp=projectData.comp||1.05;
+  let totalTons=0;
+  if(closed.length){
+    html+='<div class="rsec">Zone Summary</div>';
+    html+='<table class="rtbl"><thead><tr><th>Zone</th><th>Area (sq ft)</th><th>Depth</th><th>Est. Tons</th></tr></thead><tbody>';
+    closed.forEach(z=>{
+      const a=polyArea(z.pts||[])*sc*sc;
+      const tons=a*(depth/12)*145/2000*comp;
+      totalTons+=tons;
+      html+=`<tr><td>${z.name||'Zone'}</td><td>${Math.round(a).toLocaleString()}</td><td>${depth}"</td><td>${tons.toFixed(1)}</td></tr>`;
+    });
+    html+=`<tr class="gtot"><td colspan="3">TOTAL ASPHALT</td><td>${totalTons.toFixed(1)} tons</td></tr>`;
+    html+='</tbody></table>';
+  }
+  html+='<div class="rsec">Job Execution Details</div>';
+  html+='<table class="rtbl"><tbody>';
+  [['Scheduled Start Date',''],['Arrival Time',''],['Est. Completion',''],['Site Contact',''],['Special Conditions','']].forEach(([k,v])=>{
+    html+=`<tr><td style="color:#999;width:200px;font-size:11px">${k}</td><td style="font-size:11px">${v||'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}</td></tr>`;
+  });
+  html+='</tbody></table>';
+  html+=`<div class="rfooter">CONFIDENTIAL — Internal use only. Do not share with client.</div>`;
+  html+='</div>';
+  el.innerHTML=html;
+}
+
+// ── BUILD COMPLETION REPORT ──
+function buildCompletionReport(){
+  const el=document.getElementById('report-completion');
+  if(!el)return;
+  const company=localStorage.getItem('paveview_company')||'Your Company Name';
+  const projName=document.getElementById('ph-name').textContent;
+  const date=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  const sc=getScale();
+  const closed=(projectData.zones||[]).filter(z=>!z.obstruct);
+  const depth=projectData.depth||3,comp=projectData.comp||1.05,baseD=projectData.base||6;
+  const pa=projectData.pa||85,pb=projectData.pb||22,pl=projectData.pl||1.25;
+  let bidSqft=0,bidTons=0,bidBase=0;
+  closed.forEach(z=>{const a=polyArea(z.pts||[])*sc*sc;bidSqft+=a;bidTons+=a*(depth/12)*145/2000*comp;bidBase+=a*(baseD/12)*110/2000;});
+  const bidCost=bidTons*pa+bidBase*pb+bidSqft*pl;
+  const totalMH=dailyLogs.reduce((s,l)=>s+(l.mh||0),0);
+  const totalTons=dailyLogs.reduce((s,l)=>s+(l.tons||0),0);
+  const totalSealer=dailyLogs.reduce((s,l)=>s+(l.sealer||0),0);
+  const totalExtras=dailyLogs.reduce((s,l)=>s+(l.extras||0),0);
+  const invoice=(compData.invoice||0)+(compData.changeOrder||0);
+  const grossProfit=invoice-bidCost-totalExtras;
+  const margin=invoice>0?((grossProfit/invoice)*100).toFixed(1):0;
+  const profitColor=parseFloat(margin)>=15?'#16a34a':parseFloat(margin)>=5?'#ca8a04':'#dc2626';
+  const statusColors={active:'#888',awarded:'#3b82f6',in_progress:'#f5c842',complete:'#22c55e',cancelled:'#ef4444'};
+  const statusLabels={active:'Estimating',awarded:'Awarded',in_progress:'In Progress',complete:'Complete',cancelled:'Cancelled'};
+  const s=compData.status||'active';
+  let html='<div class="rpage">';
+  html+=`<div class="rlh"><div><div class="rco">${company}</div><div class="rco-sub">Job Completion Report</div></div><div><div style="display:inline-block;background:${statusColors[s]||'#888'};padding:3px 10px;margin-bottom:4px"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#000;font-weight:600;letter-spacing:.1em">${statusLabels[s]||'ACTIVE'}</span></div><div class="rdoc-meta">${date}${compData.startDate?'<br>Started: '+compData.startDate:''}${compData.endDate?'<br>Completed: '+compData.endDate:''}</div></div></div>`;
+  html+='<div class="rstripe"></div>';
+  html+=`<div class="rproj-name">${projName}</div>`;
+  html+=`<div class="rsumgrid"><div class="rsc gold"><div class="rscl">Invoice</div><div class="rscv">${invoice?'$'+invoice.toLocaleString():'—'}</div></div><div class="rsc" style="border-top-color:${profitColor}"><div class="rscl">Gross Profit</div><div class="rscv" style="color:${profitColor}">${grossProfit?'$'+Math.round(grossProfit).toLocaleString():'—'}</div><div style="font-size:9px;color:#888">${margin}% margin</div></div><div class="rsc blue"><div class="rscl">Man Hours</div><div class="rscv">${totalMH||'—'}</div></div><div class="rsc orange"><div class="rscl">Days on Job</div><div class="rscv">${dailyLogs.length||'—'}</div></div></div>`;
+  html+='<div class="rsec">Bid vs Actual</div>';
+  html+='<table class="rtbl"><thead><tr><th>Metric</th><th class="num">Bid</th><th class="num">Actual</th><th class="num">Variance</th></tr></thead><tbody>';
+  html+=`<tr><td>Total Area</td><td class="num">${bidSqft?Math.round(bidSqft).toLocaleString()+' sf':'—'}</td><td class="num">—</td><td class="num">—</td></tr>`;
+  html+=`<tr><td>Asphalt (tons)</td><td class="num">${bidTons?bidTons.toFixed(1):'—'}</td><td class="num">${totalTons?totalTons.toFixed(1):'—'}</td><td class="num">${varBadge(totalTons,bidTons)}</td></tr>`;
+  html+=`<tr><td>Sealer (gal)</td><td class="num">—</td><td class="num">${totalSealer||'—'}</td><td class="num">—</td></tr>`;
+  html+=`<tr><td>Extra Purchases</td><td class="num">$0</td><td class="num">${totalExtras?'$'+totalExtras.toLocaleString():'—'}</td><td class="num">${totalExtras?'<span style="color:#ef4444;font-family:JetBrains Mono,monospace;font-size:9px">+$'+totalExtras.toLocaleString()+'</span>':'—'}</td></tr>`;
+  html+=`<tr class="gtot"><td colspan="2">Est. Job Cost</td><td class="num">$${bidCost?Math.round(bidCost).toLocaleString():'—'}</td><td class="num">${varBadge(bidCost+totalExtras,bidCost)}</td></tr>`;
+  html+='</tbody></table>';
+  if(dailyLogs.length){
+    html+='<div class="rsec">Daily Field Reports</div>';
+    html+='<table class="rtbl"><thead><tr><th>Date</th><th>Phase</th><th class="num">%</th><th class="num">MH</th><th class="num">Eq Hrs</th><th class="num">Asphalt</th><th class="num">Sealer</th><th class="num">Extras</th></tr></thead><tbody>';
+    dailyLogs.forEach(l=>{
+      html+=`<tr><td style="font-family:'JetBrains Mono',monospace;font-size:10px">${l.date||'—'}</td><td>${l.phase||'—'}</td><td class="num">${l.pct||0}%</td><td class="num">${l.mh||0}</td><td class="num">${l.eqHours||0}</td><td class="num">${l.tons||'—'}</td><td class="num">${l.sealer||'—'}</td><td class="num">${l.extras?'$'+l.extras:'—'}</td></tr>`;
+    });
+    html+='</tbody></table>';
+  }
+  html+=`<div class="rsigblock"><div><div class="rsigline"></div><div class="rsiglbl">Foreman / Date</div></div><div><div class="rsigline"></div><div class="rsiglbl">PM / Date</div></div><div><div class="rsigline"></div><div class="rsiglbl">Client Sign-Off / Date</div></div></div>`;
+  html+='</div>';
+  el.innerHTML=html;
+}
+
+// ── DELETE PROJECT ──
+async function deleteProject(){
+  if(!confirm('Delete this project? This cannot be undone.'))return;
+  await sb.from('projects').delete().eq('id',projectId).eq('user_id',currentUser.id);
+  localStorage.removeItem('paveview_completion_'+projectId);
+  window.location.replace('dashboard.html');
+}
+
+// ── COMPLETION INPUTS: auto-rebuild on change ──
+['comp-status','comp-invoice','comp-change-order','comp-start','comp-end','comp-notes'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el)el.addEventListener('change',saveCompletionData);
+});
+</script>
+</body>
+</html>
