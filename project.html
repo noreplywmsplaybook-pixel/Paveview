@@ -709,15 +709,20 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
     <!-- Map preview for screenshotting -->
     <div style="padding:0 20px 20px">
       <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3,#666);margin-bottom:8px">
-        Phase Preview — click a phase above to highlight its zones, then screenshot
+        Phase Preview — click a phase above, then zoom/pan to frame your shot
       </div>
       <div style="position:relative;background:#0d0d0f;border:1px solid var(--border,#2a2a2c)">
-        <canvas id="phase-preview-canvas" width="700" height="380" style="display:block;width:100%"></canvas>
+        <canvas id="phase-preview-canvas" width="700" height="380" style="display:block;width:100%;cursor:grab"></canvas>
         <div style="position:absolute;top:8px;right:8px;display:flex;gap:6px">
+          <button onclick="zoomPhasePreview(1.2)" class="btn" style="font-size:9px;padding:4px 8px">＋</button>
+          <button onclick="zoomPhasePreview(1/1.2)" class="btn" style="font-size:9px;padding:4px 8px">－</button>
+          <button onclick="fitPhasePreview()" class="btn" style="font-size:9px;padding:4px 8px">Fit</button>
+          <button onclick="captureMainMapScreenshot()" class="btn" style="font-size:9px;padding:4px 10px">🗺 Main Map</button>
           <button onclick="capturePhaseScreenshot()" class="btn accent" style="font-size:9px;padding:4px 10px">📷 Capture</button>
         </div>
       </div>
       <div id="phase-capture-status" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ok,#22c55e);margin-top:6px;display:none">✓ Phase captured — will appear in report</div>
+      <div id="main-map-capture-status" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ok,#22c55e);margin-top:4px;display:none">✓ Main site map captured — will be used in report map sections</div>
     </div>
     <div style="padding:12px 20px;border-top:1px solid var(--border,#2a2a2c);display:flex;justify-content:flex-end;gap:8px">
       <button onclick="document.getElementById('phase-modal').style.display='none'" class="btn">Done</button>
@@ -749,8 +754,10 @@ let currentUser=null,projectId=null,projectData={},phases=[],equipment=[],dailyL
 let brandPrimary=localStorage.getItem('paveview_brand_primary')||'#111111';
 let brandAccent=localStorage.getItem('paveview_brand_accent')||'#d4a843';
 let reportPhases=[]; // [{id,name,zoneIds,screenshot}]
+let reportMapSnapshot='';
 
 let mapZoom=1,mapPanX=0,mapPanY=0,mapDragging=false,mapLastX=0,mapLastY=0,mapImgW=0,mapImgH=0,mapBgImg=null;
+let phasePreviewZoom=1,phasePreviewPanX=0,phasePreviewPanY=0,phasePreviewDragging=false,phasePreviewLastX=0,phasePreviewLastY=0,phasePreviewBound=false;
 
 // ── THEME ──
 function toggleThemeProj(){
@@ -838,7 +845,7 @@ async function loadMapImage(planPath){
       URL.revokeObjectURL(url);
       initMap();
       if(document.getElementById('view-active')?.style.display!=='none') renderPhasesMgmt();
-      if(document.getElementById('phase-modal')?.style.display==='block') drawPhasePreview(activePhaseIdx);
+      if(document.getElementById('phase-modal')?.style.display==='block') fitPhasePreview();
     };
     img.src=url;
   }catch(e){console.warn('Map load failed:',e);}
@@ -964,6 +971,8 @@ function getDetails(){
     actualStart:gv('f-actual-start'),actualEnd:gv('f-actual-end'),
     invoice:gv('f-invoice'),changeOrder:gv('f-change-order'),compNotes:gv('f-comp-notes'),
     reportThemeId:projectReportThemeId||'',
+    reportPhases,
+    reportMapSnapshot,
     status:currentStatus(),phases,equipment,dailyLogs,confirmed,
   };
 }
@@ -985,6 +994,8 @@ function loadSavedDetails(){
     'f-invoice':'invoice','f-change-order':'changeOrder','f-comp-notes':'compNotes'
   };
   Object.entries(fieldMap).forEach(([id,k])=>{if(d[k])sv2(id,d[k]);});
+  if(Array.isArray(d.reportPhases)) reportPhases=d.reportPhases;
+  reportMapSnapshot=d.reportMapSnapshot||'';
   if(d.phases){phases=d.phases;}
   normalizePhases();
   renderPhases();
@@ -1124,6 +1135,13 @@ function updateCompleteKpis(){
   if(el('ckpi-days'))el('ckpi-days').textContent=dailyLogs.length||'—';
 }
 
+function rerenderCurrentReports(){
+  const s=currentStatus();
+  if(s==='estimating') buildEstimatingReports();
+  else if(s==='awarded'||s==='in_progress') buildActiveReports();
+  else buildCompleteReports();
+}
+
 // ── PHASES ──
 function allZoneIds(){return (projectData.zones||[]).map(z=>z.id);}
 
@@ -1213,7 +1231,7 @@ function setPhaseDone(idx,isDone){
   renderPhases();
   renderPhasesMgmt();
   renderPhaseBuilderList();
-  refreshReport('foreman');
+  rerenderCurrentReports();
   saveDetails();
 }
 
@@ -1419,6 +1437,9 @@ function getCalc(){
 
 // ── MAP BLOCK FOR REPORTS ──
 function reportMapBlock(canvasId){
+  if(reportMapSnapshot){
+    return`<div style="margin:14px 0"><div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#888;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e5e7eb">SITE MAP</div><img src="${reportMapSnapshot}" style="width:100%;height:auto;display:block;border:1px solid #e5e7eb;background:#0d0d0f"></div>`;
+  }
   if(!mapImgW)return'';
   return`<div style="margin:14px 0"><div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#888;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e5e7eb">SITE MAP</div><canvas id="${canvasId}" width="860" height="320" style="width:100%;height:auto;display:block;border:1px solid #e5e7eb;background:#0d0d0f"></canvas></div>`;
 }
@@ -1759,9 +1780,10 @@ let activePhaseIdx=null;
 function openPhaseBuilder(){
   normalizePhases();
   document.getElementById('phase-modal').style.display='block';
+  initPhasePreviewControls();
   if(activePhaseIdx===null&&reportPhases.length)activePhaseIdx=0;
   renderPhaseBuilderList();
-  drawPhasePreview(activePhaseIdx);
+  fitPhasePreview();
 }
 
 function addReportPhase(){
@@ -1823,20 +1845,79 @@ function setActivePhase(idx){
   drawPhasePreview(idx);
 }
 
-function drawPhasePreview(phIdx){
-  const canvas=document.getElementById('phase-preview-canvas');
+function phasePreviewCanvas(){return document.getElementById('phase-preview-canvas');}
+
+function initPhasePreviewControls(){
+  if(phasePreviewBound)return;
+  const canvas=phasePreviewCanvas();
   if(!canvas)return;
-  const ctx=canvas.getContext('2d');
-  const W=canvas.width,H=canvas.height;
+  phasePreviewBound=true;
+  canvas.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const r=canvas.getBoundingClientRect();
+    zoomPhasePreview(e.deltaY<0?1.12:1/1.12,e.clientX-r.left,e.clientY-r.top);
+  },{passive:false});
+  canvas.addEventListener('mousedown',e=>{
+    phasePreviewDragging=true;
+    phasePreviewLastX=e.clientX;phasePreviewLastY=e.clientY;
+    canvas.style.cursor='grabbing';
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!phasePreviewDragging)return;
+    phasePreviewPanX+=e.clientX-phasePreviewLastX;
+    phasePreviewPanY+=e.clientY-phasePreviewLastY;
+    phasePreviewLastX=e.clientX;phasePreviewLastY=e.clientY;
+    drawPhasePreview(activePhaseIdx);
+  });
+  window.addEventListener('mouseup',()=>{
+    if(!phasePreviewDragging)return;
+    phasePreviewDragging=false;
+    const c=phasePreviewCanvas();
+    if(c)c.style.cursor='grab';
+  });
+}
+
+function fitPhasePreview(){
+  const canvas=phasePreviewCanvas();
+  if(!canvas||!mapImgW)return;
+  const pad=20;
+  phasePreviewZoom=Math.min((canvas.width-pad*2)/mapImgW,(canvas.height-pad*2)/mapImgH);
+  phasePreviewPanX=(canvas.width-mapImgW*phasePreviewZoom)/2;
+  phasePreviewPanY=(canvas.height-mapImgH*phasePreviewZoom)/2;
+  drawPhasePreview(activePhaseIdx);
+}
+
+function zoomPhasePreview(factor,cx,cy){
+  const canvas=phasePreviewCanvas();
+  if(!canvas||!mapImgW)return;
+  const zx=typeof cx==='number'?cx:canvas.width/2;
+  const zy=typeof cy==='number'?cy:canvas.height/2;
+  const nz=Math.max(0.05,Math.min(40,phasePreviewZoom*factor));
+  phasePreviewPanX=zx-(zx-phasePreviewPanX)*(nz/phasePreviewZoom);
+  phasePreviewPanY=zy-(zy-phasePreviewPanY)*(nz/phasePreviewZoom);
+  phasePreviewZoom=nz;
+  drawPhasePreview(activePhaseIdx);
+}
+
+function drawPhasePreviewScene(ctx,W,H,opts){
+  opts=opts||{};
+  const phIdx=opts.phaseIdx!==undefined?opts.phaseIdx:activePhaseIdx;
+  const zoom=opts.zoom||phasePreviewZoom;
+  const panX=opts.panX!==undefined?opts.panX:phasePreviewPanX;
+  const panY=opts.panY!==undefined?opts.panY:phasePreviewPanY;
+  const uiScale=opts.uiScale||1;
   ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#0d0d0f';ctx.fillRect(0,0,W,H);
-  if(!mapImgW)return;
-  const pad=20;
-  const zoom=Math.min((W-pad*2)/mapImgW,(H-pad*2)/mapImgH);
-  const panX=(W-mapImgW*zoom)/2,panY=(H-mapImgH*zoom)/2;
+  if(!mapImgW){
+    ctx.fillStyle='#777';
+    ctx.font=`${12*uiScale}px "JetBrains Mono", monospace`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('Map unavailable',W/2,H/2);
+    return;
+  }
   ctx.save();ctx.translate(panX,panY);ctx.scale(zoom,zoom);
   if(mapBgImg)ctx.drawImage(mapBgImg,0,0);
-  const activeZoneIds=phIdx!==null?(reportPhases[phIdx]?.zoneIds||[]):null;
+  const activeZoneIds=opts.activeZoneIds!==undefined?opts.activeZoneIds:(phIdx!==null?(reportPhases[phIdx]?.zoneIds||[]):null);
   (projectData.zones||[]).forEach(z=>{
     if(!z.pts||z.pts.length<3)return;
     const isActive=activeZoneIds===null||activeZoneIds.includes(z.id);
@@ -1856,33 +1937,72 @@ function drawPhasePreview(phIdx){
     }
     ctx.globalAlpha=1;
   });
-  // Phase label
-  if(phIdx!==null&&reportPhases[phIdx]){
-    ctx.font='bold 14px sans-serif';ctx.textAlign='left';ctx.textBaseline='top';
-    ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(10/zoom,8/zoom,200/zoom,26/zoom);
-    ctx.fillStyle='#d4a843';ctx.fillText(reportPhases[phIdx].name,16/zoom,13/zoom);
-  }
   ctx.restore();
+  if(opts.showPhaseLabel!==false&&phIdx!==null&&reportPhases[phIdx]){
+    const label=reportPhases[phIdx].name||`Phase ${phIdx+1}`;
+    ctx.font=`bold ${14*uiScale}px sans-serif`;ctx.textAlign='left';ctx.textBaseline='top';
+    ctx.fillStyle='rgba(0,0,0,.72)';ctx.fillRect(10*uiScale,8*uiScale,Math.max(220,Math.min(420,label.length*10))*uiScale,26*uiScale);
+    ctx.fillStyle='#d4a843';ctx.fillText(label,16*uiScale,12*uiScale);
+  }
+}
+
+function drawPhasePreview(phIdx){
+  const canvas=phasePreviewCanvas();
+  if(!canvas)return;
+  drawPhasePreviewScene(canvas.getContext('2d'),canvas.width,canvas.height,{phaseIdx:phIdx,showPhaseLabel:true});
+}
+
+function captureFromPhaseView(opts){
+  const canvas=phasePreviewCanvas();
+  if(!canvas)return'';
+  const scale=3;
+  const out=document.createElement('canvas');
+  out.width=canvas.width*scale;
+  out.height=canvas.height*scale;
+  const zoom=(opts&&opts.zoom)||phasePreviewZoom;
+  const panX=(opts&&opts.panX)!==undefined?opts.panX:phasePreviewPanX;
+  const panY=(opts&&opts.panY)!==undefined?opts.panY:phasePreviewPanY;
+  drawPhasePreviewScene(out.getContext('2d'),out.width,out.height,{
+    phaseIdx:opts&&opts.phaseIdx!==undefined?opts.phaseIdx:activePhaseIdx,
+    activeZoneIds:opts&&opts.activeZoneIds,
+    showPhaseLabel:opts&&opts.showPhaseLabel,
+    zoom:zoom*scale,
+    panX:panX*scale,
+    panY:panY*scale,
+    uiScale:scale
+  });
+  return out.toDataURL('image/jpeg',0.95);
+}
+
+function showCaptureStatus(id){
+  const status=document.getElementById(id);
+  if(status){status.style.display='block';setTimeout(()=>status.style.display='none',2600);}
 }
 
 function capturePhaseScreenshot(){
   if(activePhaseIdx===null){alert('Click "Preview" on a phase first.');return;}
-  const canvas=document.getElementById('phase-preview-canvas');
-  if(!canvas)return;
-  reportPhases[activePhaseIdx].screenshot=canvas.toDataURL('image/jpeg',0.9);
-  const status=document.getElementById('phase-capture-status');
-  if(status){status.style.display='block';setTimeout(()=>status.style.display='none',2500);}
+  const shot=captureFromPhaseView({phaseIdx:activePhaseIdx,showPhaseLabel:true});
+  if(!shot)return;
+  reportPhases[activePhaseIdx].screenshot=shot;
+  showCaptureStatus('phase-capture-status');
   renderPhasesMgmt();
   renderPhaseBuilderList();
+  saveDetails();
+}
+
+function captureMainMapScreenshot(){
+  const shot=captureFromPhaseView({phaseIdx:null,activeZoneIds:null,showPhaseLabel:false});
+  if(!shot)return;
+  reportMapSnapshot=shot;
+  showCaptureStatus('main-map-capture-status');
+  rerenderCurrentReports();
   saveDetails();
 }
 
 function applyPhasesToReport(){
   syncReportPhasesFromPhases();
   document.getElementById('phase-modal').style.display='none';
-  refreshReport('client');
-  refreshReport('foreman');
-  refreshReport('contractor');
+  rerenderCurrentReports();
   saveDetails();
 }
 
