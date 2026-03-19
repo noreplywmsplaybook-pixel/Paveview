@@ -367,6 +367,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
   <div class="hright">
     <button class="btn" id="btn-edit-takeoff">Edit Estimate</button>
     <div class="hdiv"></div>
+    <button class="btn" onclick="openSiteMapCapture()">Site Map Shot</button>
     <button class="btn" onclick="printCurrentReport()">Print</button>
     <button class="btn" onclick="downloadCurrentReportPdf()">Download PDF</button>
     <button class="btn" id="btn-theme-proj" onclick="toggleThemeProj()">Light</button>
@@ -543,6 +544,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
       📎 Attach Pages
       <input type="file" accept="image/*,application/pdf" multiple style="display:none" onchange="attachReportPages(event)">
     </label>
+    <button class="btn" onclick="openSiteMapCapture()" style="font-size:9px;padding:4px 10px">🗺 Site Map</button>
     <button class="btn" onclick="captureMainMapFromCurrentView()" style="font-size:9px;padding:4px 10px">🗺 Use map view</button>
     <button class="btn accent" onclick="printCurrentReport()">⎙ Print / PDF</button>
   </div>
@@ -666,7 +668,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
         <div class="rtab" data-tab="completion-a" onclick="switchReport('completion-a')">Completion</div>
       </div>
       <div id="rpanel-client-a" class="rpanel on">
-        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><div style="display:flex;gap:8px;align-items:center"><button class="btn" onclick="captureMainMapFromCurrentView()">Use map view</button><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div></div>
+        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><div style="display:flex;gap:8px;align-items:center"><button class="btn" onclick="openSiteMapCapture()">Site Map</button><button class="btn" onclick="captureMainMapFromCurrentView()">Use map view</button><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div></div>
         <div id="report-client-a" class="report-paper"></div>
       </div>
       <div id="rpanel-foreman-a" class="rpanel">
@@ -699,7 +701,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
         <div class="rtab" data-tab="completion-c" onclick="switchReport('completion-c')">Completion</div>
       </div>
       <div id="rpanel-client-c" class="rpanel on">
-        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><div style="display:flex;gap:8px;align-items:center"><button class="btn" onclick="captureMainMapFromCurrentView()">Use map view</button><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div></div>
+        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><div style="display:flex;gap:8px;align-items:center"><button class="btn" onclick="openSiteMapCapture()">Site Map</button><button class="btn" onclick="captureMainMapFromCurrentView()">Use map view</button><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div></div>
         <div id="report-client-c" class="report-paper"></div>
       </div>
       <div id="rpanel-foreman-c" class="rpanel">
@@ -773,6 +775,31 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
   </div>
 </div>
 
+<!-- SITE MAP CAPTURE MODAL -->
+<div id="site-map-modal" style="display:none;position:fixed;inset:0;z-index:1002;background:rgba(0,0,0,.72);overflow:auto">
+  <div style="background:var(--bg,#141416);border:1px solid var(--border,#2a2a2c);max-width:860px;margin:40px auto;border-radius:4px;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--surface,#1c1c1e);border-bottom:1px solid var(--border,#2a2a2c)">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text,#f0eeea);letter-spacing:.08em">SITE MAP SHOT FOR REPORT</span>
+      <button onclick="document.getElementById('site-map-modal').style.display='none'" style="background:none;border:none;color:var(--text3,#666);cursor:pointer;font-size:16px">✕</button>
+    </div>
+    <div style="padding:16px 20px 20px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3,#666);margin-bottom:8px">
+        Zoom and pan to your preferred framing, then capture. This exact shot will be used in report PDF/print.
+      </div>
+      <div style="position:relative;background:#0d0d0f;border:1px solid var(--border,#2a2a2c)">
+        <canvas id="site-shot-canvas" width="780" height="420" style="display:block;width:100%;cursor:grab"></canvas>
+        <div style="position:absolute;top:8px;right:8px;display:flex;gap:6px">
+          <button onclick="zoomSiteShot(1.2)" class="btn" style="font-size:9px;padding:4px 8px;background:var(--accent);border-color:var(--accent);color:#000">＋</button>
+          <button onclick="zoomSiteShot(1/1.2)" class="btn" style="font-size:9px;padding:4px 8px;background:var(--accent);border-color:var(--accent);color:#000">－</button>
+          <button onclick="fitSiteShot()" class="btn" style="font-size:9px;padding:4px 8px;background:var(--accent);border-color:var(--accent);color:#000">Fit</button>
+          <button onclick="captureSiteMapScreenshot()" class="btn accent" style="font-size:9px;padding:4px 10px">📷 Capture</button>
+        </div>
+      </div>
+      <div id="site-shot-status" style="display:none;margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ok,#22c55e)">✓ Site map snapshot updated for report</div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const SB_URL='https://rqgyqqyxlwjpbdkapvpz.supabase.co';
@@ -787,6 +814,7 @@ let reportMapSnapshot='';
 let mapZoom=1,mapPanX=0,mapPanY=0,mapDragging=false,mapLastX=0,mapLastY=0,mapImgW=0,mapImgH=0,mapBgImg=null;
 let phasePreviewZoom=1,phasePreviewPanX=0,phasePreviewPanY=0,phasePreviewDragging=false,phasePreviewLastX=0,phasePreviewLastY=0,phasePreviewBound=false;
 let phasePreviewMode='phase';
+let siteShotZoom=1,siteShotPanX=0,siteShotPanY=0,siteShotDragging=false,siteShotLastX=0,siteShotLastY=0,siteShotBound=false;
 
 // ── THEME ──
 function toggleThemeProj(){
@@ -1001,6 +1029,104 @@ function buildFittedMapSnapshot(){
   out.width=1200;out.height=520;
   mapDrawToCanvas(out,{bgColor:'#0d0d0f',fillBackground:true,uiScale:1});
   return out.toDataURL('image/png');
+}
+
+function siteShotCanvas(){return document.getElementById('site-shot-canvas');}
+function drawSiteShot(){
+  const c=siteShotCanvas();
+  if(!c)return;
+  if(!mapImgW){
+    const ctx=c.getContext('2d');
+    ctx.clearRect(0,0,c.width,c.height);
+    ctx.fillStyle='#0d0d0f';ctx.fillRect(0,0,c.width,c.height);
+    ctx.fillStyle='#888';ctx.font='12px "JetBrains Mono", monospace';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('Map unavailable',c.width/2,c.height/2);
+    return;
+  }
+  mapDrawToCanvas(c,{zoom:siteShotZoom,panX:siteShotPanX,panY:siteShotPanY,bgColor:'#0d0d0f',fillBackground:true,uiScale:1});
+}
+function fitSiteShot(){
+  const c=siteShotCanvas();
+  if(!c||!mapImgW)return;
+  const pad=20;
+  siteShotZoom=Math.min((c.width-pad*2)/mapImgW,(c.height-pad*2)/mapImgH);
+  siteShotPanX=(c.width-mapImgW*siteShotZoom)/2;
+  siteShotPanY=(c.height-mapImgH*siteShotZoom)/2;
+  drawSiteShot();
+}
+function zoomSiteShot(factor,cx,cy){
+  const c=siteShotCanvas();
+  if(!c||!mapImgW)return;
+  const zx=typeof cx==='number'?cx:c.width/2;
+  const zy=typeof cy==='number'?cy:c.height/2;
+  const nz=Math.max(0.05,Math.min(30,siteShotZoom*factor));
+  siteShotPanX=zx-(zx-siteShotPanX)*(nz/siteShotZoom);
+  siteShotPanY=zy-(zy-siteShotPanY)*(nz/siteShotZoom);
+  siteShotZoom=nz;
+  drawSiteShot();
+}
+function initSiteShotControls(){
+  if(siteShotBound)return;
+  const c=siteShotCanvas();
+  if(!c)return;
+  siteShotBound=true;
+  c.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const r=c.getBoundingClientRect();
+    zoomSiteShot(e.deltaY<0?1.12:1/1.12,e.clientX-r.left,e.clientY-r.top);
+  },{passive:false});
+  c.addEventListener('mousedown',e=>{
+    siteShotDragging=true;
+    siteShotLastX=e.clientX;siteShotLastY=e.clientY;
+    c.style.cursor='grabbing';
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!siteShotDragging)return;
+    siteShotPanX+=e.clientX-siteShotLastX;
+    siteShotPanY+=e.clientY-siteShotLastY;
+    siteShotLastX=e.clientX;siteShotLastY=e.clientY;
+    drawSiteShot();
+  });
+  window.addEventListener('mouseup',()=>{
+    if(!siteShotDragging)return;
+    siteShotDragging=false;
+    const c2=siteShotCanvas();
+    if(c2)c2.style.cursor='grab';
+  });
+}
+function openSiteMapCapture(){
+  if(!mapImgW&&projectData.planPath)loadMapImage(projectData.planPath);
+  document.getElementById('site-map-modal').style.display='block';
+  initSiteShotControls();
+  if(reportMapSnapshot){
+    // Preserve previous framing feel when reopening.
+    drawSiteShot();
+  }else{
+    fitSiteShot();
+  }
+}
+function captureSiteMapScreenshot(){
+  const c=siteShotCanvas();
+  if(!c||!mapImgW){alert('Map is not ready yet.');return;}
+  const scale=3;
+  const out=document.createElement('canvas');
+  out.width=Math.max(1,Math.round(c.width*scale));
+  out.height=Math.max(1,Math.round(c.height*scale));
+  mapDrawToCanvas(out,{
+    zoom:siteShotZoom*scale,
+    panX:siteShotPanX*scale,
+    panY:siteShotPanY*scale,
+    uiScale:scale,
+    bgColor:'#0d0d0f',
+    fillBackground:true
+  });
+  reportMapSnapshot=out.toDataURL('image/png');
+  showCaptureStatus('site-shot-status');
+  showCaptureStatus('map-capture-status');
+  showCaptureStatus('main-map-capture-status');
+  rerenderCurrentReports();
+  saveDetails();
 }
 
 // ── SAVE / LOAD ──
@@ -1242,7 +1368,7 @@ function printCurrentReportNative(forPdf){
   const paper=getActiveReportPaper();
   if(!paper){alert('No active report is visible yet. Open a report tab first.');return;}
   // Keep report map in sync if the live viewport is available.
-  if(mapViewportReady())captureMainMapFromCurrentView({silent:true,persist:false});
+  if(!reportMapSnapshot&&mapViewportReady())captureMainMapFromCurrentView({silent:true,persist:false});
   else if(!reportMapSnapshot&&mapImgW)reportMapSnapshot=buildFittedMapSnapshot();
   rerenderCurrentReports();
   renderAttachedPages();
