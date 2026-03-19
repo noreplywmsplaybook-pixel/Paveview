@@ -1238,105 +1238,40 @@ function buildPrintablePaperHtml(paper){
   });
   return clone.outerHTML;
 }
-function printCurrentReportNative(){
+function printCurrentReportNative(forPdf){
   const paper=getActiveReportPaper();
   if(!paper){alert('No active report is visible yet. Open a report tab first.');return;}
   // Keep report map in sync if the live viewport is available.
   if(mapViewportReady())captureMainMapFromCurrentView({silent:true,persist:false});
+  else if(!reportMapSnapshot&&mapImgW)reportMapSnapshot=buildFittedMapSnapshot();
   rerenderCurrentReports();
   renderAttachedPages();
   const freshPaper=getActiveReportPaper()||paper;
   const html=buildPrintablePaperHtml(freshPaper);
   const styles=[...document.querySelectorAll('style,link[rel="stylesheet"]')].map(el=>el.outerHTML).join('');
   const w=window.open('about:blank','_blank');
-  if(!w){window.print();return;}
+  if(!w){
+    if(forPdf)alert('Popup blocked. Allow popups, then choose Save as PDF in print dialog.');
+    window.print();
+    return;
+  }
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${activeReportLabel()}</title>${styles}<style>
     @page{margin:12mm}
     html,body{margin:0;padding:0;background:#fff}
     body{zoom:1!important}
     #export-root{background:#fff}
     #export-root .print-bar,#export-root .rtab-bar,#export-root .btn{display:none!important}
-  </style></head><body><div id="export-root">${html}</div></body></html>`);
+    .pdf-hint{font:12px "JetBrains Mono",monospace;color:#666;padding:8px 12px;border-bottom:1px solid #eee}
+  </style></head><body>${forPdf?'<div class="pdf-hint">Choose <strong>Save as PDF</strong> in the print dialog.</div>':''}<div id="export-root">${html}</div></body></html>`);
   w.document.close();
   w.focus();
-  w.print();
+  setTimeout(()=>{try{w.print();}catch(e){window.print();}},220);
 }
-async function prepareReportForExport(){
-  // Sync site-map snapshot from visible viewport, otherwise fall back to a fitted map if none exists.
-  if(mapViewportReady()){
-    captureMainMapFromCurrentView({silent:true,persist:false});
-  }else if(!reportMapSnapshot&&mapImgW){
-    reportMapSnapshot=buildFittedMapSnapshot();
-    rerenderCurrentReports();
-  }
-  renderAttachedPages();
-  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+function downloadCurrentReportPdf(){
+  printCurrentReportNative(true);
 }
-async function captureActiveReportPages(scale){
-  await prepareReportForExport();
-  const paper=getActiveReportPaper();
-  if(!paper){throw new Error('No active report is visible yet. Open a report tab first.');}
-  const pages=[...paper.querySelectorAll('.rpage')];
-  const targets=pages.length?pages:[paper];
-  const lib=await ensureReportExportLibs();
-  const out=[];
-  for(const el of targets){
-    await waitForElementAssets(el);
-    const canvas=await lib.html2canvas(el,{
-      backgroundColor:'#ffffff',
-      useCORS:true,
-      scale:scale||2,
-      logging:false,
-      scrollX:0,
-      scrollY:0,
-      windowWidth:Math.max(document.documentElement.clientWidth,el.scrollWidth||0),
-      windowHeight:Math.max(document.documentElement.clientHeight,el.scrollHeight||0)
-    });
-    out.push(canvas);
-  }
-  return out;
-}
-async function downloadCurrentReportPdf(){
-  try{
-    const pages=await captureActiveReportPages(2);
-    if(!pages.length){alert('Nothing to export yet.');return;}
-    const {jsPDF}=window.jspdf;
-    const first=pages[0];
-    const doc=new jsPDF({orientation:first.width>first.height?'l':'p',unit:'px',format:[first.width,first.height],compress:true});
-    pages.forEach((c,idx)=>{
-      if(idx>0)doc.addPage([c.width,c.height],c.width>c.height?'l':'p');
-      doc.addImage(c.toDataURL('image/png'),'PNG',0,0,c.width,c.height,undefined,'FAST');
-    });
-    const file=`${safeFilePart(projName())}-${safeFilePart(activeReportLabel())}.pdf`;
-    doc.save(file);
-  }catch(err){
-    console.warn('PDF export failed:',err);
-    alert('PDF export library failed to load. Opening print dialog so you can save as PDF.');
-    printCurrentReportNative();
-  }
-}
-async function printCurrentReport(){
-  try{
-    const printWin=window.open('about:blank','_blank');
-    const pages=await captureActiveReportPages(2);
-    if(!pages.length){if(printWin)printWin.close();alert('Nothing to print yet.');return;}
-    if(!printWin){window.print();return;}
-    const imgs=pages.map(c=>`<div class="pg"><img src="${c.toDataURL('image/png')}" alt="report page"></div>`).join('');
-    printWin.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${activeReportLabel()}</title><style>
-      @page{margin:12mm}
-      html,body{margin:0;padding:0;background:#fff}
-      body{font-family:Arial,sans-serif}
-      .pg{page-break-after:always;break-after:page}
-      .pg:last-child{page-break-after:auto;break-after:auto}
-      img{display:block;width:100%;height:auto}
-    </style></head><body>${imgs}</body></html>`);
-    printWin.document.close();
-    printWin.focus();
-    printWin.print();
-  }catch(err){
-    console.warn('Print capture failed:',err);
-    printCurrentReportNative();
-  }
+function printCurrentReport(){
+  printCurrentReportNative(false);
 }
 
 // ── ACTIVE JOB MANAGEMENT ──
