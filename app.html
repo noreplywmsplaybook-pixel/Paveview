@@ -2901,6 +2901,10 @@ function loadSettingsValues(){
       if(el)el.value=val;
     });
   }catch(e){}
+  const fsEl=document.getElementById('si-fontsize');
+  if(fsEl&&window.setFontSize){
+    window.setFontSize(parseInt(fsEl.value||localStorage.getItem('paveview_fontsize')||'14'));
+  }
 }
 document.getElementById('btn-settings-close').onclick=()=>closeModal('settings-modal');
 document.getElementById('btn-settings-cancel').onclick=()=>closeModal('settings-modal');
