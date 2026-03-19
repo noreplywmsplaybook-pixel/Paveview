@@ -543,6 +543,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
       📎 Attach Pages
       <input type="file" accept="image/*,application/pdf" multiple style="display:none" onchange="attachReportPages(event)">
     </label>
+    <button class="btn" onclick="captureMainMapFromCurrentView()" style="font-size:9px;padding:4px 10px">🗺 Use map view</button>
     <button class="btn accent" onclick="printCurrentReport()">⎙ Print / PDF</button>
   </div>
 </div>
@@ -665,7 +666,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
         <div class="rtab" data-tab="completion-a" onclick="switchReport('completion-a')">Completion</div>
       </div>
       <div id="rpanel-client-a" class="rpanel on">
-        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div>
+        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><div style="display:flex;gap:8px;align-items:center"><button class="btn" onclick="captureMainMapFromCurrentView()">Use map view</button><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div></div>
         <div id="report-client-a" class="report-paper"></div>
       </div>
       <div id="rpanel-foreman-a" class="rpanel">
@@ -698,7 +699,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
         <div class="rtab" data-tab="completion-c" onclick="switchReport('completion-c')">Completion</div>
       </div>
       <div id="rpanel-client-c" class="rpanel on">
-        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div>
+        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><div style="display:flex;gap:8px;align-items:center"><button class="btn" onclick="captureMainMapFromCurrentView()">Use map view</button><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div></div>
         <div id="report-client-c" class="report-paper"></div>
       </div>
       <div id="rpanel-foreman-c" class="rpanel">
@@ -994,6 +995,13 @@ function captureMainMapFromCurrentView(opts){
   if(opts.persist!==false)saveDetails();
   return reportMapSnapshot;
 }
+function buildFittedMapSnapshot(){
+  if(!mapImgW)return'';
+  const out=document.createElement('canvas');
+  out.width=1200;out.height=520;
+  mapDrawToCanvas(out,{bgColor:'#0d0d0f',fillBackground:true,uiScale:1});
+  return out.toDataURL('image/png');
+}
 
 // ── SAVE / LOAD ──
 function gv(id){return document.getElementById(id)?.value?.trim()||'';}
@@ -1145,7 +1153,7 @@ function loadScriptOnce(src,readyCheck){
       const t=setInterval(()=>{
         tries++;
         if(readyCheck&&readyCheck()){clearInterval(t);resolve();}
-        else if(tries>40){clearInterval(t);reject(new Error('Timed out loading '+src));}
+        else if(tries>150){clearInterval(t);reject(new Error('Timed out loading '+src));}
       },100);
       return;
     }
@@ -1162,7 +1170,10 @@ function ensureReportExportLibs(){
   reportExportLibsPromise=Promise.all([
     loadScriptOnce('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',()=>typeof window.html2canvas==='function'),
     loadScriptOnce('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',()=>!!(window.jspdf&&window.jspdf.jsPDF))
-  ]).then(()=>({html2canvas:window.html2canvas,jsPDF:window.jspdf.jsPDF}));
+  ]).then(()=>({html2canvas:window.html2canvas,jsPDF:window.jspdf.jsPDF})).catch(err=>{
+    reportExportLibsPromise=null;
+    throw err;
+  });
   return reportExportLibsPromise;
 }
 function getActiveReportPanel(){
@@ -1205,10 +1216,58 @@ async function waitForElementAssets(el){
     });
   }));
 }
+function mapViewportReady(){
+  const wrap=document.getElementById('map-canvas-wrap');
+  return !!(wrap&&mapImgW&&wrap.clientWidth>20&&wrap.clientHeight>20&&getComputedStyle(wrap).display!=='none');
+}
+function buildPrintablePaperHtml(paper){
+  const clone=paper.cloneNode(true);
+  const srcCanv=[...paper.querySelectorAll('canvas')];
+  const dstCanv=[...clone.querySelectorAll('canvas')];
+  dstCanv.forEach((c,i)=>{
+    const src=srcCanv[i];
+    if(!src)return;
+    try{
+      const img=document.createElement('img');
+      img.src=src.toDataURL('image/png');
+      img.style.width='100%';
+      img.style.height='auto';
+      img.style.display='block';
+      c.replaceWith(img);
+    }catch(e){}
+  });
+  return clone.outerHTML;
+}
+function printCurrentReportNative(){
+  const paper=getActiveReportPaper();
+  if(!paper){alert('No active report is visible yet. Open a report tab first.');return;}
+  // Keep report map in sync if the live viewport is available.
+  if(mapViewportReady())captureMainMapFromCurrentView({silent:true,persist:false});
+  rerenderCurrentReports();
+  renderAttachedPages();
+  const freshPaper=getActiveReportPaper()||paper;
+  const html=buildPrintablePaperHtml(freshPaper);
+  const styles=[...document.querySelectorAll('style,link[rel="stylesheet"]')].map(el=>el.outerHTML).join('');
+  const w=window.open('about:blank','_blank');
+  if(!w){window.print();return;}
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${activeReportLabel()}</title>${styles}<style>
+    @page{margin:12mm}
+    html,body{margin:0;padding:0;background:#fff}
+    body{zoom:1!important}
+    #export-root{background:#fff}
+    #export-root .print-bar,#export-root .rtab-bar,#export-root .btn{display:none!important}
+  </style></head><body><div id="export-root">${html}</div></body></html>`);
+  w.document.close();
+  w.focus();
+  w.print();
+}
 async function prepareReportForExport(){
-  // Always sync site-map snapshot from current map viewport for WYSIWYG export.
-  if(mapImgW){
+  // Sync site-map snapshot from visible viewport, otherwise fall back to a fitted map if none exists.
+  if(mapViewportReady()){
     captureMainMapFromCurrentView({silent:true,persist:false});
+  }else if(!reportMapSnapshot&&mapImgW){
+    reportMapSnapshot=buildFittedMapSnapshot();
+    rerenderCurrentReports();
   }
   renderAttachedPages();
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
@@ -1252,12 +1311,13 @@ async function downloadCurrentReportPdf(){
     doc.save(file);
   }catch(err){
     console.warn('PDF export failed:',err);
-    alert('PDF export failed. Please try again.');
+    alert('PDF export library failed to load. Opening print dialog so you can save as PDF.');
+    printCurrentReportNative();
   }
 }
 async function printCurrentReport(){
-  const printWin=window.open('about:blank','_blank');
   try{
+    const printWin=window.open('about:blank','_blank');
     const pages=await captureActiveReportPages(2);
     if(!pages.length){if(printWin)printWin.close();alert('Nothing to print yet.');return;}
     if(!printWin){window.print();return;}
@@ -1274,9 +1334,8 @@ async function printCurrentReport(){
     printWin.focus();
     printWin.print();
   }catch(err){
-    if(printWin)printWin.close();
     console.warn('Print capture failed:',err);
-    window.print();
+    printCurrentReportNative();
   }
 }
 
