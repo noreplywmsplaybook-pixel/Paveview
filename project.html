@@ -922,6 +922,7 @@ function getDetails(){
     c1:gv('f-c1'),c1s:gv('f-c1s'),c2:gv('f-c2'),c2s:gv('f-c2s'),c3:gv('f-c3'),c3s:gv('f-c3s'),
     actualStart:gv('f-actual-start'),actualEnd:gv('f-actual-end'),
     invoice:gv('f-invoice'),changeOrder:gv('f-change-order'),compNotes:gv('f-comp-notes'),
+    reportThemeId:projectReportThemeId||'',
     status:currentStatus(),phases,equipment,dailyLogs,confirmed,
   };
 }
@@ -930,6 +931,7 @@ function loadSavedDetails(){
   const key='paveview_proj_details_'+projectId;
   let d={};
   try{d=JSON.parse(localStorage.getItem(key)||'{}');}catch(e){}
+  projectReportThemeId=d.reportThemeId||getStoredProjectThemeId()||'';
   const fieldMap={
     'f-client-name':'clientName','f-contact':'contact','f-phone':'phone','f-email':'email',
     'f-address':'address','f-job-num':'jobNum','f-pa':'pa','f-pb':'pb','f-pl':'pl',
@@ -946,6 +948,7 @@ function loadSavedDetails(){
   if(d.equipment){equipment=d.equipment;renderEquipment();}
   if(d.dailyLogs){dailyLogs=d.dailyLogs;renderDailyLogs();}
   if(d.confirmed){confirmed=true;showConfirmedState();}
+  loadThemesIntoProject();
   setStatus(d.status||'estimating');
   populateEqPicker();
 }
@@ -1277,6 +1280,24 @@ function removeAttachedPage(idx){
 
 // ── THEME FROM REPORT BUILDER ──
 const REPORT_THEME_KEYS=['paveview_report_templates','paveview_report_themes']; // new + legacy
+const PROJECT_THEME_KEY_PREFIX='paveview_project_report_theme_';
+let projectReportThemeId='';
+
+function getProjectThemeKey(){
+  return projectId?`${PROJECT_THEME_KEY_PREFIX}${projectId}`:'';
+}
+
+function getStoredProjectThemeId(){
+  const key=getProjectThemeKey();
+  return key?localStorage.getItem(key)||'':'';
+}
+
+function setStoredProjectThemeId(themeId){
+  const key=getProjectThemeKey();
+  if(!key)return;
+  if(themeId)localStorage.setItem(key,themeId);
+  else localStorage.removeItem(key);
+}
 
 function getSavedReportThemes(){
   for(const key of REPORT_THEME_KEYS){
@@ -1293,7 +1314,7 @@ function loadThemesIntoProject(){
     const themes=getSavedReportThemes().filter(t=>t&&t.id);
     const picker=document.getElementById('theme-picker');
     if(!picker)return;
-    const priorValue=picker.value||localStorage.getItem('paveview_active_theme')||'';
+    const priorValue=projectReportThemeId||getStoredProjectThemeId()||picker.value||localStorage.getItem('paveview_active_theme')||'';
     picker.innerHTML='<option value="">Default</option>'+
       themes.map(t=>`<option value="${t.id}">${t.name||'Untitled Report'}</option>`).join('');
     const hasPrior=priorValue&&themes.some(t=>t.id===priorValue);
@@ -1306,6 +1327,10 @@ function loadThemesIntoProject(){
 
 function applyTheme(themeId){
   const selected=themeId||'';
+  projectReportThemeId=selected;
+  setStoredProjectThemeId(selected);
+  const picker=document.getElementById('theme-picker');
+  if(picker&&picker.value!==selected)picker.value=selected;
   if(!selected){
     brandPrimary=localStorage.getItem('paveview_brand_primary')||'#111111';
     brandAccent=localStorage.getItem('paveview_brand_accent')||'#d4a843';
@@ -1324,6 +1349,9 @@ function applyTheme(themeId){
       activeReportTheme=null;
     }
   }
+  if(projectId&&document.getElementById('main')?.style.display==='block'){
+    saveDetails();
+  }
   refreshReport('client');
   refreshReport('foreman');
   refreshReport('contractor');
@@ -1332,7 +1360,7 @@ function applyTheme(themeId){
 window.addEventListener('focus',loadThemesIntoProject);
 window.addEventListener('storage',function(ev){
   if(!ev||!ev.key)return;
-  if(REPORT_THEME_KEYS.includes(ev.key)||ev.key==='paveview_active_theme'||ev.key==='paveview_report_templates_updated_at'){
+  if(REPORT_THEME_KEYS.includes(ev.key)||ev.key==='paveview_active_theme'||ev.key==='paveview_report_templates_updated_at'||ev.key===getProjectThemeKey()){
     loadThemesIntoProject();
   }
 });
@@ -2298,6 +2326,7 @@ function buildEstimatingReports(){
 
 // ── ACTIVE JOB REPORTS ──
 function buildActiveReports(){
+  loadThemesIntoProject();
   const c=document.getElementById('report-client-a');
   const f=document.getElementById('report-foreman-a');
   const comp=document.getElementById('report-completion-a');
@@ -2308,6 +2337,7 @@ function buildActiveReports(){
 
 // ── COMPLETE REPORTS ──
 function buildCompleteReports(){
+  loadThemesIntoProject();
   const c=document.getElementById('report-client-c');
   const f=document.getElementById('report-foreman-c');
   const comp=document.getElementById('report-completion-c');
