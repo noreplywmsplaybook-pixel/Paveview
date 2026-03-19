@@ -291,8 +291,11 @@ body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-s
       <div class="prow"><div class="plbl">Your Name</div><input type="text" class="pinp" id="p-name" placeholder="Full name"></div>
       <div class="prow"><div class="plbl">UI Font Size</div>
         <div style="display:flex;align-items:center;gap:10px">
-          <input type="range" id="d-fontsize" class="fs-slider" min="11" max="18" value="14" step="1" style="width:100px;accent-color:var(--accent)">
-          <span id="d-fontsize-val" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);min-width:28px">14px</span>
+          <select id="d-fontsize-preset" class="pinp" style="max-width:190px">
+            <option value="regular">Regular</option>
+            <option value="large">Large</option>
+            <option value="xlarge">Xtra Large</option>
+          </select>
         </div>
       </div>
       <div class="msg" id="msg-company"></div>
@@ -1014,17 +1017,34 @@ async function renderAnalytics(allParsed){
 <script>
 (function(){
   var FS_KEY='paveview_fontsize';
-  function applyFs(v){
-    v=parseInt(v)||14;
-    document.documentElement.style.setProperty('--fs',v+'px');
-    localStorage.setItem(FS_KEY,String(v));
-    document.querySelectorAll('.fs-slider').forEach(function(s){s.value=v;});
-    var vl=document.getElementById('d-fontsize-val');
-    if(vl)vl.textContent=v+'px';
+  var FS_PRESET_KEY='paveview_fontsize_preset';
+  var FS_PRESETS={regular:14,large:16,xlarge:18};
+  function nearestPreset(px){
+    var n=parseInt(px)||14;
+    if(n>=17)return'xlarge';
+    if(n>=15)return'large';
+    return'regular';
   }
-  applyFs(parseInt(localStorage.getItem(FS_KEY)||'14'));
-  document.querySelectorAll('.fs-slider').forEach(function(el){
-    el.addEventListener('input',function(){applyFs(parseInt(this.value));});
+  function applyPreset(preset,persist){
+    var p=FS_PRESETS[preset]?preset:'regular';
+    var px=FS_PRESETS[p];
+    document.documentElement.style.setProperty('--fs',px+'px');
+    if(persist!==false){
+      localStorage.setItem(FS_PRESET_KEY,p);
+      localStorage.setItem(FS_KEY,String(px));
+    }
+    var sel=document.getElementById('d-fontsize-preset');
+    if(sel)sel.value=p;
+  }
+  var preset=localStorage.getItem(FS_PRESET_KEY)||nearestPreset(localStorage.getItem(FS_KEY));
+  applyPreset(preset,false);
+  var sel=document.getElementById('d-fontsize-preset');
+  if(sel){
+    sel.addEventListener('change',function(){applyPreset(this.value,true);});
+  }
+  window.addEventListener('storage',function(ev){
+    if(ev.key===FS_PRESET_KEY&&ev.newValue)applyPreset(ev.newValue,false);
+    if(ev.key===FS_KEY&&!localStorage.getItem(FS_PRESET_KEY))applyPreset(nearestPreset(ev.newValue),false);
   });
 })();
 </script>

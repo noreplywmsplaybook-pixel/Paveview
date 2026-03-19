@@ -323,12 +323,29 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
   #hdr,#status-row,#confirm-banner,#job-mgmt .sec:not(.printing),
   .print-bar,.rtab-bar,.sec:not(.report-sec),.mgmt-grid,.kpi-row,
   #map-container,#proj-debug,.proj-dbg-fab{display:none!important}
-  .rpanel{display:block!important}
-  .report-preview-wrap{max-height:none!important;background:#fff!important;padding:0!important}
-  .report-paper{border:none!important;box-shadow:none!important;margin:0!important;display:block!important}
+  .rpanel{display:none!important}
+  .rpanel.on{display:block!important}
+  .report-preview-wrap{max-height:none!important;background:#fff!important;padding:0!important;overflow:visible!important}
+  .report-paper{border:none!important;box-shadow:none!important;margin:0!important;display:block!important;overflow:visible!important}
   .attached-page{display:block!important}
   body{background:#fff}
   #main{padding:0;max-width:none}
+  @page{margin:12mm}
+  .rpage{
+    page-break-after:always!important;
+    break-after:page!important;
+    page-break-inside:avoid!important;
+    break-inside:avoid-page!important;
+  }
+  .rpage:last-child{page-break-after:auto!important;break-after:auto!important}
+  .r-header,.r-infoband,.rsumgrid,.rmap-wrap,.r-notes,.rsigblock,.r-custom-page,.attached-page{
+    page-break-inside:avoid!important;
+    break-inside:avoid-page!important;
+  }
+  .rtbl{page-break-inside:auto!important;break-inside:auto!important}
+  .rtbl thead{display:table-header-group}
+  .rtbl tr{page-break-inside:avoid!important;break-inside:avoid-page!important}
+  img,canvas,svg{page-break-inside:avoid!important;break-inside:avoid-page!important}
 }
 </style>
 </head>
@@ -1854,7 +1871,7 @@ function setActivePhase(idx){
   phasePreviewMode='phase';
   refreshPhasePreviewModeButtons();
   renderPhaseBuilderList();
-  drawPhasePreview(idx);
+  fitPhasePreview();
 }
 
 function phasePreviewCanvas(){return document.getElementById('phase-preview-canvas');}
@@ -1889,13 +1906,46 @@ function initPhasePreviewControls(){
   });
 }
 
+function getPhaseBounds(phaseIdx){
+  if(phaseIdx===null||phaseIdx===undefined||phaseIdx<0)return null;
+  const zoneIds=(reportPhases[phaseIdx]?.zoneIds)||[];
+  if(!zoneIds.length)return null;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity,hasPts=false;
+  (projectData.zones||[]).forEach(z=>{
+    if(!zoneIds.includes(z.id)||!Array.isArray(z.pts))return;
+    z.pts.forEach(pt=>{
+      if(typeof pt.x!=='number'||typeof pt.y!=='number')return;
+      hasPts=true;
+      if(pt.x<minX)minX=pt.x;
+      if(pt.y<minY)minY=pt.y;
+      if(pt.x>maxX)maxX=pt.x;
+      if(pt.y>maxY)maxY=pt.y;
+    });
+  });
+  if(!hasPts)return null;
+  return{minX,minY,maxX,maxY};
+}
+
 function fitPhasePreview(){
   const canvas=phasePreviewCanvas();
   if(!canvas||!mapImgW)return;
   const pad=20;
-  phasePreviewZoom=Math.min((canvas.width-pad*2)/mapImgW,(canvas.height-pad*2)/mapImgH);
-  phasePreviewPanX=(canvas.width-mapImgW*phasePreviewZoom)/2;
-  phasePreviewPanY=(canvas.height-mapImgH*phasePreviewZoom)/2;
+  let fitW=mapImgW,fitH=mapImgH,offX=0,offY=0;
+  const bounds=phasePreviewMode==='phase'?getPhaseBounds(activePhaseIdx):null;
+  if(bounds){
+    const bw=Math.max(1,bounds.maxX-bounds.minX);
+    const bh=Math.max(1,bounds.maxY-bounds.minY);
+    const extra=Math.max(24,Math.min(120,Math.max(bw,bh)*0.2));
+    offX=Math.max(0,bounds.minX-extra);
+    offY=Math.max(0,bounds.minY-extra);
+    const right=Math.min(mapImgW,bounds.maxX+extra);
+    const bottom=Math.min(mapImgH,bounds.maxY+extra);
+    fitW=Math.max(1,right-offX);
+    fitH=Math.max(1,bottom-offY);
+  }
+  phasePreviewZoom=Math.min((canvas.width-pad*2)/fitW,(canvas.height-pad*2)/fitH);
+  phasePreviewPanX=(canvas.width-fitW*phasePreviewZoom)/2-(offX*phasePreviewZoom);
+  phasePreviewPanY=(canvas.height-fitH*phasePreviewZoom)/2-(offY*phasePreviewZoom);
   drawPhasePreview(activePhaseIdx);
 }
 
@@ -1931,7 +1981,7 @@ function refreshPhasePreviewModeButtons(){
 function setPhasePreviewMode(mode){
   phasePreviewMode=(mode==='site')?'site':'phase';
   refreshPhasePreviewModeButtons();
-  drawPhasePreview(activePhaseIdx);
+  fitPhasePreview();
 }
 
 function drawPhasePreviewScene(ctx,W,H,opts){
@@ -2008,7 +2058,7 @@ function captureFromPhaseView(opts){
     panY:panY*scale,
     uiScale:scale
   });
-  return out.toDataURL('image/jpeg',0.95);
+  return out.toDataURL('image/png');
 }
 
 function showCaptureStatus(id){
@@ -2904,13 +2954,23 @@ async function deleteProject(){
 
 // Keep project page font size synced with account setting.
 (function(){
-  function applyFs(v){
-    const fs=parseInt(v)||14;
+  const FS_KEY='paveview_fontsize';
+  const FS_PRESET_KEY='paveview_fontsize_preset';
+  const FS_PRESETS={regular:14,large:16,xlarge:18};
+  function nearestPreset(px){
+    const n=parseInt(px)||14;
+    if(n>=17)return'xlarge';
+    if(n>=15)return'large';
+    return'regular';
+  }
+  function applyFs(){
+    const preset=localStorage.getItem(FS_PRESET_KEY)||nearestPreset(localStorage.getItem(FS_KEY));
+    const fs=FS_PRESETS[preset]||14;
     document.documentElement.style.setProperty('--fs',fs+'px');
   }
-  applyFs(localStorage.getItem('paveview_fontsize')||'14');
+  applyFs();
   window.addEventListener('storage',function(ev){
-    if(ev.key==='paveview_fontsize')applyFs(ev.newValue||'14');
+    if(ev.key===FS_PRESET_KEY||ev.key===FS_KEY)applyFs();
   });
 })();
 </script>
