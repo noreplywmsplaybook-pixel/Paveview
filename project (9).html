@@ -1,0 +1,2005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PaveView — Project</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#141416;--surface:#1c1c1e;--surface2:#222224;
+  --border:#2a2a2c;--border2:#1e1e20;
+  --text:#e8e6e0;--text2:#888;--text3:#555;
+  --accent:#d4a843;--accent-bg:rgba(212,168,67,.07);--accent-dim:rgba(212,168,67,.2);
+  --ok:#22c55e;--ok-bg:rgba(34,197,94,.08);--ok-border:rgba(34,197,94,.2);
+  --red:#ef4444;--blue:#3b82f6;--orange:#f97316;--green:#22c55e;--purple:#a855f7;
+}
+body.light{
+  --bg:#f0ede8;--surface:#fff;--surface2:#f8f6f2;
+  --border:#e5e1da;--border2:#ede9e2;
+  --text:#1a1714;--text2:#777;--text3:#bbb;
+  --accent:#b8860b;--accent-bg:rgba(184,134,11,.06);--accent-dim:rgba(184,134,11,.2);
+  --ok:#16a34a;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;display:flex;flex-direction:column}
+button{-webkit-appearance:none;appearance:none;}
+#auth-check{position:fixed;inset:0;background:#0a0a0a;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;font-family:'JetBrains Mono',monospace}
+.spin{width:14px;height:14px;border:2px solid #1e1e1e;border-top-color:#d4a843;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* HEADER */
+#hdr{background:var(--surface);border-bottom:1px solid var(--border);height:46px;display:flex;align-items:center;padding:0 24px;gap:0;flex-shrink:0;position:sticky;top:0;z-index:100}
+.logo{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;letter-spacing:.06em;padding-right:14px;border-right:1px solid var(--border);margin-right:14px}
+.logo em{color:var(--accent);font-style:normal}
+#breadcrumb{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);display:flex;align-items:center;gap:6px}
+#breadcrumb a{color:var(--text3);text-decoration:none;transition:color .15s}
+#breadcrumb a:hover{color:var(--accent)}
+.hright{margin-left:auto;display:flex;gap:6px;align-items:center}
+.btn{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.06em;padding:5px 12px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;text-transform:uppercase;transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+.btn:hover{border-color:var(--text);color:var(--text)}
+.btn.accent{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600}
+.btn.accent:hover{opacity:.9}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#000;font-weight:600}
+.btn.ok:hover{opacity:.9}
+.btn.ghost{border-color:var(--border2);color:var(--text3)}
+.btn.danger{border-color:rgba(239,68,68,.3);color:var(--red)}
+.btn.danger:hover{border-color:var(--red);background:rgba(239,68,68,.06)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.hdiv{width:1px;height:16px;background:var(--border);margin:0 3px}
+/* MAIN */
+#main{flex:1;padding:24px;max-width:1100px;margin:0 auto;width:100%}
+/* STATS BAR */
+#stats-bar{display:grid;grid-template-columns:repeat(5,1fr);background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--accent);margin-bottom:16px}
+.stat-cell{padding:12px 14px;border-right:1px solid var(--border2);text-align:center}
+.stat-cell:last-child{border-right:none}
+.stat-lbl{font-family:'JetBrains Mono',monospace;font-size:7px;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);margin-bottom:4px}
+.stat-val{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--accent)}
+.stat-sub{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);margin-top:2px}
+/* STATUS ROW */
+#status-row{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.status-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase}
+.status-opt{font-family:'JetBrains Mono',monospace;font-size:9px;padding:4px 12px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;transition:all .15s;letter-spacing:.06em}
+.status-opt[data-s="estimating"].on{color:var(--text2);border-color:var(--text2)}
+.status-opt[data-s="awarded"].on{color:var(--blue);border-color:var(--blue);background:rgba(59,130,246,.06)}
+.status-opt[data-s="in_progress"].on{color:var(--accent);border-color:var(--accent);background:var(--accent-bg)}
+.status-opt[data-s="complete"].on{color:var(--green);border-color:var(--green);background:var(--ok-bg)}
+.status-opt[data-s="cancelled"].on{color:var(--red);border-color:var(--red)}
+/* CARDS / SECTIONS */
+.sec{background:var(--surface);border:1px solid var(--border);margin-bottom:14px}
+.sec-hdr{padding:11px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sec-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--text2)}
+/* FORM ROWS */
+.frow{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border2)}
+.frow.three{grid-template-columns:1fr 1fr 1fr}
+.frow.one{grid-template-columns:1fr}
+.frow:last-child{border-bottom:none}
+.field{padding:10px 14px;border-right:1px solid var(--border2);display:flex;flex-direction:column;gap:4px}
+.field:last-child{border-right:none}
+.flbl{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3)}
+.flbl .req{color:var(--red)}
+.finp{background:transparent;border:none;border-bottom:1px solid transparent;color:var(--text);font-family:'Syne',sans-serif;font-size:12px;padding:2px 0;outline:none;transition:border-color .15s;width:100%}
+.finp:focus{border-bottom-color:var(--accent)}
+.finp::placeholder{color:var(--text3)}
+.finp:disabled{opacity:.5;cursor:not-allowed}
+select.finp{cursor:pointer;background:transparent}
+select.finp option{background:var(--surface);color:var(--text)}
+textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;padding:4px 0}
+/* CONFIRM BANNER */
+#confirm-banner{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);padding:13px 18px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+#confirm-banner.confirmed{border-left-color:var(--ok)}
+.banner-text strong{color:var(--text);display:block;margin-bottom:2px;font-size:13px}
+.banner-text span{font-size:11px;color:var(--text2)}
+.banner-actions{display:flex;gap:8px;flex-shrink:0;align-items:center}
+/* JOB MANAGEMENT VIEW */
+#job-mgmt{display:none}
+#job-mgmt.on{display:block}
+.mgmt-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.mgmt-card{background:var(--surface);border:1px solid var(--border);padding:0}
+.mgmt-card-hdr{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.mgmt-card-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--text2)}
+.mgmt-card-body{padding:12px 14px}
+/* MAP */
+#map-container{background:var(--surface);border:1px solid var(--border);margin-bottom:14px}
+#map-hdr{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+#map-canvas-wrap{position:relative;height:400px;background:var(--bg);overflow:hidden;cursor:grab}
+#proj-map{display:block;position:absolute;top:0;left:0}
+.map-btn{position:absolute;background:var(--surface);border:1px solid var(--border);color:var(--text2);font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 8px;cursor:pointer;transition:all .15s}
+.map-btn:hover{border-color:var(--accent);color:var(--accent)}
+#map-zin{top:8px;right:8px}
+#map-zout{top:36px;right:8px}
+#map-fit{top:64px;right:8px;font-size:8px;padding:3px 6px}
+/* PHASE / EQ CARDS */
+.phase-card,.eq-card{background:var(--surface2);border:1px solid var(--border);padding:10px 12px;margin-bottom:8px}
+.phase-card-hdr,.eq-card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.phase-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.sub-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.sub-field{display:flex;flex-direction:column;gap:3px}
+.sub-lbl{font-family:'JetBrains Mono',monospace;font-size:7px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)}
+.sub-inp{background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:'Syne',sans-serif;font-size:10px;padding:4px 7px;outline:none;width:100%}
+.sub-inp:focus{border-color:var(--accent)}
+.sub-inp::placeholder{color:var(--text3)}
+/* CONCERNS */
+.concern-row{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px}
+.concern-num{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--red);padding-top:8px;width:14px;flex-shrink:0}
+.concern-fields{flex:1;display:flex;flex-direction:column;gap:4px}
+.concern-fields input{background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Syne',sans-serif;font-size:11px;padding:5px 8px;outline:none;width:100%}
+.concern-fields input:focus{border-color:var(--red)}
+.concern-fields input::placeholder{color:var(--text3)}
+/* DAILY LOGS */
+.dl-hdr{display:grid;grid-template-columns:100px 1fr 55px 65px 65px 90px;background:var(--surface2);border-bottom:1px solid var(--border)}
+.dl-hdr .dlh{font-family:'JetBrains Mono',monospace;font-size:7px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:6px 8px;border-right:1px solid var(--border2)}
+.dl-hdr .dlh:last-child{border-right:none}
+.dl-row-wrap{border-bottom:1px solid var(--border2)}
+.dl-row{display:grid;grid-template-columns:100px 1fr 55px 65px 65px 90px}
+.dlc{padding:5px 8px;border-right:1px solid var(--border2)}
+.dlc:last-child{border-right:none}
+.dlc input{width:100%;background:transparent;border:none;color:var(--text2);font-family:'JetBrains Mono',monospace;font-size:9px;outline:none;padding:0}
+.dlc input:focus{color:var(--text)}
+.mat-row{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;padding:8px 10px;background:var(--surface2);border-top:1px solid var(--border2)}
+.mat-f{display:flex;flex-direction:column;gap:2px}
+.mat-l{font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--text3);letter-spacing:.06em;text-transform:uppercase}
+.mat-i{background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 5px;outline:none;width:100%}
+.mat-i:focus{border-color:var(--accent)}
+/* KPI ROW */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-bottom:14px;background:var(--surface);border:1px solid var(--border)}
+.kpi-cell{padding:14px;border-right:1px solid var(--border2);text-align:center}
+.kpi-cell:last-child{border-right:none}
+.kpi-lbl{font-family:'JetBrains Mono',monospace;font-size:7px;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);margin-bottom:5px}
+.kpi-val{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--accent)}
+.kpi-sub{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);margin-top:2px}
+/* REPORT TABS */
+.rtab-bar{display:flex;border-bottom:1px solid var(--border)}
+.rtab{font-family:'JetBrains Mono',monospace;font-size:9px;padding:10px 16px;border-bottom:2px solid transparent;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:all .15s;margin-bottom:-1px}
+.rtab:hover{color:var(--text2)}
+.rtab.on{color:var(--text);border-bottom-color:var(--accent)}
+.rtab.locked{opacity:.3;cursor:not-allowed;pointer-events:none}
+.rpanel{display:none;padding:0}
+.rpanel.on{display:block}
+/* LOCK OVERLAY */
+.lock-overlay{padding:44px;text-align:center;border:1px dashed var(--border);margin:16px}
+.lock-icon{font-size:22px;color:var(--text3);margin-bottom:8px}
+.lock-msg{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px;line-height:1.6}
+/* REPORT PAPER */
+.print-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:var(--surface2);border-bottom:1px solid var(--border)}
+.print-bar-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase}
+.report-paper{background:#fff;color:#111;font-family:'Syne',sans-serif}
+/* Report internals */
+.rpage{
+  padding:0;background:#fff;font-family:'Inter',system-ui,sans-serif;
+  color:#1a1a1a;page-break-after:always;break-after:page;
+}
+.rpage:last-child{page-break-after:auto;break-after:auto}
+
+/* Header */
+.r-header{
+  display:flex;justify-content:space-between;align-items:flex-start;
+  padding:40px 48px 28px;background:#fff;
+  border-bottom:1px solid #e5e7eb;
+}
+.r-brand{}
+.r-brand img{height:52px;max-width:180px;object-fit:contain;display:block;margin-bottom:10px}
+.rco{font-size:26px;font-weight:800;color:#0f0f0f;letter-spacing:-.03em;line-height:1}
+.rco-sub{font-size:11px;color:#9ca3af;margin-top:4px;font-weight:400;letter-spacing:.02em}
+.r-docinfo{text-align:right}
+.r-doctype{
+  display:inline-block;padding:6px 16px;
+  background:#111;color:#d4a843;
+  font-size:8px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;
+  margin-bottom:10px;
+}
+.rdoc-meta{font-size:11px;color:#9ca3af;line-height:2;text-align:right}
+
+/* Gold bar */
+.rstripe{height:4px;background:linear-gradient(90deg,#b8902f 0%,#d4a843 35%,#f2c94c 60%,#d4a843 80%,#b8902f 100%)}
+
+/* Client + Project info band */
+.r-infoband{display:grid;grid-template-columns:1.2fr 1fr 1fr;border-bottom:1px solid #f0f0f0}
+.r-infocell{padding:22px 28px;border-right:1px solid #f0f0f0}
+.r-infocell:last-child{border-right:none}
+.rproj-lbl{font-size:8px;font-weight:700;color:#d4a843;letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px}
+.r-infoname{font-size:17px;font-weight:700;color:#111;margin-bottom:3px;line-height:1.2}
+.r-infosub{font-size:11px;color:#6b7280;line-height:1.6}
+.rproj-name{font-size:14px;font-weight:600;color:#111}
+
+/* KPI grid */
+.rsumgrid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
+  gap:0;border-bottom:1px solid #f0f0f0;
+}
+.rsc{
+  padding:18px 20px;border-right:1px solid #f0f0f0;
+  position:relative;overflow:hidden;
+}
+.rsc:last-child{border-right:none}
+.rsc::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:#e5e7eb}
+.rsc.gold::before{background:#d4a843}
+.rsc.blue::before{background:#3b82f6}
+.rsc.orange::before{background:#f97316}
+.rsc.green::before{background:#22c55e}
+.rscl{font-size:8px;font-weight:600;color:#9ca3af;letter-spacing:.15em;text-transform:uppercase;margin-bottom:4px}
+.rscv{font-size:22px;font-weight:800;color:#111;line-height:1;letter-spacing:-.02em}
+
+/* Body */
+.r-body{padding:28px 48px 0}
+
+/* Section label */
+.rsec{
+  font-size:8px;font-weight:700;color:#d4a843;letter-spacing:.22em;text-transform:uppercase;
+  margin:24px 0 10px;padding-bottom:6px;
+  border-bottom:1.5px solid #f0f0f0;
+  display:flex;align-items:center;gap:8px;
+}
+.rsec::after{content:'';flex:1;height:1px;background:#f0f0f0;display:none}
+
+/* Table */
+.rtbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:18px}
+.rtbl thead tr{background:#f8f8f8;border-top:2px solid #111;border-bottom:1px solid #e5e7eb}
+.rtbl th{font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:#6b7280;padding:9px 12px;text-align:left}
+.rtbl td{padding:10px 12px;border-bottom:1px solid #f5f5f5;color:#374151;font-size:12px}
+.rtbl td.num{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right;color:#111}
+.rtbl tbody tr:hover{background:#fafafa}
+.rtbl tr.gtot td{
+  background:#111;color:#d4a843;
+  font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;
+  padding:12px;border:none;
+}
+.rtbl tr.gtot td:first-child{border-radius:2px 0 0 2px}
+.rtbl tr.gtot td:last-child{border-radius:0 2px 2px 0}
+
+/* Notes / conditions */
+.r-notes{
+  background:#fafafa;border-left:3px solid #d4a843;
+  padding:14px 18px;margin-bottom:14px;font-size:12px;
+  color:#4b5563;line-height:1.7;
+}
+
+/* Map */
+.rmap-wrap{width:100%;height:340px;background:#0d0d0f;position:relative;overflow:hidden;margin-bottom:20px;border-radius:2px}
+.rmap-canvas{position:absolute;top:0;left:0}
+
+/* Signatures */
+.rsigblock{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin:28px 0 20px}
+.rsig{}
+.rsigline{height:1px;background:#111;margin-bottom:7px}
+.rsiglbl{font-size:9px;color:#9ca3af;letter-spacing:.12em;text-transform:uppercase;font-weight:600}
+
+/* Footer */
+.rfooter{
+  font-size:9px;color:#9ca3af;line-height:1.6;
+  border-top:1px solid #f0f0f0;padding:12px 48px;
+  display:flex;justify-content:space-between;align-items:center;
+  margin-top:auto;
+}
+.rfooter-co{font-weight:600;color:#6b7280}
+
+/* Custom pages */
+.r-custom-page{
+  padding:48px;min-height:500px;
+  border-top:4px solid #d4a843;
+}
+.r-custom-page h2{font-size:22px;font-weight:700;color:#111;margin:0 0 16px;letter-spacing:-.02em}
+.r-custom-page p{font-size:13px;color:#374151;line-height:1.8;margin:0 0 14px}
+.r-custom-page img{max-width:100%;height:auto;margin:12px 0}
+
+
+@media print{
+  #hdr,#status-row,#confirm-banner,#job-mgmt .sec:not(.printing),
+  .print-bar,.rtab-bar,.sec:not(.report-sec),.mgmt-grid,.kpi-row,
+  #map-container{display:none!important}
+  .rpanel{display:block!important}
+  .report-paper{border:none}
+  body{background:#fff}
+  #main{padding:0;max-width:none}
+}
+</style>
+</head>
+<body>
+
+<div id="auth-check">
+  <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:#d4a843;margin-bottom:6px">PaveView</div>
+  <div style="font-size:9px;color:#444;letter-spacing:.2em;text-transform:uppercase;margin-bottom:20px">Project</div>
+  <div style="display:flex;align-items:center;gap:10px;font-size:10px;color:#444"><div class="spin"></div>Loading…</div>
+</div>
+
+<div id="hdr">
+  <span class="logo">PAVE<em>VIEW</em></span>
+  <div id="breadcrumb">
+    <a href="dashboard.html">Dashboard</a>
+    <span style="color:var(--text3)">›</span>
+    <span id="bc-name" style="color:var(--text2)">Project</span>
+  </div>
+  <div class="hright">
+    <button class="btn" id="btn-edit-takeoff">Edit Estimate</button>
+    <div class="hdiv"></div>
+    <button class="btn" onclick="window.print()">Print</button>
+    <button class="btn" id="btn-theme-proj" onclick="toggleThemeProj()">Light</button>
+    <button class="btn danger" id="btn-delete">Delete</button>
+  </div>
+</div>
+
+<div id="main" style="display:none">
+
+  <!-- STATS BAR -->
+  <div id="stats-bar">
+    <div class="stat-cell"><div class="stat-lbl">Total Area</div><div class="stat-val" id="ph-sqft">—</div><div class="stat-sub">sq ft</div></div>
+    <div class="stat-cell"><div class="stat-lbl">Est. Cost</div><div class="stat-val" id="ph-cost">—</div></div>
+    <div class="stat-cell"><div class="stat-lbl">Job Type</div><div class="stat-val" id="ph-type" style="font-size:13px;margin-top:4px">—</div></div>
+    <div class="stat-cell"><div class="stat-lbl">Stalls</div><div class="stat-val" id="ph-stalls" style="color:var(--blue)">—</div></div>
+    <div class="stat-cell"><div class="stat-lbl">Created</div><div class="stat-val" id="ph-date" style="font-size:11px;margin-top:6px">—</div></div>
+  </div>
+
+  <!-- STATUS -->
+  <div id="status-row">
+    <span class="status-lbl">Status</span>
+    <button class="status-opt" data-s="estimating" onclick="setStatus('estimating')">Estimating</button>
+    <button class="status-opt" data-s="awarded" onclick="setStatus('awarded')">Awarded</button>
+    <button class="status-opt" data-s="in_progress" onclick="setStatus('in_progress')">In Progress</button>
+    <button class="status-opt" data-s="complete" onclick="setStatus('complete')">Complete</button>
+    <button class="status-opt" data-s="cancelled" onclick="setStatus('cancelled')">Cancelled</button>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       ESTIMATING VIEW
+  ════════════════════════════════════════════════════ -->
+  <div id="view-estimating" style="display:none">
+
+    <!-- Confirm / Edit Settings banner -->
+    <div id="confirm-banner">
+      <div class="banner-text">
+        <strong id="banner-title">Fill in project details to generate reports</strong>
+        <span id="banner-sub">Required: Client Name, Job Address, and Asphalt pricing ($/ton)</span>
+      </div>
+      <div class="banner-actions">
+        <button class="btn ghost" id="btn-save-details">Save Progress</button>
+        <button class="btn" id="btn-edit-settings" style="display:none" onclick="toggleSettingsForm(true)">⚙ Edit Project Settings</button>
+        <button class="btn ok" id="btn-confirm">Confirm & Generate Reports</button>
+      </div>
+    </div>
+
+    <!-- Settings form (collapses after confirm) -->
+    <div id="settings-form">
+      <!-- CLIENT INFO -->
+      <div class="sec">
+        <div class="sec-hdr"><span class="sec-title">Client Information</span></div>
+        <div class="frow three">
+          <div class="field"><div class="flbl">Client / Company Name <span class="req">*</span></div><input class="finp" id="f-client-name" placeholder="e.g. Valley Properties LLC"></div>
+          <div class="field"><div class="flbl">Contact Person</div><input class="finp" id="f-contact" placeholder="e.g. John Smith"></div>
+          <div class="field"><div class="flbl">Contact Phone</div><input class="finp" id="f-phone" placeholder="(540) 555-0100"></div>
+        </div>
+        <div class="frow three">
+          <div class="field"><div class="flbl">Contact Email</div><input class="finp" id="f-email" placeholder="john@company.com"></div>
+          <div class="field"><div class="flbl">Job Site Address <span class="req">*</span></div><input class="finp" id="f-address" placeholder="123 Commerce Blvd, Salem VA"></div>
+          <div class="field"><div class="flbl">Job Number</div><input class="finp" id="f-job-num" placeholder="PV-2026-0042"></div>
+        </div>
+      </div>
+      <!-- PRICING -->
+      <div class="sec">
+        <div class="sec-hdr">
+          <span class="sec-title">Pricing & Scope <span class="req">*</span></span>
+          <button class="btn ghost" id="btn-load-defaults" style="padding:2px 10px;font-size:8px" onclick="loadAccountDefaults()">↓ Load Account Defaults</button>
+        </div>
+        <div id="pricing-defaults-banner" style="display:none;padding:8px 14px;background:var(--ok-bg);border-bottom:1px solid var(--ok-border);font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ok)">✓ Account defaults loaded — override any field below for this job</div>
+        <div class="frow three">
+          <div class="field"><div class="flbl">Asphalt ($/ton) <span class="req">*</span></div><input class="finp" type="number" id="f-pa" placeholder="85"></div>
+          <div class="field"><div class="flbl">Base agg ($/ton)</div><input class="finp" type="number" id="f-pb" placeholder="22"></div>
+          <div class="field"><div class="flbl">Labor ($/sq ft)</div><input class="finp" type="number" id="f-pl" placeholder="1.25" step=".05"></div>
+        </div>
+        <div class="frow three">
+          <div class="field"><div class="flbl">Asphalt depth (in)</div><input class="finp" type="number" id="f-depth" placeholder="3" step=".5"></div>
+          <div class="field"><div class="flbl">Base depth (in)</div><input class="finp" type="number" id="f-base" placeholder="6"></div>
+          <div class="field"><div class="flbl">Compaction factor</div><input class="finp" type="number" id="f-comp" placeholder="1.05" step=".01"></div>
+        </div>
+        <div class="frow">
+          <div class="field"><div class="flbl">Scope Notes / Exclusions</div><textarea class="finp" id="f-scope" placeholder="e.g. Excludes milling. Includes 2 coats sealcoat on north lot."></textarea></div>
+          <div class="field"><div class="flbl">Special Conditions</div><textarea class="finp" id="f-conditions" placeholder="e.g. No work before 6AM. Property manager on site required."></textarea></div>
+        </div>
+      </div>
+      <!-- FOREMAN -->
+      <div class="sec">
+        <div class="sec-hdr"><span class="sec-title">Foreman & Logistics</span><span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3)">Used in foreman report</span></div>
+        <div class="frow three">
+          <div class="field"><div class="flbl">Estimator</div><input class="finp" id="f-estimator" placeholder="K. Williams"></div>
+          <div class="field"><div class="flbl">PM / Foreman</div><input class="finp" id="f-pm" placeholder="T. Johnson"></div>
+          <div class="field"><div class="flbl">Scheduled Start</div><input class="finp" type="date" id="f-start-date"></div>
+        </div>
+        <div class="frow three">
+          <div class="field"><div class="flbl">Asphalt Plant</div><input class="finp" id="f-plant" placeholder="Blue Ridge Asphalt — Salem"></div>
+          <div class="field"><div class="flbl">Plant Contact / Delivery</div><input class="finp" id="f-plant-contact" placeholder="540-555-0301 · 5AM delivery"></div>
+          <div class="field"><div class="flbl">Mix Type</div><input class="finp" id="f-mix" placeholder="12.5mm Type S-4B"></div>
+        </div>
+        <div class="frow three">
+          <div class="field"><div class="flbl">Trucking Company</div><input class="finp" id="f-trucking" placeholder="Roanoke Haulers LLC"></div>
+          <div class="field"><div class="flbl">Trucking Contact</div><input class="finp" id="f-trucking-contact" placeholder="540-555-0456 · 4 trucks"></div>
+          <div class="field"><div class="flbl">Dump Site</div><input class="finp" id="f-dump" placeholder="Valley Quarry — Mill Rd entrance"></div>
+        </div>
+        <div class="frow one">
+          <div class="field"><div class="flbl">PM Notes (alert banner on foreman sheet)</div><textarea class="finp" id="f-pm-notes" placeholder="e.g. Property manager Dave Chen wants zero equipment on north side before 7 AM…"></textarea></div>
+        </div>
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border2)">
+          <div class="flbl" style="margin-bottom:8px">Customer Concerns <span style="font-size:7px;color:var(--text3)">(print red on foreman sheet)</span></div>
+          <div class="concern-row"><span class="concern-num">1</span><div class="concern-fields"><input id="f-c1" placeholder="Concern description…"><input id="f-c1s" placeholder="Source / note"></div></div>
+          <div class="concern-row"><span class="concern-num">2</span><div class="concern-fields"><input id="f-c2" placeholder="Concern description…"><input id="f-c2s" placeholder="Source / note"></div></div>
+          <div class="concern-row"><span class="concern-num">3</span><div class="concern-fields"><input id="f-c3" placeholder="Concern description…"><input id="f-c3s" placeholder="Source / note"></div></div>
+        </div>
+        <!-- Phases -->
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border2)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div class="flbl">Phases</div>
+            <button class="btn ghost" id="btn-add-phase" style="padding:2px 8px;font-size:8px">+ Add Phase</button>
+          </div>
+          <div id="phases-list"></div>
+        </div>
+        <!-- Equipment -->
+        <div style="padding:10px 14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div class="flbl">Equipment</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <select id="eq-picker" class="finp" style="font-size:10px;padding:3px 6px;border:1px solid var(--border);width:auto;color:var(--text2)">
+                <option value="">+ Add from library…</option>
+              </select>
+              <button class="btn ghost" id="btn-add-eq" style="padding:2px 8px;font-size:8px">+ Custom</button>
+            </div>
+          </div>
+          <div id="eq-list"></div>
+        </div>
+      </div>
+    </div><!-- /settings-form -->
+
+    <!-- REPORTS SECTION (always shown in estimating view) -->
+    <div class="sec report-sec" style="margin-top:14px">
+      <div class="sec-hdr"><span class="sec-title">Reports</span></div>
+      <div class="rtab-bar">
+        <div class="rtab on" data-tab="client" onclick="switchReport('client')">Client Proposal</div>
+        <div class="rtab" data-tab="contractor" onclick="switchReport('contractor')">Contractor</div>
+        <div class="rtab" data-tab="foreman" onclick="switchReport('foreman')">Foreman</div>
+        <div class="rtab" data-tab="completion" onclick="switchReport('completion')">Completion</div>
+      </div>
+      <div id="rpanel-client" class="rpanel on">
+        <div id="lock-client" class="lock-overlay"><div class="lock-icon">🔒</div><div class="lock-msg">Fill in Client Name, Address, and Pricing above,<br>then click Confirm & Generate Reports</div><button class="btn accent" onclick="document.getElementById('btn-confirm').click()">Confirm & Generate</button></div>
+        <div id="pbar-client" class="print-bar" style="display:none">
+  <span class="print-bar-lbl">Client Proposal</span>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <label style="font-size:9px;color:var(--text3);display:flex;align-items:center;gap:4px">
+      Theme:
+      <select id="theme-picker" class="finp" style="font-size:9px;padding:2px 6px;width:auto" onchange="applyTheme(this.value)">
+        <option value="">Default</option>
+      </select>
+    </label>
+    <button class="btn" onclick="openPhaseBuilder()" style="font-size:9px;padding:4px 10px">⊞ Phases</button>
+    <button class="btn" onclick="addCustomPage('client')" style="font-size:9px;padding:4px 10px">+ Page</button>
+    <a href="report-builder.html" class="btn" style="font-size:9px;padding:4px 10px;text-decoration:none">Edit Themes ↗</a>
+    <button class="btn accent" onclick="window.print()">⎙ Print / PDF</button>
+  </div>
+</div>
+<div id="custom-pages-client" style="display:none;padding:12px 16px;background:#fafafa;border-bottom:1px solid #e5e7eb"></div>
+        <div id="report-client" class="report-paper" style="display:none"></div>
+      </div>
+      <div id="rpanel-contractor" class="rpanel">
+        <div id="lock-contractor" class="lock-overlay"><div class="lock-icon">🔒</div><div class="lock-msg">Confirm project details to unlock</div></div>
+        <div id="pbar-contractor" class="print-bar" style="display:none"><span class="print-bar-lbl">Contractor Work Order</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div id="report-contractor" class="report-paper" style="display:none"></div>
+      </div>
+      <div id="rpanel-foreman" class="rpanel">
+        <div id="lock-foreman" class="lock-overlay"><div class="lock-icon">🔒</div><div class="lock-msg">Confirm project details to unlock</div></div>
+        <div id="pbar-foreman" class="print-bar" style="display:none">
+  <span class="print-bar-lbl">Foreman Work Order</span>
+  <div style="display:flex;gap:8px;align-items:center">
+    <button class="btn" onclick="addCustomPage('foreman')" style="font-size:9px;padding:4px 10px">+ Add Page</button>
+    <button class="btn accent" onclick="window.print()">Print / PDF</button>
+  </div>
+</div>
+<div id="custom-pages-foreman" style="display:none;padding:12px 16px;background:#fafafa;border-bottom:1px solid #e5e7eb"></div>
+        <div id="report-foreman" class="report-paper" style="display:none"></div>
+      </div>
+      <div id="rpanel-completion" class="rpanel">
+        <div id="lock-completion" class="lock-overlay"><div class="lock-icon">🔒</div><div class="lock-msg">Confirm project details to unlock</div></div>
+        <div id="pbar-completion" class="print-bar" style="display:none"><span class="print-bar-lbl">Completion Report</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div id="report-completion" class="report-paper" style="display:none"></div>
+      </div>
+    </div>
+
+  </div><!-- /view-estimating -->
+
+  <!-- ═══════════════════════════════════════════════════
+       JOB MANAGEMENT VIEW (Awarded / In Progress)
+  ════════════════════════════════════════════════════ -->
+  <div id="view-active" style="display:none">
+
+    <!-- KPIs -->
+    <div class="kpi-row">
+      <div class="kpi-cell"><div class="kpi-lbl">Total Area</div><div class="kpi-val" id="kpi-sqft">—</div><div class="kpi-sub">sq ft</div></div>
+      <div class="kpi-cell"><div class="kpi-lbl">Asphalt (tons)</div><div class="kpi-val" id="kpi-tons">—</div></div>
+      <div class="kpi-cell"><div class="kpi-lbl">Man Hours (actual)</div><div class="kpi-val" id="kpi-mh">0</div></div>
+      <div class="kpi-cell"><div class="kpi-lbl">Days Logged</div><div class="kpi-val" id="kpi-days">0</div></div>
+    </div>
+
+    <!-- MAP -->
+    <div id="map-container">
+      <div id="map-hdr">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--text2)">Site Map</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3)">Scroll to zoom · Drag to pan</span>
+      </div>
+      <div id="map-canvas-wrap">
+        <canvas id="proj-map"></canvas>
+        <button class="map-btn" id="map-zin">+</button>
+        <button class="map-btn" id="map-zout">−</button>
+        <button class="map-btn" id="map-fit">FIT</button>
+      </div>
+    </div>
+
+    <!-- TWO COL: PM Notes + Quick Info -->
+    <div class="mgmt-grid">
+      <div class="mgmt-card">
+        <div class="mgmt-card-hdr"><span class="mgmt-card-title">Job Info</span></div>
+        <div class="mgmt-card-body" id="mgmt-job-info" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text2);line-height:2"></div>
+      </div>
+      <div class="mgmt-card">
+        <div class="mgmt-card-hdr">
+          <span class="mgmt-card-title">PM Notes</span>
+        </div>
+        <div class="mgmt-card-body" id="mgmt-pm-notes" style="font-size:12px;color:var(--text2);line-height:1.65"></div>
+      </div>
+    </div>
+
+    <!-- PHASES -->
+    <div class="sec">
+      <div class="sec-hdr">
+        <span class="sec-title">Phases</span>
+        <button class="btn ghost" id="btn-add-phase-mgmt" style="padding:2px 8px;font-size:8px">+ Add Phase</button>
+      </div>
+      <div style="padding:10px 14px"><div id="phases-list-mgmt"></div></div>
+    </div>
+
+    <!-- DAILY LOGS -->
+    <div class="sec">
+      <div class="sec-hdr">
+        <span class="sec-title">Daily Field Reports</span>
+        <button class="btn ok" id="btn-add-log" style="padding:3px 10px;font-size:8px">+ Add Day</button>
+      </div>
+      <div class="dl-hdr">
+        <div class="dlh">Date</div><div class="dlh">Phase / Area</div><div class="dlh">%</div>
+        <div class="dlh">Man Hrs</div><div class="dlh">Eq Hrs</div><div class="dlh">Actions</div>
+      </div>
+      <div id="daily-logs-list"></div>
+    </div>
+
+    <!-- COMPLETION ACTUALS -->
+    <div class="sec">
+      <div class="sec-hdr"><span class="sec-title">Completion Actuals</span></div>
+      <div class="frow three">
+        <div class="field"><div class="flbl">Actual Start</div><input class="finp" type="date" id="f-actual-start"></div>
+        <div class="field"><div class="flbl">Actual End</div><input class="finp" type="date" id="f-actual-end"></div>
+        <div class="field"><div class="flbl">Final Invoice ($)</div><input class="finp" type="number" id="f-invoice" placeholder="0"></div>
+      </div>
+      <div class="frow">
+        <div class="field"><div class="flbl">Change Order ($)</div><input class="finp" type="number" id="f-change-order" placeholder="0"></div>
+        <div class="field"><div class="flbl">Completion Notes</div><input class="finp" id="f-comp-notes" placeholder="Issues, delays, sign-off notes…"></div>
+      </div>
+    </div>
+
+    <!-- Reports (always available for active jobs) -->
+    <div class="sec report-sec">
+      <div class="sec-hdr"><span class="sec-title">Reports</span></div>
+      <div class="rtab-bar">
+        <div class="rtab on" data-tab="client-a" onclick="switchReport('client-a')">Client</div>
+        <div class="rtab" data-tab="foreman-a" onclick="switchReport('foreman-a')">Foreman</div>
+        <div class="rtab" data-tab="completion-a" onclick="switchReport('completion-a')">Completion</div>
+      </div>
+      <div id="rpanel-client-a" class="rpanel on">
+        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div id="report-client-a" class="report-paper"></div>
+      </div>
+      <div id="rpanel-foreman-a" class="rpanel">
+        <div class="print-bar"><span class="print-bar-lbl">Foreman Work Order</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div id="report-foreman-a" class="report-paper"></div>
+      </div>
+      <div id="rpanel-completion-a" class="rpanel">
+        <div class="print-bar"><span class="print-bar-lbl">Completion Report</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div id="report-completion-a" class="report-paper"></div>
+      </div>
+    </div>
+
+  </div><!-- /view-active -->
+
+  <!-- ═══════════════════════════════════════════════════
+       COMPLETE / CANCELLED VIEW
+  ════════════════════════════════════════════════════ -->
+  <div id="view-complete" style="display:none">
+    <div class="kpi-row" id="complete-kpis">
+      <div class="kpi-cell"><div class="kpi-lbl">Invoice</div><div class="kpi-val" id="ckpi-invoice">—</div></div>
+      <div class="kpi-cell"><div class="kpi-lbl">Gross Profit</div><div class="kpi-val" id="ckpi-profit">—</div></div>
+      <div class="kpi-cell"><div class="kpi-lbl">Margin</div><div class="kpi-val" id="ckpi-margin">—</div></div>
+      <div class="kpi-cell"><div class="kpi-lbl">Days on Job</div><div class="kpi-val" id="ckpi-days">—</div></div>
+    </div>
+    <div class="sec report-sec">
+      <div class="sec-hdr"><span class="sec-title">Reports</span></div>
+      <div class="rtab-bar">
+        <div class="rtab on" data-tab="client-c" onclick="switchReport('client-c')">Client</div>
+        <div class="rtab" data-tab="foreman-c" onclick="switchReport('foreman-c')">Foreman</div>
+        <div class="rtab" data-tab="completion-c" onclick="switchReport('completion-c')">Completion</div>
+      </div>
+      <div id="rpanel-client-c" class="rpanel on">
+        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div id="report-client-c" class="report-paper"></div>
+      </div>
+      <div id="rpanel-foreman-c" class="rpanel">
+        <div class="print-bar"><span class="print-bar-lbl">Foreman</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div id="report-foreman-c" class="report-paper"></div>
+      </div>
+      <div id="rpanel-completion-c" class="rpanel">
+        <div class="print-bar"><span class="print-bar-lbl">Completion Report</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div id="report-completion-c" class="report-paper"></div>
+      </div>
+    </div>
+  </div><!-- /view-complete -->
+
+</div><!-- /main -->
+
+<!-- PHASE BUILDER MODAL -->
+<div id="phase-modal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.7);overflow:auto">
+  <div style="background:var(--bg,#141416);border:1px solid var(--border,#2a2a2c);max-width:780px;margin:40px auto;border-radius:4px;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--surface,#1c1c1e);border-bottom:1px solid var(--border,#2a2a2c)">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text,#f0eeea);letter-spacing:.08em">PHASE MAP BUILDER</span>
+      <button onclick="document.getElementById('phase-modal').style.display='none'" style="background:none;border:none;color:var(--text3,#666);cursor:pointer;font-size:16px">✕</button>
+    </div>
+    <div style="padding:20px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3,#666);margin-bottom:14px;line-height:1.6">
+        Create phases by grouping zones. Each phase gets a screenshot for the report and active project view. Use search to highlight zones for screenshotting.
+      </div>
+      <!-- Phase list -->
+      <div id="phase-builder-list"></div>
+      <button onclick="addReportPhase()" class="btn" style="width:100%;padding:8px;font-size:9px;border-style:dashed;margin-top:8px">+ Add Phase</button>
+    </div>
+    <!-- Map preview for screenshotting -->
+    <div style="padding:0 20px 20px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3,#666);margin-bottom:8px">
+        Phase Preview — click a phase above to highlight its zones, then screenshot
+      </div>
+      <div style="position:relative;background:#0d0d0f;border:1px solid var(--border,#2a2a2c)">
+        <canvas id="phase-preview-canvas" width="700" height="380" style="display:block;width:100%"></canvas>
+        <div style="position:absolute;top:8px;right:8px;display:flex;gap:6px">
+          <button onclick="capturePhaseScreenshot()" class="btn accent" style="font-size:9px;padding:4px 10px">📷 Capture</button>
+        </div>
+      </div>
+      <div id="phase-capture-status" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ok,#22c55e);margin-top:6px;display:none">✓ Phase captured — will appear in report</div>
+    </div>
+    <div style="padding:12px 20px;border-top:1px solid var(--border,#2a2a2c);display:flex;justify-content:flex-end;gap:8px">
+      <button onclick="document.getElementById('phase-modal').style.display='none'" class="btn">Done</button>
+      <button onclick="applyPhasesToReport()" class="btn accent">Apply to Report</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE TEMPLATE PICKER -->
+<div id="template-modal" style="display:none;position:fixed;inset:0;z-index:1001;background:rgba(0,0,0,.75);overflow:auto">
+  <div style="background:var(--bg,#141416);border:1px solid var(--border,#2a2a2c);max-width:680px;margin:60px auto;border-radius:4px;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--surface,#1c1c1e);border-bottom:1px solid var(--border,#2a2a2c)">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text,#f0eeea);letter-spacing:.08em">CHOOSE PAGE TEMPLATE</span>
+      <button onclick="document.getElementById('template-modal').style.display='none'" style="background:none;border:none;color:var(--text3,#666);cursor:pointer;font-size:16px">✕</button>
+    </div>
+    <div id="template-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:20px"></div>
+    <div style="padding:12px 20px;border-top:1px solid var(--border,#2a2a2c);text-align:right">
+      <button onclick="document.getElementById('template-modal').style.display='none'" class="btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SB_URL='https://rqgyqqyxlwjpbdkapvpz.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
+const sb=supabase.createClient(SB_URL,SB_KEY);
+let currentUser=null,projectId=null,projectData={},phases=[],equipment=[],dailyLogs=[],confirmed=false;
+let brandPrimary=localStorage.getItem('paveview_brand_primary')||'#111111';
+let brandAccent=localStorage.getItem('paveview_brand_accent')||'#d4a843';
+let reportPhases=[]; // [{id,name,zoneIds,screenshot}]
+
+let mapZoom=1,mapPanX=0,mapPanY=0,mapDragging=false,mapLastX=0,mapLastY=0,mapImgW=0,mapImgH=0,mapBgImg=null;
+
+// ── THEME ──
+function toggleThemeProj(){
+  const l=document.body.classList.toggle('light');
+  document.getElementById('btn-theme-proj').textContent=l?'Dark':'Light';
+  localStorage.setItem('paveview_theme',l?'light':'dark');
+}
+(()=>{if(localStorage.getItem('paveview_theme')==='light'){document.body.classList.add('light');const b=document.getElementById('btn-theme-proj');if(b)b.textContent='Dark';}})();
+
+// ── INIT ──
+(async()=>{
+  const{data:{session}}=await sb.auth.getSession();
+  if(!session){window.location.replace('login.html');return;}
+  currentUser=session.user;
+  const{data:p}=await sb.from('purchases').select('id').eq('user_id',currentUser.id).eq('status','active').limit(1);
+  if(!p||!p.length){window.location.replace('index.html');return;}
+  projectId=new URLSearchParams(window.location.search).get('id');
+  if(!projectId){window.location.replace('dashboard.html');return;}
+  const{data:proj,error}=await sb.from('projects').select('*').eq('id',projectId).eq('user_id',currentUser.id).single();
+  if(error||!proj){window.location.replace('dashboard.html');return;}
+  try{projectData=typeof proj.data==='string'?JSON.parse(proj.data):proj.data||{};}catch(e){projectData={};}
+  const name=proj.name||'Untitled Project';
+  document.title='PaveView — '+name;
+  document.getElementById('bc-name').textContent=name;
+  document.getElementById('ph-sqft').textContent=projectData.totalSqft?projectData.totalSqft.toLocaleString():'—';
+  document.getElementById('ph-cost').textContent=projectData.totalCost?'$'+projectData.totalCost.toLocaleString():'—';
+  const typeLabels={paving:'Paving',sealcoat:'Sealcoat',both:'Paving+Seal',striping:'Striping'};
+  document.getElementById('ph-type').textContent=typeLabels[projectData.jobType]||'Paving';
+  document.getElementById('ph-stalls').textContent=(projectData.stallCount||0)+(projectData.adaCount||0)||'—';
+  document.getElementById('ph-date').textContent=new Date(proj.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  document.getElementById('btn-edit-takeoff').onclick=()=>window.location.href='app.html?project='+projectId;
+  document.getElementById('btn-delete').onclick=deleteProject;
+  // Pre-fill pricing from projectData
+  ['pa','pb','pl','depth','base','comp'].forEach(k=>{if(projectData[k])sv2('f-'+k,projectData[k]);});
+  loadSavedDetails();
+  // Auto-load account defaults if no pricing has been set yet
+  if(!gv('f-pa')&&!projectData.pa){
+    const pricing=JSON.parse(localStorage.getItem('paveview_pricing')||'{}');
+    const map={pa:'f-pa',pb:'f-pb',pl:'f-pl',depth:'f-depth',base:'f-base',comp:'f-comp'};
+    Object.entries(map).forEach(([k,id])=>{if(pricing[k])sv2(id,pricing[k]);});
+  }
+  document.getElementById('auth-check').remove();
+  document.getElementById('main').style.display='block';
+  // Load map image
+  if(projectData.planPath){loadMapImage(projectData.planPath);}
+})();
+
+// ── STATUS ──
+function setStatus(s){
+  document.querySelectorAll('.status-opt').forEach(b=>b.classList.toggle('on',b.dataset.s===s));
+  switchView(s);
+  saveDetails();
+}
+function currentStatus(){return document.querySelector('.status-opt.on')?.dataset.s||'estimating';}
+
+function switchView(s){
+  const isActive=s==='awarded'||s==='in_progress';
+  const isComplete=s==='complete'||s==='cancelled';
+  const isEst=s==='estimating';
+  document.getElementById('view-estimating').style.display=isEst?'block':'none';
+  document.getElementById('view-active').style.display=isActive?'block':'none';
+  document.getElementById('view-complete').style.display=isComplete?'block':'none';
+  if(isActive){
+    updateActiveMgmt();
+    buildActiveReports();
+    initMap();
+  }
+  if(isComplete){
+    updateCompleteKpis();
+    buildCompleteReports();
+  }
+}
+
+// ── MAP ──
+async function loadMapImage(planPath){
+  try{
+    const{data,error}=await sb.storage.from('project-plans').download(planPath);
+    if(error||!data)return;
+    const url=URL.createObjectURL(data);
+    const img=new Image();
+    img.onload=()=>{
+      mapBgImg=img;mapImgW=img.naturalWidth;mapImgH=img.naturalHeight;
+      URL.revokeObjectURL(url);
+      initMap();
+    };
+    img.src=url;
+  }catch(e){console.warn('Map load failed:',e);}
+}
+
+function initMap(){
+  const canvas=document.getElementById('proj-map');
+  const wrap=document.getElementById('map-canvas-wrap');
+  if(!canvas||!wrap||!mapImgW)return;
+  canvas.width=wrap.clientWidth||900;
+  canvas.height=wrap.clientHeight||400;
+  mapFit();
+  mapDraw();
+  canvas.onwheel=e=>{
+    e.preventDefault();
+    const r=canvas.getBoundingClientRect();
+    const cx=e.clientX-r.left,cy=e.clientY-r.top;
+    const f=e.deltaY<0?1.12:1/1.12;
+    const nz=Math.max(.05,Math.min(20,mapZoom*f));
+    mapPanX=cx-(cx-mapPanX)*(nz/mapZoom);mapPanY=cy-(cy-mapPanY)*(nz/mapZoom);
+    mapZoom=nz;mapDraw();
+  };
+  canvas.onmousedown=e=>{mapDragging=true;mapLastX=e.clientX;mapLastY=e.clientY;canvas.style.cursor='grabbing';};
+  window.addEventListener('mousemove',e=>{
+    if(!mapDragging)return;
+    mapPanX+=e.clientX-mapLastX;mapPanY+=e.clientY-mapLastY;
+    mapLastX=e.clientX;mapLastY=e.clientY;mapDraw();
+  });
+  window.addEventListener('mouseup',()=>{if(mapDragging){mapDragging=false;const c=document.getElementById('proj-map');if(c)c.style.cursor='grab';}});
+  document.getElementById('map-zin').onclick=()=>{const c=document.getElementById('proj-map');if(!c)return;const cx=c.width/2,cy=c.height/2;const nz=Math.min(20,mapZoom*1.3);mapPanX=cx-(cx-mapPanX)*(nz/mapZoom);mapPanY=cy-(cy-mapPanY)*(nz/mapZoom);mapZoom=nz;mapDraw();};
+  document.getElementById('map-zout').onclick=()=>{const c=document.getElementById('proj-map');if(!c)return;const cx=c.width/2,cy=c.height/2;const nz=Math.max(.05,mapZoom/1.3);mapPanX=cx-(cx-mapPanX)*(nz/mapZoom);mapPanY=cy-(cy-mapPanY)*(nz/mapZoom);mapZoom=nz;mapDraw();};
+  document.getElementById('map-fit').onclick=mapFit;
+}
+
+function mapFit(){
+  const canvas=document.getElementById('proj-map');
+  if(!canvas||!mapImgW)return;
+  const pad=20;
+  mapZoom=Math.min((canvas.width-pad*2)/mapImgW,(canvas.height-pad*2)/mapImgH);
+  mapPanX=(canvas.width-mapImgW*mapZoom)/2;mapPanY=(canvas.height-mapImgH*mapZoom)/2;
+  mapDraw();
+}
+
+function mapDraw(){
+  const canvas=document.getElementById('proj-map');
+  if(!canvas||!mapImgW)return;
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save();ctx.translate(mapPanX,mapPanY);ctx.scale(mapZoom,mapZoom);
+  if(mapBgImg)ctx.drawImage(mapBgImg,0,0);
+  // Draw zones
+  (projectData.zones||[]).forEach(z=>{
+    if(!z.pts||z.pts.length<3)return;
+    ctx.beginPath();z.pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));ctx.closePath();
+    ctx.fillStyle=(z.color||'#d4a843')+'33';ctx.fill();
+    ctx.strokeStyle=z.color||'#d4a843';ctx.lineWidth=2/mapZoom;ctx.stroke();
+    // Label
+    const cx2=z.pts.reduce((s,p)=>s+p.x,0)/z.pts.length;
+    const cy2=z.pts.reduce((s,p)=>s+p.y,0)/z.pts.length;
+    const fs=Math.max(10,14/mapZoom);
+    ctx.font=`600 ${fs}px Syne,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    const tw=ctx.measureText(z.name).width;
+    ctx.fillStyle='rgba(0,0,0,.8)';ctx.fillRect(cx2-tw/2-6,cy2-fs/2-4,tw+12,fs+8);
+    ctx.fillStyle=z.color||'#d4a843';ctx.fillText(z.name,cx2,cy2);
+  });
+  // Draw markers
+  (projectData.markers||[]).forEach(m=>{
+    const col={stall:'#f5c842',ada:'#3b82f6',bollard:'#f97316',stopblock:'#ef4444',stencil:'#a855f7'}[m.type]||'#fff';
+    const r=Math.max(4,7/mapZoom);
+    ctx.beginPath();ctx.arc(m.x,m.y,r,0,Math.PI*2);ctx.fillStyle=col;ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=1/mapZoom;ctx.stroke();
+  });
+  ctx.restore();
+}
+
+// Same mapDraw used in reports - renders to a given canvas element
+function mapDrawToCanvas(canvas){
+  if(!canvas||!mapImgW)return;
+  const ctx=canvas.getContext('2d');
+  const pad=20;
+  const zoom=Math.min((canvas.width-pad*2)/mapImgW,(canvas.height-pad*2)/mapImgH);
+  const panX=(canvas.width-mapImgW*zoom)/2,panY=(canvas.height-mapImgH*zoom)/2;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#0d0d0f';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.save();ctx.translate(panX,panY);ctx.scale(zoom,zoom);
+  if(mapBgImg)ctx.drawImage(mapBgImg,0,0);
+  (projectData.zones||[]).forEach(z=>{
+    if(!z.pts||z.pts.length<3)return;
+    ctx.beginPath();z.pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));ctx.closePath();
+    ctx.fillStyle=(z.color||'#d4a843')+'33';ctx.fill();
+    ctx.strokeStyle=z.color||'#d4a843';ctx.lineWidth=2/zoom;ctx.stroke();
+    const cx2=z.pts.reduce((s,p)=>s+p.x,0)/z.pts.length;
+    const cy2=z.pts.reduce((s,p)=>s+p.y,0)/z.pts.length;
+    const fs=Math.max(10,13/zoom);
+    ctx.font=`600 ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    const tw=ctx.measureText(z.name).width;
+    ctx.fillStyle='rgba(0,0,0,.8)';ctx.fillRect(cx2-tw/2-6,cy2-fs/2-4,tw+12,fs+8);
+    ctx.fillStyle=z.color||'#d4a843';ctx.fillText(z.name,cx2,cy2);
+  });
+  (projectData.markers||[]).forEach(m=>{
+    const col={stall:'#f5c842',ada:'#3b82f6',bollard:'#f97316',stopblock:'#ef4444',stencil:'#a855f7'}[m.type]||'#fff';
+    const r=Math.max(4,6/zoom);
+    ctx.beginPath();ctx.arc(m.x,m.y,r,0,Math.PI*2);ctx.fillStyle=col;ctx.fill();
+  });
+  ctx.restore();
+}
+
+// ── SAVE / LOAD ──
+function gv(id){return document.getElementById(id)?.value?.trim()||'';}
+function sv2(id,val){const el=document.getElementById(id);if(el&&val!==undefined&&val!==null)el.value=val;}
+
+function getDetails(){
+  return{
+    clientName:gv('f-client-name'),contact:gv('f-contact'),phone:gv('f-phone'),email:gv('f-email'),
+    address:gv('f-address'),jobNum:gv('f-job-num'),
+    pa:gv('f-pa'),pb:gv('f-pb'),pl:gv('f-pl'),depth:gv('f-depth'),base:gv('f-base'),comp:gv('f-comp'),
+    scope:gv('f-scope'),conditions:gv('f-conditions'),
+    estimator:gv('f-estimator'),pm:gv('f-pm'),startDate:gv('f-start-date'),
+    plant:gv('f-plant'),plantContact:gv('f-plant-contact'),mix:gv('f-mix'),
+    trucking:gv('f-trucking'),truckingContact:gv('f-trucking-contact'),dump:gv('f-dump'),
+    pmNotes:gv('f-pm-notes'),
+    c1:gv('f-c1'),c1s:gv('f-c1s'),c2:gv('f-c2'),c2s:gv('f-c2s'),c3:gv('f-c3'),c3s:gv('f-c3s'),
+    actualStart:gv('f-actual-start'),actualEnd:gv('f-actual-end'),
+    invoice:gv('f-invoice'),changeOrder:gv('f-change-order'),compNotes:gv('f-comp-notes'),
+    status:currentStatus(),phases,equipment,dailyLogs,confirmed,
+  };
+}
+
+function loadSavedDetails(){
+  const key='paveview_proj_details_'+projectId;
+  let d={};
+  try{d=JSON.parse(localStorage.getItem(key)||'{}');}catch(e){}
+  const fieldMap={
+    'f-client-name':'clientName','f-contact':'contact','f-phone':'phone','f-email':'email',
+    'f-address':'address','f-job-num':'jobNum','f-pa':'pa','f-pb':'pb','f-pl':'pl',
+    'f-depth':'depth','f-base':'base','f-comp':'comp','f-scope':'scope','f-conditions':'conditions',
+    'f-estimator':'estimator','f-pm':'pm','f-start-date':'startDate',
+    'f-plant':'plant','f-plant-contact':'plantContact','f-mix':'mix',
+    'f-trucking':'trucking','f-trucking-contact':'truckingContact','f-dump':'dump',
+    'f-pm-notes':'pmNotes','f-c1':'c1','f-c1s':'c1s','f-c2':'c2','f-c2s':'c2s','f-c3':'c3','f-c3s':'c3s',
+    'f-actual-start':'actualStart','f-actual-end':'actualEnd',
+    'f-invoice':'invoice','f-change-order':'changeOrder','f-comp-notes':'compNotes'
+  };
+  Object.entries(fieldMap).forEach(([id,k])=>{if(d[k])sv2(id,d[k]);});
+  if(d.phases){phases=d.phases;renderPhases();renderPhasesMgmt();}
+  if(d.equipment){equipment=d.equipment;renderEquipment();}
+  if(d.dailyLogs){dailyLogs=d.dailyLogs;renderDailyLogs();}
+  if(d.confirmed){confirmed=true;showConfirmedState();}
+  setStatus(d.status||'estimating');
+  populateEqPicker();
+}
+
+function saveDetails(){
+  localStorage.setItem('paveview_proj_details_'+projectId,JSON.stringify(getDetails()));
+}
+
+document.addEventListener('input',e=>{if(e.target.closest('#main'))saveDetails();});
+document.addEventListener('change',e=>{if(e.target.closest('#main'))saveDetails();});
+
+// ── SETTINGS FORM TOGGLE ──
+function toggleSettingsForm(show){
+  const form=document.getElementById('settings-form');
+  const editBtn=document.getElementById('btn-edit-settings');
+  const confirmBtn=document.getElementById('btn-confirm');
+  if(show){
+    form.style.display='block';
+    editBtn.style.display='none';
+    confirmBtn.style.display='inline-flex';
+    confirmBtn.textContent='Confirm & Generate Reports';
+    document.getElementById('banner-title').textContent='Edit project details';
+    document.getElementById('banner-sub').textContent='Click Confirm & Generate Reports when done.';
+  }else{
+    form.style.display='none';
+    editBtn.style.display='inline-flex';
+    confirmBtn.style.display='none';
+    document.getElementById('banner-title').textContent='Reports generated ✓';
+    document.getElementById('banner-sub').textContent='All reports are up to date.';
+  }
+}
+
+function showConfirmedState(){
+  unlockReports();
+  buildEstimatingReports();
+  toggleSettingsForm(false);
+  document.getElementById('confirm-banner').classList.add('confirmed');
+}
+
+// ── SAVE PROGRESS ──
+document.getElementById('btn-save-details').onclick=()=>{
+  saveDetails();
+  const btn=document.getElementById('btn-save-details');
+  btn.textContent='Saved ✓';setTimeout(()=>btn.textContent='Save Progress',2000);
+};
+
+// ── CONFIRM ──
+document.getElementById('btn-confirm').onclick=()=>{
+  const missing=[];
+  if(!gv('f-client-name'))missing.push('Client Name');
+  if(!gv('f-address'))missing.push('Job Address');
+  if(!gv('f-pa')&&!projectData.pa)missing.push('Asphalt pricing ($/ton)');
+  if(missing.length){alert('Please fill in:\n• '+missing.join('\n• '));return;}
+  confirmed=true;
+  saveDetails();
+  showConfirmedState();
+};
+
+// ── UNLOCK REPORTS (estimating view) ──
+function unlockReports(){
+  ['client','contractor','foreman','completion'].forEach(k=>{
+    const lock=document.getElementById('lock-'+k);
+    const pbar=document.getElementById('pbar-'+k);
+    const paper=document.getElementById('report-'+k);
+    if(lock)lock.style.display='none';
+    if(pbar)pbar.style.display='flex';
+    if(paper)paper.style.display='block';
+  });
+}
+
+// ── REPORT TABS ──
+function switchReport(tab){
+  const prefix=tab.split('-').slice(0,-1).join('-')||tab;
+  // Find all tabs and panels with matching suffix pattern
+  document.querySelectorAll('.rtab').forEach(t=>{
+    if(t.dataset.tab===tab)t.classList.add('on');
+    else if(t.closest('.sec')===document.querySelector(`[data-tab="${tab}"]`)?.closest('.sec'))t.classList.remove('on');
+    else if(t.dataset.tab&&t.dataset.tab.split('-').pop()===tab.split('-').pop()&&t.closest('.sec')===document.querySelector(`[data-tab="${tab}"]`)?.closest('.sec'))t.classList.remove('on');
+  });
+  // simpler: find sibling tabs/panels
+  const clickedTab=document.querySelector(`[data-tab="${tab}"]`);
+  if(!clickedTab)return;
+  const sec=clickedTab.closest('.sec');
+  sec.querySelectorAll('.rtab').forEach(t=>t.classList.toggle('on',t.dataset.tab===tab));
+  sec.querySelectorAll('.rpanel').forEach(p=>p.classList.toggle('on',p.id==='rpanel-'+tab));
+}
+document.querySelectorAll('.rtab').forEach(t=>{t.onclick=()=>switchReport(t.dataset.tab);});
+
+// ── ACTIVE JOB MANAGEMENT ──
+function updateActiveMgmt(){
+  const d=getDetails();
+  const calc=getCalc();
+  // KPIs
+  const el=id=>document.getElementById(id);
+  if(el('kpi-sqft'))el('kpi-sqft').textContent=Math.round(calc.totalSqft).toLocaleString();
+  if(el('kpi-tons'))el('kpi-tons').textContent=calc.totalTons.toFixed(1);
+  const totalMH=dailyLogs.reduce((s,l)=>s+(parseFloat(l.mh)||0),0);
+  if(el('kpi-mh'))el('kpi-mh').textContent=totalMH||0;
+  if(el('kpi-days'))el('kpi-days').textContent=dailyLogs.length;
+  // Job info card
+  const info=el('mgmt-job-info');
+  if(info){
+    const rows=[
+      ['Client',d.clientName],['Address',d.address],['Job #',d.jobNum],
+      ['PM',d.pm],['Start',d.startDate],['Plant',d.plant],
+      ['Trucking',d.trucking],['Mix',d.mix],
+    ].filter(r=>r[1]);
+    info.innerHTML=rows.map(([k,v])=>`<div><span style="color:var(--text3);display:inline-block;width:80px">${k}</span> <span style="color:var(--text)">${v}</span></div>`).join('');
+  }
+  // PM notes
+  const pmn=el('mgmt-pm-notes');
+  if(pmn)pmn.textContent=d.pmNotes||'No PM notes.';
+  renderPhasesMgmt();
+}
+
+// ── COMPLETE KPIs ──
+function updateCompleteKpis(){
+  const d=getDetails();const calc=getCalc();
+  const invoice=(parseFloat(d.invoice)||0)+(parseFloat(d.changeOrder)||0);
+  const bidCost=calc.totalCost;
+  const totalExtras=dailyLogs.reduce((s,l)=>s+(parseFloat(l.extras)||0),0);
+  const profit=invoice-bidCost-totalExtras;
+  const margin=invoice>0?((profit/invoice)*100).toFixed(1):0;
+  const el=id=>document.getElementById(id);
+  if(el('ckpi-invoice'))el('ckpi-invoice').textContent=invoice?'$'+Math.round(invoice).toLocaleString():'—';
+  const profitColor=parseFloat(margin)>=15?'var(--green)':parseFloat(margin)>=5?'var(--accent)':'var(--red)';
+  if(el('ckpi-profit')){el('ckpi-profit').textContent=profit?'$'+Math.round(profit).toLocaleString():'—';el('ckpi-profit').style.color=profitColor;}
+  if(el('ckpi-margin')){el('ckpi-margin').textContent=margin+'%';el('ckpi-margin').style.color=profitColor;}
+  if(el('ckpi-days'))el('ckpi-days').textContent=dailyLogs.length||'—';
+}
+
+// ── PHASES ──
+document.getElementById('btn-add-phase').onclick=()=>{phases.push({name:'',time:'',area:'',hours:'',crew:'',traffic:'',notes:''});renderPhases();renderPhasesMgmt();saveDetails();};
+document.getElementById('btn-add-phase-mgmt').onclick=()=>{phases.push({name:'',time:'',area:'',hours:'',crew:'',traffic:'',notes:''});renderPhases();renderPhasesMgmt();saveDetails();};
+
+function renderPhases(){
+  const list=document.getElementById('phases-list');if(!list)return;
+  list.innerHTML='';
+  phases.forEach((ph,i)=>{
+    const el=document.createElement('div');el.className='phase-card';
+    el.innerHTML=`<div class="phase-card-hdr"><span class="phase-lbl">Phase ${i+1}</span><button onclick="phases.splice(${i},1);renderPhases();renderPhasesMgmt();saveDetails()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px">✕</button></div>
+    <div class="sub-grid">
+      ${['name:Name','time:Time/Day','area:Area','hours:Bid Hrs','crew:Crew','traffic:Traffic Control','notes:Notes'].map(([k,l])=>l?`<div class="sub-field"><div class="sub-lbl">${l}</div><input class="sub-inp" value="${ph[k]||''}" placeholder="${l}…" oninput="phases[${i}]['${k}']=this.value;renderPhasesMgmt();saveDetails()"></div>`:'').join('')}
+    </div>`;
+    list.appendChild(el);
+  });
+}
+
+function renderPhasesMgmt(){
+  const list=document.getElementById('phases-list-mgmt');if(!list)return;
+  if(!phases.length){list.innerHTML='<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--text3);padding:8px">No phases added. Click + Add Phase to begin.</div>';return;}
+  list.innerHTML='';
+  phases.forEach((ph,i)=>{
+    const el=document.createElement('div');el.className='phase-card';
+    el.innerHTML=`<div class="phase-card-hdr"><span class="phase-lbl">Phase ${i+1}${ph.name?' — '+ph.name:''}</span><div style="display:flex;gap:4px">
+      ${ph.time?`<span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3)">${ph.time}</span>`:''}
+      <button onclick="phases.splice(${i},1);renderPhases();renderPhasesMgmt();saveDetails()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px">✕</button></div></div>
+    <div class="sub-grid">
+      ${['area:Area','hours:Bid Hrs','crew:Crew','traffic:Traffic','notes:Notes'].map(([k,l])=>l?`<div class="sub-field"><div class="sub-lbl">${l}</div><input class="sub-inp" value="${ph[k]||''}" placeholder="${l}…" oninput="phases[${i}]['${k}']=this.value;renderPhases();saveDetails()"></div>`:'').join('')}
+    </div>`;
+    list.appendChild(el);
+  });
+}
+
+// ── EQUIPMENT ──
+document.getElementById('btn-add-eq').onclick=()=>{equipment.push({name:'',type:'Company-Owned',rate:'',hours:'',operator:'',unit:''});renderEquipment();saveDetails();};
+function renderEquipment(){
+  const list=document.getElementById('eq-list');if(!list)return;list.innerHTML='';
+  equipment.forEach((eq,i)=>{
+    const el=document.createElement('div');el.className='eq-card';
+    el.innerHTML=`<div class="eq-card-hdr"><span class="phase-lbl">Equipment ${i+1}</span><button onclick="equipment.splice(${i},1);renderEquipment();saveDetails()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px">✕</button></div>
+    <div class="sub-grid">
+      ${['name:Name','type:Own/Rental','rate:$/hr','hours:Bid Hrs','operator:Operator','unit:Unit #'].map(([k,l])=>`<div class="sub-field"><div class="sub-lbl">${l}</div><input class="sub-inp" value="${eq[k]||''}" placeholder="${l}…" oninput="equipment[${i}]['${k}']=this.value;saveDetails()"></div>`).join('')}
+    </div>`;
+    list.appendChild(el);
+  });
+}
+
+// ── DAILY LOGS ──
+document.getElementById('btn-add-log').onclick=()=>{
+  dailyLogs.push({date:'',phase:'',pct:'',mh:'',eqh:'',tons:'',sealer:'',crack:'',sand:'',paint:'',fuel:'',extras:'',notes:''});
+  renderDailyLogs();updateActiveMgmt();saveDetails();
+};
+function renderDailyLogs(){
+  const list=document.getElementById('daily-logs-list');if(!list)return;list.innerHTML='';
+  if(!dailyLogs.length){
+    list.innerHTML='<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--text3);padding:12px 14px">No daily reports yet.</div>';return;
+  }
+  dailyLogs.forEach((l,i)=>{
+    const row=document.createElement('div');row.className='dl-row-wrap';
+    row.innerHTML=`<div class="dl-row">
+      <div class="dlc"><input type="date" value="${l.date||''}" oninput="dailyLogs[${i}].date=this.value;updateActiveMgmt();saveDetails()"></div>
+      <div class="dlc"><input placeholder="Phase / area…" value="${l.phase||''}" oninput="dailyLogs[${i}].phase=this.value;saveDetails()"></div>
+      <div class="dlc"><input type="number" placeholder="%" min="0" max="100" value="${l.pct||''}" oninput="dailyLogs[${i}].pct=this.value;saveDetails()"></div>
+      <div class="dlc"><input type="number" placeholder="0" value="${l.mh||''}" oninput="dailyLogs[${i}].mh=this.value;updateActiveMgmt();saveDetails()"></div>
+      <div class="dlc"><input type="number" placeholder="0" value="${l.eqh||''}" oninput="dailyLogs[${i}].eqh=this.value;saveDetails()"></div>
+      <div class="dlc" style="display:flex;align-items:center;gap:4px">
+        <button onclick="toggleMat(${i})" style="font-family:'JetBrains Mono',monospace;font-size:7px;padding:2px 5px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;white-space:nowrap">Materials</button>
+        <button onclick="dailyLogs.splice(${i},1);renderDailyLogs();updateActiveMgmt();saveDetails()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:10px">✕</button>
+      </div>
+    </div>
+    <div id="mat-${i}" style="display:none">
+      <div class="mat-row">
+        ${[['tons','Asphalt (t)'],['sealer','Sealer (gal)'],['crack','Crackfill'],['sand','Sand (bags)'],['paint','Paint (gal)'],['fuel','Fuel (gal)'],['extras','Extras ($)'],['notes','Notes']].map(([k,lb])=>`<div class="mat-f"><div class="mat-l">${lb}</div><input class="mat-i" value="${l[k]||''}" placeholder="${k==='notes'?'…':'0'}" oninput="dailyLogs[${i}]['${k}']=this.value;saveDetails()"></div>`).join('')}
+      </div>
+    </div>`;
+    list.appendChild(row);
+  });
+}
+function toggleMat(i){const el=document.getElementById('mat-'+i);if(el)el.style.display=el.style.display==='none'?'block':'none';}
+
+// ── ACCOUNT DEFAULTS ──
+function loadAccountDefaults(){
+  const pricing=JSON.parse(localStorage.getItem('paveview_pricing')||'{}');
+  const map={pa:'f-pa',pb:'f-pb',pl:'f-pl',depth:'f-depth',base:'f-base',comp:'f-comp'};
+  let loaded=false;
+  Object.entries(map).forEach(([k,id])=>{
+    if(pricing[k]){sv2(id,pricing[k]);loaded=true;}
+  });
+  const banner=document.getElementById('pricing-defaults-banner');
+  if(banner)banner.style.display=loaded?'block':'none';
+  if(!loaded)alert('No account defaults found. Go to Dashboard → Settings → Asphalt Pricing and save your defaults first.');
+  else saveDetails();
+}
+
+function populateEqPicker(){
+  const picker=document.getElementById('eq-picker');
+  if(!picker)return;
+  const eq=JSON.parse(localStorage.getItem('paveview_equipment')||'{"owned":[],"rental":[]}');
+  picker.innerHTML='<option value="">+ Add from library…</option>';
+  if(eq.owned&&eq.owned.length){
+    const grp=document.createElement('optgroup');grp.label='Company-Owned';
+    eq.owned.forEach(e=>{if(e.name){const opt=document.createElement('option');opt.value=JSON.stringify({name:e.name,type:'Company-Owned',rate:e.rate||'',unit:e.unit||''});opt.textContent=e.name+(e.rate?' — $'+e.rate+'/hr':'');grp.appendChild(opt);}});
+    picker.appendChild(grp);
+  }
+  if(eq.rental&&eq.rental.length){
+    const grp=document.createElement('optgroup');grp.label='Rental / Vendors';
+    eq.rental.forEach(e=>{if(e.name){const opt=document.createElement('option');opt.value=JSON.stringify({name:e.name,type:'Rental',rate:e.rate||'',contact:e.contact||''});opt.textContent=e.name+(e.contact?' ('+e.contact+')':'')+(e.rate?' — $'+e.rate+'/hr':'');grp.appendChild(opt);}});
+    picker.appendChild(grp);
+  }
+  picker.onchange=()=>{
+    if(!picker.value)return;
+    try{
+      const eq2=JSON.parse(picker.value);
+      equipment.push({name:eq2.name,type:eq2.type||'',rate:eq2.rate||'',hours:'',operator:'',unit:eq2.unit||'',contact:eq2.contact||''});
+      renderEquipment();saveDetails();
+    }catch(e){}
+    picker.value='';
+  };
+}
+
+// ── CALC ──
+function polyArea(pts){if(!pts||pts.length<3)return 0;let a=0;for(let i=0;i<pts.length;i++){const j=(i+1)%pts.length;a+=pts[i].x*pts[j].y-pts[j].x*pts[i].y;}return Math.abs(a)/2;}
+function sc(){return(projectData.scaleFt||40)/(projectData.scalePx||70);}
+function fv(id,fb){return parseFloat(document.getElementById(id)?.value)||fb||0;}
+function getCalc(){
+  const scale=sc();
+  const closed=(projectData.zones||[]).filter(z=>!z.obstruct);
+  const depth=fv('f-depth',projectData.depth||3);
+  const comp=fv('f-comp',projectData.comp||1.05);
+  const base=fv('f-base',projectData.base||6);
+  const pa=fv('f-pa',projectData.pa||85);
+  const pb=fv('f-pb',projectData.pb||22);
+  const pl=fv('f-pl',projectData.pl||1.25);
+  let totalSqft=0,totalTons=0,totalBase=0;
+  closed.forEach(z=>{const a=polyArea(z.pts||[])*scale*scale;totalSqft+=a;totalTons+=a*(depth/12)*145/2000*comp;totalBase+=a*(base/12)*110/2000;});
+  return{closed,scale,depth,comp,base,pa,pb,pl,totalSqft,totalTons,totalBase,totalCost:totalTons*pa+totalBase*pb+totalSqft*pl};
+}
+
+// ── MAP BLOCK FOR REPORTS ──
+function reportMapBlock(canvasId){
+  if(!mapImgW)return'';
+  return`<div style="margin:14px 0"><div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#888;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e5e7eb">SITE MAP</div><canvas id="${canvasId}" width="860" height="320" style="width:100%;height:auto;display:block;border:1px solid #e5e7eb;background:#0d0d0f"></canvas></div>`;
+}
+function paintReportMap(canvasId){
+  const c=document.getElementById(canvasId);if(c&&mapImgW)mapDrawToCanvas(c);
+}
+
+
+// ── THEME FROM REPORT BUILDER ──
+function loadThemesIntoProject(){
+  try{
+    const themes=JSON.parse(localStorage.getItem('paveview_report_themes')||'[]');
+    const picker=document.getElementById('theme-picker');
+    if(!picker)return;
+    picker.innerHTML='<option value="">Default</option>'+
+      themes.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+    // Auto-select last active
+    const active=localStorage.getItem('paveview_active_theme');
+    if(active)picker.value=active;
+    if(picker.value)applyTheme(picker.value);
+  }catch(e){}
+}
+
+function applyTheme(themeId){
+  if(!themeId){
+    brandPrimary=localStorage.getItem('paveview_brand_primary')||'#111111';
+    brandAccent=localStorage.getItem('paveview_brand_accent')||'#d4a843';
+    activeReportTheme=null;
+  } else {
+    try{
+      const themes=JSON.parse(localStorage.getItem('paveview_report_themes')||'[]');
+      const t=themes.find(x=>x.id===themeId);
+      if(t){
+        brandPrimary=t.colors.primary||'#111111';
+        brandAccent=t.colors.accent||'#d4a843';
+        activeReportTheme=t;
+      }
+    }catch(e){}
+  }
+  refreshReport('client');
+  refreshReport('foreman');
+  refreshReport('contractor');
+}
+
+let activeReportTheme=null;
+
+// ── BRAND COLORS ──
+function setBrandColor(type,val){
+  if(type==='primary'){
+    brandPrimary=val;
+    localStorage.setItem('paveview_brand_primary',val);
+    document.getElementById('rpt-color-primary') && (document.getElementById('rpt-color-primary').value=val);
+  } else {
+    brandAccent=val;
+    localStorage.setItem('paveview_brand_accent',val);
+    document.getElementById('rpt-color-accent') && (document.getElementById('rpt-color-accent').value=val);
+  }
+  refreshReport('client');
+}
+// Init brand colors on load
+(()=>{
+  setTimeout(()=>{
+    const pp=document.getElementById('rpt-color-primary');
+    const pa=document.getElementById('rpt-color-accent');
+    if(pp)pp.value=brandPrimary;
+    if(pa)pa.value=brandAccent;
+  },500);
+})();
+
+// ── PHASE MAP BUILDER ──
+let activePhaseIdx=null;
+
+function openPhaseBuilder(){
+  document.getElementById('phase-modal').style.display='block';
+  renderPhaseBuilderList();
+  drawPhasePreview(null);
+}
+
+function addReportPhase(){
+  const allZones=projectData.zones||[];
+  reportPhases.push({
+    id:'ph'+Date.now(),
+    name:'Phase '+(reportPhases.length+1),
+    zoneIds:allZones.map(z=>z.id), // default all zones
+    screenshot:null
+  });
+  renderPhaseBuilderList();
+}
+
+function renderPhaseBuilderList(){
+  const list=document.getElementById('phase-builder-list');
+  if(!list)return;
+  const allZones=projectData.zones||[];
+  list.innerHTML=reportPhases.map((ph,i)=>`
+    <div style="background:var(--surface,#1c1c1e);border:1px solid var(--border,#2a2a2c);border-radius:3px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div style="width:10px;height:10px;border-radius:50%;background:${ph.screenshot?'#22c55e':'#444'}"></div>
+        <input type="text" value="${ph.name}" placeholder="Phase name"
+          style="flex:1;background:var(--bg,#141416);border:1px solid var(--border,#2a2a2c);color:var(--text,#f0eeea);font-family:'JetBrains Mono',monospace;font-size:10px;padding:4px 8px;outline:none"
+          oninput="reportPhases[${i}].name=this.value">
+        <button onclick="setActivePhase(${i})" class="btn${activePhaseIdx===i?' accent':''}" style="font-size:9px;padding:3px 8px">
+          ${activePhaseIdx===i?'▶ Active':'Preview'}
+        </button>
+        <button onclick="reportPhases.splice(${i},1);activePhaseIdx=null;renderPhaseBuilderList()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px">✕</button>
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3,#666);margin-bottom:6px;letter-spacing:.08em">INCLUDE ZONES:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
+        ${allZones.map(z=>`
+          <label style="display:flex;align-items:center;gap:4px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text2,#aaa);cursor:pointer">
+            <input type="checkbox" ${ph.zoneIds.includes(z.id)?'checked':''} onchange="togglePhaseZone(${i},'${z.id}',this.checked)" style="accent-color:${z.color||'#d4a843'}">
+            <span style="color:${z.color||'#d4a843'}">${z.name}</span>
+          </label>`).join('')}
+      </div>
+      ${ph.screenshot?`<div style="margin-top:8px"><img src="${ph.screenshot}" style="width:100%;max-height:100px;object-fit:cover;border-radius:2px;border:1px solid var(--border,#2a2a2c)"></div>`:''}
+    </div>`).join('')||`<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3,#666);padding:12px;text-align:center">No phases yet. Click + Add Phase.</div>`;
+}
+
+function togglePhaseZone(phIdx,zoneId,checked){
+  if(checked){
+    if(!reportPhases[phIdx].zoneIds.includes(zoneId)) reportPhases[phIdx].zoneIds.push(zoneId);
+  } else {
+    reportPhases[phIdx].zoneIds=reportPhases[phIdx].zoneIds.filter(id=>id!==zoneId);
+  }
+  if(activePhaseIdx===phIdx) drawPhasePreview(phIdx);
+}
+
+function setActivePhase(idx){
+  activePhaseIdx=idx;
+  renderPhaseBuilderList();
+  drawPhasePreview(idx);
+}
+
+function drawPhasePreview(phIdx){
+  const canvas=document.getElementById('phase-preview-canvas');
+  if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0d0d0f';ctx.fillRect(0,0,W,H);
+  if(!mapImgW)return;
+  const pad=20;
+  const zoom=Math.min((W-pad*2)/mapImgW,(H-pad*2)/mapImgH);
+  const panX=(W-mapImgW*zoom)/2,panY=(H-mapImgH*zoom)/2;
+  ctx.save();ctx.translate(panX,panY);ctx.scale(zoom,zoom);
+  if(mapBgImg)ctx.drawImage(mapBgImg,0,0);
+  const activeZoneIds=phIdx!==null?(reportPhases[phIdx]?.zoneIds||[]):null;
+  (projectData.zones||[]).forEach(z=>{
+    if(!z.pts||z.pts.length<3)return;
+    const isActive=activeZoneIds===null||activeZoneIds.includes(z.id);
+    ctx.globalAlpha=isActive?1:0.12;
+    ctx.beginPath();z.pts.forEach((pt,i)=>i===0?ctx.moveTo(pt.x,pt.y):ctx.lineTo(pt.x,pt.y));ctx.closePath();
+    ctx.fillStyle=(z.color||'#d4a843')+'44';ctx.fill();
+    ctx.strokeStyle=z.color||'#d4a843';ctx.lineWidth=isActive?3/zoom:1/zoom;ctx.stroke();
+    if(isActive){
+      const cx2=z.pts.reduce((s,pt)=>s+pt.x,0)/z.pts.length;
+      const cy2=z.pts.reduce((s,pt)=>s+pt.y,0)/z.pts.length;
+      const fs=Math.max(11,14/zoom);
+      ctx.font=`700 ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+      const tw=ctx.measureText(z.name).width;
+      ctx.globalAlpha=1;
+      ctx.fillStyle='rgba(0,0,0,.85)';ctx.fillRect(cx2-tw/2-8,cy2-fs/2-5,tw+16,fs+10);
+      ctx.fillStyle=z.color||'#d4a843';ctx.fillText(z.name,cx2,cy2);
+    }
+    ctx.globalAlpha=1;
+  });
+  // Phase label
+  if(phIdx!==null&&reportPhases[phIdx]){
+    ctx.font='bold 14px sans-serif';ctx.textAlign='left';ctx.textBaseline='top';
+    ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(10/zoom,8/zoom,200/zoom,26/zoom);
+    ctx.fillStyle='#d4a843';ctx.fillText(reportPhases[phIdx].name,16/zoom,13/zoom);
+  }
+  ctx.restore();
+}
+
+function capturePhaseScreenshot(){
+  if(activePhaseIdx===null){alert('Click "Preview" on a phase first.');return;}
+  const canvas=document.getElementById('phase-preview-canvas');
+  if(!canvas)return;
+  reportPhases[activePhaseIdx].screenshot=canvas.toDataURL('image/jpeg',0.9);
+  const status=document.getElementById('phase-capture-status');
+  if(status){status.style.display='block';setTimeout(()=>status.style.display='none',2500);}
+  renderPhaseBuilderList();
+}
+
+function applyPhasesToReport(){
+  document.getElementById('phase-modal').style.display='none';
+  refreshReport('client');
+  refreshReport('foreman');
+  refreshReport('contractor');
+}
+
+// ── PAGE TEMPLATES ──
+const PAGE_TEMPLATES=[
+  {
+    id:'thank-you',
+    label:'Thank You',
+    icon:'🤝',
+    desc:'Professional closing page',
+    title:'Thank You For Your Business',
+    content:`We appreciate the opportunity to serve you. Our team is committed to delivering quality work on time and on budget.
+
+If you have any questions about this proposal or would like to discuss the scope further, please don't hesitate to reach out.
+
+We look forward to working with you.`
+  },
+  {
+    id:'testimonial',
+    label:'Testimonials',
+    icon:'⭐',
+    desc:'Previous work & reviews',
+    title:'What Our Clients Say',
+    content:`"Exceptional work quality and professionalism throughout the entire project." — Property Manager, Commercial Center
+
+"Completed ahead of schedule with zero disruption to our business operations." — Facility Director, Office Park
+
+"The most professional paving contractor we have worked with. Highly recommend." — HOA Board President`
+  },
+  {
+    id:'warranty',
+    label:'Warranty',
+    icon:'✓',
+    desc:'Workmanship guarantee',
+    title:'Warranty & Guarantee',
+    content:`All asphalt work is warranted against defects in materials and workmanship for a period of one year from the date of completion.
+
+Sealcoating carries a two-year warranty under normal traffic conditions.
+
+This warranty does not cover damage caused by tree root intrusion, settling of the underlying base, vehicle fluid spills, or acts of nature.
+
+To initiate a warranty claim, please contact our office with your project number.`
+  },
+  {
+    id:'terms',
+    label:'Terms',
+    icon:'📄',
+    desc:'Payment & conditions',
+    title:'Terms & Conditions',
+    content:`PAYMENT TERMS: 50% deposit required prior to mobilization. Balance due upon completion.
+
+CHANGE ORDERS: Any work outside the original scope requires a written change order and may affect the project timeline and cost.
+
+WEATHER: Work will be scheduled based on suitable weather conditions. We reserve the right to reschedule due to rain, extreme temperatures, or other conditions that would compromise quality.
+
+SITE PREPARATION: Client is responsible for marking underground utilities and clearing the area of vehicles and obstructions.`
+  },
+  {
+    id:'blank',
+    label:'Blank Page',
+    icon:'+',
+    desc:'Start with empty page',
+    title:'',
+    content:''
+  },
+  {
+    id:'photo',
+    label:'Photo Page',
+    icon:'🖼',
+    desc:'Image-only page',
+    title:'Project Photos',
+    content:''
+  }
+];
+
+let _templateTarget='client';
+function openTemplateModal(type){
+  _templateTarget=type||'client';
+  document.getElementById('template-modal').style.display='block';
+  const grid=document.getElementById('template-grid');
+  grid.innerHTML=PAGE_TEMPLATES.map(t=>`
+    <div onclick="applyTemplate('${t.id}')"
+      style="background:var(--surface,#1c1c1e);border:1px solid var(--border,#2a2a2c);border-radius:4px;
+             padding:16px;cursor:pointer;transition:border-color .15s"
+      onmouseover="this.style.borderColor='#d4a843'" onmouseout="this.style.borderColor='var(--border,#2a2a2c)'">
+      <div style="font-size:22px;margin-bottom:8px">${t.icon}</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--text,#f0eeea);margin-bottom:4px">${t.label}</div>
+      <div style="font-size:10px;color:var(--text3,#666)">${t.desc}</div>
+    </div>`).join('');
+}
+
+function applyTemplate(templateId){
+  const tpl=PAGE_TEMPLATES.find(t=>t.id===templateId);
+  if(!tpl)return;
+  const id='cp_'+Date.now();
+  customPages[_templateTarget]=customPages[_templateTarget]||[];
+  customPages[_templateTarget].push({
+    id,
+    title:tpl.title,
+    content:tpl.content,
+    image:'',
+    template:templateId
+  });
+  document.getElementById('template-modal').style.display='none';
+  renderCustomPageEditor(_templateTarget);
+  refreshReport(_templateTarget);
+}
+
+// ── CUSTOM REPORT PAGES ──
+let customPages = {client:[], foreman:[], contractor:[]};
+
+function addCustomPage(type){
+  openTemplateModal(type);
+}
+
+function removeCustomPage(type, id){
+  customPages[type] = (customPages[type]||[]).filter(cp=>cp.id!==id);
+  renderCustomPageEditor(type);
+  refreshReport(type);
+}
+
+function renderCustomPageEditor(type){
+  const wrap = document.getElementById('custom-pages-'+type);
+  if(!wrap) return;
+  const pages = customPages[type]||[];
+  if(!pages.length){ wrap.style.display='none'; return; }
+  wrap.style.display='block';
+  wrap.innerHTML = pages.map((cp,i)=>`
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#9ca3af;text-transform:uppercase;letter-spacing:.1em">Custom Page ${i+1}</span>
+        <button onclick="removeCustomPage('${type}','${cp.id}')" style="margin-left:auto;background:none;border:none;color:#ef4444;cursor:pointer;font-size:11px">✕ Remove</button>
+      </div>
+      <input type="text" placeholder="Page title (e.g. Terms & Conditions)" value="${cp.title||''}"
+        style="width:100%;margin-bottom:8px;padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;outline:none;box-sizing:border-box"
+        oninput="customPages['${type}'][${i}].title=this.value;refreshReport('${type}')">
+      <textarea placeholder="Add your text here…" rows="5"
+        style="width:100%;padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;outline:none;resize:vertical;box-sizing:border-box;font-family:inherit"
+        oninput="customPages['${type}'][${i}].content=this.value;refreshReport('${type}')">${cp.content||''}</textarea>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+        <label style="font-size:10px;color:#6b7280;cursor:pointer">
+          📎 Attach image
+          <input type="file" accept="image/*" style="display:none" onchange="attachCustomPageImage(event,'${type}',${i})">
+        </label>
+        ${cp.image?`<span style="font-size:10px;color:#22c55e">✓ Image attached</span><button onclick="customPages['${type}'][${i}].image='';renderCustomPageEditor('${type}');refreshReport('${type}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:10px">Remove</button>`:''}
+      </div>
+    </div>`).join('');
+}
+
+function attachCustomPageImage(e, type, idx){
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    customPages[type][idx].image = ev.target.result;
+    renderCustomPageEditor(type);
+    refreshReport(type);
+  };
+  reader.readAsDataURL(file);
+}
+
+function buildCustomPages(type){
+  const pages = customPages[type||'client']||[];
+  const phasePagesHtml = buildPhasePages();
+  let out = phasePagesHtml;
+  if(!pages.length) return out;
+  out += pages.map(cp=>`
+    <div class="rpage r-custom-page" style="--rpt-primary:${brandPrimary};--rpt-accent:${brandAccent}">
+      <div style="height:4px;background:${brandAccent};margin-bottom:40px"></div>
+      ${cp.title?`<h2 style="color:${brandPrimary};font-size:24px;font-weight:800;margin:0 0 20px;letter-spacing:-.02em">${cp.title}</h2>`:''}
+      ${cp.image?`<img src="${cp.image}" style="max-width:100%;height:auto;margin-bottom:20px;border-radius:3px">`:''}
+      ${cp.content?`<div style="font-size:13px;color:#374151;line-height:1.9;white-space:pre-wrap">${cp.content}</div>`:''}
+    </div>`).join('');
+  return out;
+}
+
+function buildPhasePages(){
+  if(!reportPhases.length)return'';
+  return reportPhases.map(ph=>{
+    if(!ph.screenshot)return'';
+    const zoneNames=(projectData.zones||[]).filter(z=>ph.zoneIds.includes(z.id)).map(z=>z.name).join(', ');
+    return `<div class="rpage" style="padding:0">
+      <div style="height:4px;background:${brandAccent}"></div>
+      <div style="padding:32px 48px 20px;border-bottom:1px solid #f0f0f0">
+        <div style="font-size:8px;font-weight:700;color:${brandAccent};letter-spacing:.2em;text-transform:uppercase;margin-bottom:8px">Phase Map</div>
+        <div style="font-size:22px;font-weight:800;color:${brandPrimary};letter-spacing:-.02em">${ph.name}</div>
+        ${zoneNames?`<div style="font-size:11px;color:#6b7280;margin-top:4px">Zones: ${zoneNames}</div>`:''}
+      </div>
+      <div style="padding:20px 48px">
+        <img src="${ph.screenshot}" style="width:100%;border-radius:4px;border:1px solid #e5e7eb">
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function refreshReport(type){
+  const mapIds = {client:'rmap-est-client',foreman:'rmap-est-foreman',contractor:'rmap-est-contractor'};
+  const builders = {
+    client: ()=>buildClientHtml(mapIds.client),
+    foreman: ()=>buildForemanHtml(mapIds.foreman),
+    contractor: ()=>buildContractorHtml(mapIds.contractor)
+  };
+  const rpt = document.getElementById('report-'+type);
+  if(rpt && builders[type]){
+    rpt.innerHTML = builders[type]();
+    const mapId = mapIds[type];
+    if(mapId) requestAnimationFrame(()=>paintReportMap(mapId));
+  }
+}
+
+// ── SITE INVENTORY — tallies everything from projectData ──
+function getSiteInventory(){
+  const markers = projectData.markers || [];
+  const scale = sc();
+
+  // Marker counts
+  const stalls   = markers.filter(m=>m.type==='stall').length;
+  const ada      = markers.filter(m=>m.type==='ada').length;
+  const bollards = markers.filter(m=>m.type==='bollard').length;
+  const stopblks = markers.filter(m=>m.type==='stopblock').length;
+  const stencils = markers.filter(m=>m.type==='stencil');
+  const signs    = markers.filter(m=>m.type==='bollard-sign');
+
+  // Stencil breakdown by label
+  const stencilMap = {};
+  stencils.forEach(s=>{
+    const lbl = s.label||'Custom';
+    stencilMap[lbl] = (stencilMap[lbl]||0) + 1;
+  });
+
+  // Sign breakdown by label
+  const signMap = {};
+  signs.forEach(s=>{
+    const lbl = s.label||'Sign';
+    signMap[lbl] = (signMap[lbl]||0) + 1;
+  });
+
+  // Hatch areas (crosswalk, ADA hatch)
+  let crosswalkSqft = 0, adaHatchSqft = 0;
+  (projectData.hatchZones||[]).forEach(h=>{
+    const a = polyArea(h.pts||[]) * scale * scale;
+    if(h.type==='crosswalk') crosswalkSqft += a;
+    else adaHatchSqft += a;
+  });
+
+  // Linear segments
+  let linearFt = 0;
+  (projectData.linearSegs||[]).forEach(seg=>{
+    const pts = seg.pts||[];
+    for(let i=0;i<pts.length-1;i++){
+      linearFt += Math.hypot(pts[i+1].x-pts[i].x, pts[i+1].y-pts[i].y) * scale;
+    }
+  });
+
+  // Measurements (rect/circle)
+  const measurements = projectData.measurements||[];
+
+  // Linear segments with labels
+  const linearItems = (projectData.linearSegs||[]).map(seg=>{
+    const pts = seg.pts||[];
+    let ft = 0;
+    for(let i=0;i<pts.length-1;i++) ft += Math.hypot(pts[i+1].x-pts[i].x, pts[i+1].y-pts[i].y) * scale;
+    return {label: seg.label||'Linear', ft: Math.round(ft)};
+  });
+
+  return {stalls,ada,bollards,stopblks,stencilMap,signMap,crosswalkSqft,adaHatchSqft,linearFt,linearItems,measurements};
+}
+
+// Build inventory rows HTML for scope table
+function inventoryRows(showPricing){
+  const inv = getSiteInventory();
+  const d = getDetails();
+  let rows = '';
+
+  if(inv.stalls > 0){
+    const cost = inv.stalls * (parseFloat(d['f-pstripe'])||8);
+    rows += `<tr><td>Parking Stall Striping — Standard</td><td class="num">${inv.stalls}</td><td class="num">stalls</td><td class="num">${showPricing?'$'+Math.round(cost).toLocaleString():'—'}</td></tr>`;
+  }
+  if(inv.ada > 0){
+    const cost = inv.ada * (parseFloat(d['f-pada'])||25);
+    rows += `<tr><td>Parking Stall Striping — ADA Accessible</td><td class="num">${inv.ada}</td><td class="num">stalls</td><td class="num">${showPricing?'$'+Math.round(cost).toLocaleString():'—'}</td></tr>`;
+  }
+  // Stencils - each type as its own row
+  Object.entries(inv.stencilMap).forEach(([label,count])=>{
+    rows += `<tr><td>Stencil — ${label}</td><td class="num">${count}</td><td class="num">ea</td><td class="num">—</td></tr>`;
+  });
+  if(inv.bollards > 0){
+    rows += `<tr><td>Bollards</td><td class="num">${inv.bollards}</td><td class="num">ea</td><td class="num">—</td></tr>`;
+  }
+  if(inv.stopblks > 0){
+    rows += `<tr><td>Parking Stop Blocks</td><td class="num">${inv.stopblks}</td><td class="num">ea</td><td class="num">—</td></tr>`;
+  }
+  if(inv.crosswalkSqft > 0){
+    rows += `<tr><td>Crosswalk Hatching</td><td class="num">${Math.round(inv.crosswalkSqft).toLocaleString()}</td><td class="num">sq ft</td><td class="num">—</td></tr>`;
+  }
+  if(inv.adaHatchSqft > 0){
+    rows += `<tr><td>ADA Hatching</td><td class="num">${Math.round(inv.adaHatchSqft).toLocaleString()}</td><td class="num">sq ft</td><td class="num">—</td></tr>`;
+  }
+  // Signs - each type as own row
+  Object.entries(inv.signMap||{}).forEach(([label,count])=>{
+    rows += `<tr><td>Sign — ${label}</td><td class="num">${count}</td><td class="num">ea</td><td class="num">—</td></tr>`;
+  });
+  // Linear segments - each with its label
+  (inv.linearItems||[]).forEach(seg=>{
+    if(seg.ft>0) rows += `<tr><td>Linear — ${seg.label}</td><td class="num">${seg.ft.toLocaleString()}</td><td class="num">lin ft</td><td class="num">—</td></tr>`;
+  });
+  // Fallback total linear if no items
+  if(!(inv.linearItems||[]).length && inv.linearFt > 0){
+    rows += `<tr><td>Fire Lane / Linear Striping</td><td class="num">${Math.round(inv.linearFt).toLocaleString()}</td><td class="num">lin ft</td><td class="num">—</td></tr>`;
+  }
+  // Measurements
+  inv.measurements.forEach(m=>{
+    rows += `<tr><td>Measurement — ${m.label||m.type}</td><td class="num">${(m.sqft||0).toLocaleString()}</td><td class="num">sq ft</td><td class="num">—</td></tr>`;
+  });
+  return rows;
+}
+
+// Inventory summary cards HTML (for report headers)
+function inventoryCards(){
+  const inv = getSiteInventory();
+  let cards = '';
+  if(inv.stalls>0)   cards += `<div class="rsc blue"><div class="rscl">Std Stalls</div><div class="rscv">${inv.stalls}</div></div>`;
+  if(inv.ada>0)      cards += `<div class="rsc blue"><div class="rscl">ADA Stalls</div><div class="rscv">${inv.ada}</div></div>`;
+  if(inv.bollards>0) cards += `<div class="rsc orange"><div class="rscl">Bollards</div><div class="rscv">${inv.bollards}</div></div>`;
+  if(inv.stopblks>0) cards += `<div class="rsc"><div class="rscl">Stop Blocks</div><div class="rscv">${inv.stopblks}</div></div>`;
+  const totalStencils = Object.values(inv.stencilMap).reduce((s,v)=>s+v,0);
+  if(totalStencils>0) cards += `<div class="rsc"><div class="rscl">Stencils</div><div class="rscv">${totalStencils}</div></div>`;
+  const totalSigns = Object.values(inv.signMap||{}).reduce((s,v)=>s+v,0);
+  if(totalSigns>0) cards += `<div class="rsc"><div class="rscl">Signs</div><div class="rscv">${totalSigns}</div></div>`;
+  if(inv.linearFt>0) cards += `<div class="rsc"><div class="rscl">Linear ft</div><div class="rscv">${Math.round(inv.linearFt).toLocaleString()}</div></div>`;
+  return cards;
+}
+
+// ── REPORT BUILDERS ──
+function company(){return localStorage.getItem('paveview_company')||'Your Company Name';}
+function projName(){return document.getElementById('bc-name')?.textContent||'Project';}
+function today(){return new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});}
+function varBadge(actual,bid){if(!bid||!actual)return'—';const pct=((actual-bid)/bid*100),over=pct>5;return`<span style="font-family:JetBrains Mono,monospace;font-size:9px;font-weight:600;color:${over?'#ef4444':'#22c55e'}">${over?'▲':'▼'} ${Math.abs(pct).toFixed(1)}% ${over?'over':'under'}</span>`;}
+
+function buildClientHtml(rMapId){
+  const d=getDetails(),calc=getCalc();
+  const mapHtml=rMapId?reportMapBlock(rMapId):'';
+  const logo=localStorage.getItem('paveview_logo')||'';
+  const coName=company();
+  const userName=localStorage.getItem('paveview_user_name')||'';
+
+  let html=`<style>
+    :root{--rpt-primary:${brandPrimary};--rpt-accent:${brandAccent}}
+    .r-doctype{background:${brandPrimary};color:${brandAccent}}
+    .rstripe{background:linear-gradient(90deg,${brandAccent} 0%,${brandAccent}cc 50%,${brandAccent} 100%)}
+    .rsc.gold::before,.rsc.gold{--card-top:${brandAccent}}
+    .rsc.gold::before{background:${brandAccent}}
+    .rsc.orange::before{background:${brandAccent}}
+    .rsec{color:${brandAccent}}
+    .rtbl tr.gtot td{background:${brandPrimary};color:${brandAccent}}
+    .rfooter-co{color:${brandPrimary}}
+    [contenteditable]:hover{outline:1px dashed ${brandAccent}44!important;outline-offset:2px}
+    [contenteditable]:focus{outline:1px solid ${brandAccent}!important;outline-offset:2px}
+  </style>
+  <div class="rpage">`;
+
+  // Header
+  html+=`<div class="r-header">
+    <div class="r-brand">
+      ${logo?`<img src="${logo}" alt="Logo">`:''}
+      <div class="rco">${coName}</div>
+      <div class="rco-sub">${userName||'Professional Paving Services'}</div>
+    </div>
+    <div class="r-docinfo">
+      <div class="r-doctype">Client Proposal</div>
+      <div class="rdoc-meta">
+        ${today()}<br>
+        ${d.jobNum?'Job #&nbsp;&nbsp;'+d.jobNum+'<br>':''}
+        ${d.estimator?'Estimator:&nbsp;&nbsp;'+d.estimator:''}
+      </div>
+    </div>
+  </div>`;
+
+  html+=`<div class="rstripe"></div>`;
+
+  // Client / Site / Project band
+  html+=`<div class="r-infoband">
+    <div class="r-infocell">
+      <div class="rproj-lbl">Prepared For</div>
+      <div class="r-infoname">${d.clientName||'—'}</div>
+      <div class="r-infosub">
+        ${[d.contact,d.phone,d.email].filter(Boolean).join('<br>')||''}
+      </div>
+    </div>
+    <div class="r-infocell">
+      <div class="rproj-lbl">Job Site</div>
+      <div class="rproj-name">${d.address||'—'}</div>
+    </div>
+    <div class="r-infocell">
+      <div class="rproj-lbl">Project</div>
+      <div class="rproj-name">${projName()}</div>
+      ${d.startDate?`<div class="r-infosub" style="margin-top:6px">Start: ${d.startDate}</div>`:''}
+    </div>
+  </div>`;
+
+  // KPI cards
+  const inv=getSiteInventory();
+  html+=`<div class="rsumgrid">
+    <div class="rsc gold">
+      <div class="rscl">Total Area</div>
+      <div class="rscv">${Math.round(calc.totalSqft).toLocaleString()}</div>
+      <div style="font-size:9px;color:#9ca3af;margin-top:3px">sq ft</div>
+    </div>
+    <div class="rsc">
+      <div class="rscl">Acreage</div>
+      <div class="rscv">${(calc.totalSqft/43560).toFixed(3)}</div>
+    </div>
+    ${inventoryCards()}
+    <div class="rsc orange">
+      <div class="rscl">Est. Total</div>
+      <div class="rscv">$${Math.round(calc.totalCost).toLocaleString()}</div>
+    </div>
+  </div>`;
+
+  html+=`<div class="r-body">`;
+
+  // Map
+  if(mapHtml) html+=`<div class="rsec">Site Plan</div>${mapHtml}`;
+
+  // Scope table
+  html+=`<div class="rsec">Scope of Work</div>
+  <table class="rtbl">
+    <thead><tr>
+      <th>Description</th>
+      <th style="text-align:right">Qty</th>
+      <th style="text-align:right">Unit</th>
+      <th style="text-align:right">Est. Cost</th>
+    </tr></thead>
+    <tbody>`;
+  calc.closed.forEach(z=>{
+    const a=polyArea(z.pts||[])*calc.scale*calc.scale;
+    const t=a*(calc.depth/12)*145/2000*calc.comp;
+    const b=a*(calc.base/12)*110/2000;
+    const cost=t*calc.pa+b*calc.pb+a*calc.pl;
+    html+=`<tr>
+      <td><strong>${z.name}</strong> — Asphalt Paving (${calc.depth}" depth)</td>
+      <td class="num">${Math.round(a).toLocaleString()}</td>
+      <td class="num">sq ft</td>
+      <td class="num">$${Math.round(cost).toLocaleString()}</td>
+    </tr>`;
+  });
+  html+=inventoryRows(false);
+  html+=`<tr class="gtot">
+    <td colspan="3">ESTIMATED TOTAL</td>
+    <td class="num">$${Math.round(calc.totalCost).toLocaleString()}</td>
+  </tr>
+  </tbody></table>`;
+
+  // Notes
+  if(d.scope) html+=`<div class="rsec">Scope Notes</div><div class="r-notes" contenteditable="true" style="outline:none">${d.scope}</div>`;
+  if(d.conditions) html+=`<div class="rsec">Special Conditions</div><div class="r-notes" contenteditable="true" style="outline:none">${d.conditions}</div>`;
+
+  // Signatures
+  html+=`<div class="rsec" style="margin-top:32px">Authorization</div>
+  <div class="rsigblock">
+    <div class="rsig"><div class="rsigline"></div><div class="rsiglbl">Contractor / Date</div></div>
+    <div class="rsig"><div class="rsigline"></div><div class="rsiglbl">Client Signature / Date</div></div>
+    <div class="rsig"><div class="rsigline"></div><div class="rsiglbl">Project Start Date</div></div>
+  </div>`;
+
+  html+=`</div>`; // /r-body
+
+  // Footer
+  html+=`<div class="rfooter">
+    <span class="rfooter-co">${coName}</span>
+    <span>By signing, both parties agree to the scope and estimated costs outlined above. Final invoice may vary based on field conditions.</span>
+  </div>`;
+
+  // Custom pages
+  html+=buildCustomPages('client');
+
+  html+=`</div>`;
+  return html;
+}
+
+
+function buildForemanHtml(rMapId){
+  const d=getDetails(),calc=getCalc();
+  const concerns=[[d.c1,d.c1s],[d.c2,d.c2s],[d.c3,d.c3s]].filter(c=>c[0]);
+  const mapHtml=rMapId?reportMapBlock(rMapId):'';
+  let html=`<div class="rpage"><div class="rlh"><div><div class="rco">${company()}</div><div class="rco-sub">Internal Foreman Sheet</div></div><div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600">FOREMAN COPY</div><div class="rdoc-meta">${today()}${d.jobNum?'<br>Job #: <strong>'+d.jobNum+'</strong>':''}</div></div></div>`;
+  html+='<div class="rstripe"></div>';
+  html+=`<div class="rproj-name">${projName()}</div>`;
+  if(d.address)html+=`<div style="font-size:11px;color:#888;margin-bottom:12px">${d.address}</div>`;
+  if(d.pmNotes)html+=`<div style="background:#111;border-left:4px solid #f5c842;padding:10px 14px;margin-bottom:14px;display:flex;gap:10px"><div style="font-size:16px">⚠️</div><div><div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;color:#f5c842;margin-bottom:4px">PM NOTES — READ BEFORE MOBILIZING</div><div style="font-size:11px;color:#d4d0ca;line-height:1.6">${d.pmNotes}</div></div></div>`;
+  html+=`<div class="rsumgrid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))"><div class="rsc gold"><div class="rscl">Area</div><div class="rscv">${Math.round(calc.totalSqft).toLocaleString()} sf</div></div><div class="rsc"><div class="rscl">Asphalt</div><div class="rscv">${calc.totalTons.toFixed(1)} tons</div></div><div class="rsc"><div class="rscl">Zones</div><div class="rscv">${calc.closed.length}</div></div>${inventoryCards()}</div>`;
+  html+=mapHtml;
+  // Site inventory for foreman
+  const _fmInvRows = inventoryRows(false);
+  if(_fmInvRows){
+    html+='<div class="rsec">Site Inventory</div><table class="rtbl"><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Cost</th></tr></thead><tbody>';
+    html+=_fmInvRows;
+    html+='</tbody></table>';
+  }
+  if(concerns.length){html+='<div class="rsec" style="color:#111;border-bottom:2px solid #111">⚑ Customer Concerns</div>';concerns.forEach((c,i)=>{html+=`<div style="display:flex;gap:10px;padding:8px 12px;border:1px solid #fee2e2;border-left:3px solid #ef4444;background:#fff8f8;margin-bottom:6px"><div style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#ef4444;flex-shrink:0;line-height:1.4">${i+1}</div><div><div style="font-size:12px;color:#111">${c[0]}</div>${c[1]?`<div style="font-size:10px;color:#999;margin-top:2px;font-style:italic">— ${c[1]}</div>`:''}</div></div>`;});}
+  if(d.plant||d.trucking||d.dump||d.mix){
+    html+='<div class="rsec">Materials & Sourcing</div><table class="rtbl"><tbody>';
+    if(d.plant)html+=`<tr><td style="color:#999;width:140px;font-size:10px">Asphalt Plant</td><td style="font-weight:500">${d.plant}</td><td style="font-size:10px;color:#888">${d.plantContact||''}</td></tr>`;
+    if(d.trucking)html+=`<tr><td style="color:#999;font-size:10px">Trucking</td><td style="font-weight:500">${d.trucking}</td><td style="font-size:10px;color:#888">${d.truckingContact||''}</td></tr>`;
+    if(d.dump)html+=`<tr><td style="color:#999;font-size:10px">Dump Site</td><td style="font-weight:500">${d.dump}</td><td></td></tr>`;
+    if(d.mix)html+=`<tr><td style="color:#999;font-size:10px">Mix Type</td><td style="font-weight:500">${d.mix}</td><td></td></tr>`;
+    html+='</tbody></table>';
+  }
+  if(phases.length){
+    html+='<div class="rsec">Phasing Plan</div>';
+    html+=`<div style="display:grid;grid-template-columns:${phases.length===1?'1fr':'1fr 1fr'};gap:10px;margin-bottom:14px">`;
+    phases.forEach((ph,i)=>{
+      html+=`<div style="border:1px solid #e5e7eb;overflow:hidden"><div style="background:#111;padding:7px 10px;display:flex;justify-content:space-between"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#f5c842">Phase ${i+1}${ph.name?' — '+ph.name:''}</span><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#888">${ph.time||''}</span></div><div style="padding:8px 10px;background:#fafafa">`;
+      if(ph.area)html+=`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #f0f0f0"><span style="color:#888">Area</span><span style="font-family:monospace;font-size:10px;font-weight:600">${ph.area}</span></div>`;
+      if(ph.hours)html+=`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #f0f0f0"><span style="color:#888">Bid hours</span><span style="font-family:monospace;font-size:10px;font-weight:600;color:#16a34a">${ph.hours} MH</span></div>`;
+      if(ph.crew)html+=`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #f0f0f0"><span style="color:#888">Crew</span><span style="font-family:monospace;font-size:10px;font-weight:600">${ph.crew}</span></div>`;
+      if(ph.traffic)html+=`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0"><span style="color:#888">Traffic</span><span style="font-family:monospace;font-size:10px;font-weight:600;color:#d97706">${ph.traffic}</span></div>`;
+      html+='</div></div>';
+    });
+    html+='</div>';
+  }
+  html+=`<div class="rsigblock"><div><div class="rsigline"></div><div class="rsiglbl">Foreman / Date</div></div><div><div class="rsigline"></div><div class="rsiglbl">PM Review / Date</div></div><div><div class="rsigline"></div><div class="rsiglbl">Hours Recorded / Date</div></div></div>`;
+  html+=`<div style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.2em;color:#bbb;padding:10px;border-top:1px solid #e5e7eb;margin-top:14px">CONFIDENTIAL — Internal use only${d.jobNum?' · Job #'+d.jobNum:''}</div></div>`;
+  return html;
+}
+
+function buildCompletionHtml(){
+  const d=getDetails(),calc=getCalc();
+  const invoice=(parseFloat(d.invoice)||0)+(parseFloat(d.changeOrder)||0);
+  const totalMH=dailyLogs.reduce((s,l)=>s+(parseFloat(l.mh)||0),0);
+  const totalTonsActual=dailyLogs.reduce((s,l)=>s+(parseFloat(l.tons)||0),0);
+  const totalExtras=dailyLogs.reduce((s,l)=>s+(parseFloat(l.extras)||0),0);
+  const profit=invoice-calc.totalCost-totalExtras;
+  const margin=invoice>0?((profit/invoice)*100).toFixed(1):0;
+  const profitColor=parseFloat(margin)>=15?'#16a34a':parseFloat(margin)>=5?'#ca8a04':'#dc2626';
+  const statusColors={estimating:'#888',awarded:'#3b82f6',in_progress:'#f5c842',complete:'#22c55e',cancelled:'#ef4444'};
+  const statusLabels={estimating:'Estimating',awarded:'Awarded',in_progress:'In Progress',complete:'Complete',cancelled:'Cancelled'};
+  const s=d.status||'estimating';
+  let html=`<div class="rpage"><div class="rlh"><div><div class="rco">${company()}</div><div class="rco-sub">Completion Report</div></div><div><div style="display:inline-block;background:${statusColors[s]||'#888'};padding:3px 10px;margin-bottom:4px"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#000;font-weight:600">${statusLabels[s]||s}</span></div><div class="rdoc-meta">${today()}${d.actualStart?'<br>Started: '+d.actualStart:''}${d.actualEnd?'<br>Completed: '+d.actualEnd:''}</div></div></div>`;
+  html+='<div class="rstripe"></div>';
+  html+=`<div class="rproj-name">${projName()}</div>`;
+  html+=`<div class="rsumgrid"><div class="rsc gold"><div class="rscl">Invoice</div><div class="rscv">${invoice?'$'+Math.round(invoice).toLocaleString():'—'}</div></div><div class="rsc" style="border-top-color:${profitColor}"><div class="rscl">Gross Profit</div><div class="rscv" style="color:${profitColor}">${profit?'$'+Math.round(profit).toLocaleString():'—'}</div><div style="font-size:9px;color:#888">${margin}% margin</div></div><div class="rsc blue"><div class="rscl">Man Hours</div><div class="rscv">${totalMH||'—'}</div></div><div class="rsc orange"><div class="rscl">Days on Job</div><div class="rscv">${dailyLogs.length||'—'}</div></div></div>`;
+  html+='<div class="rsec">Bid vs Actual</div><table class="rtbl"><thead><tr><th>Metric</th><th class="num">Bid</th><th class="num">Actual</th><th class="num">Variance</th></tr></thead><tbody>';
+  html+=`<tr><td>Area</td><td class="num">${Math.round(calc.totalSqft).toLocaleString()} sf</td><td class="num">—</td><td class="num">—</td></tr>`;
+  html+=`<tr><td>Asphalt (tons)</td><td class="num">${calc.totalTons.toFixed(1)}</td><td class="num">${totalTonsActual?totalTonsActual.toFixed(1):'—'}</td><td class="num">${varBadge(totalTonsActual,calc.totalTons)}</td></tr>`;
+  html+=`<tr><td>Extra Purchases</td><td class="num">$0</td><td class="num">${totalExtras?'$'+totalExtras.toLocaleString():'—'}</td><td class="num">${totalExtras?`<span style="color:#f97316;font-weight:600">+$${totalExtras.toLocaleString()}</span>`:'—'}</td></tr>`;
+  html+=`<tr class="gtot"><td colspan="2">Est. Job Cost</td><td class="num">$${Math.round(calc.totalCost).toLocaleString()}</td><td class="num">${varBadge(calc.totalCost+totalExtras,calc.totalCost)}</td></tr></tbody></table>`;
+  if(dailyLogs.length){
+    html+='<div class="rsec">Daily Field Reports</div><table class="rtbl"><thead><tr><th>Date</th><th>Phase</th><th class="num">%</th><th class="num">MH</th><th class="num">Eq Hrs</th><th class="num">Asphalt</th><th class="num">Extras</th></tr></thead><tbody>';
+    dailyLogs.forEach(l=>{html+=`<tr><td style="font-family:monospace;font-size:10px">${l.date||'—'}</td><td>${l.phase||'—'}</td><td class="num">${l.pct||0}%</td><td class="num">${l.mh||0}</td><td class="num">${l.eqh||0}</td><td class="num">${l.tons||'—'}</td><td class="num">${l.extras?'$'+l.extras:'—'}</td></tr>`;});
+    html+='</tbody></table>';
+  }
+  if(d.compNotes)html+=`<div class="rsec">Notes</div><div style="font-size:11px;color:#555;line-height:1.7;background:#fafafa;border:1px solid #e5e7eb;padding:10px 12px">${d.compNotes}</div>`;
+  html+=`<div style="margin-top:20px"><div class="rsigblock"><div><div class="rsigline"></div><div class="rsiglbl">Foreman / Date</div></div><div><div class="rsigline"></div><div class="rsiglbl">PM / Date</div></div><div><div class="rsigline"></div><div class="rsiglbl">Client Sign-Off / Date</div></div></div></div></div>`;
+  html+=buildCustomPages('foreman');
+  return html;
+}
+
+function buildContractorHtml(){
+  const d=getDetails(),calc=getCalc();
+  let html=`<div class="rpage"><div class="rlh"><div><div class="rco">${company()}</div><div class="rco-sub">Internal Work Order</div></div><div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600">CONTRACTOR COPY</div><div class="rdoc-meta">${today()}${d.jobNum?'<br>Job #: '+d.jobNum:''}</div></div></div>`;
+  html+='<div class="rstripe"></div>';
+  html+=`<div class="rproj-name">${projName()}</div>`;
+  if(d.address)html+=`<div style="font-size:11px;color:#888;margin-bottom:12px">${d.address}</div>`;
+  html+='<div class="rsec">Zone Breakdown</div><table class="rtbl"><thead><tr><th>Zone</th><th class="num">Area (sf)</th><th class="num">Tons</th><th class="num">Base (t)</th><th class="num">Cost</th></tr></thead><tbody>';
+  calc.closed.forEach(z=>{const a=polyArea(z.pts||[])*calc.scale*calc.scale;const t=a*(calc.depth/12)*145/2000*calc.comp;const b=a*(calc.base/12)*110/2000;const cost=t*calc.pa+b*calc.pb+a*calc.pl;html+=`<tr><td>${z.name}</td><td class="num">${Math.round(a).toLocaleString()}</td><td class="num">${t.toFixed(1)}</td><td class="num">${b.toFixed(1)}</td><td class="num">$${Math.round(cost).toLocaleString()}</td></tr>`;});
+  html+=`<tr class="gtot"><td colspan="4">TOTAL</td><td class="num">$${Math.round(calc.totalCost).toLocaleString()}</td></tr></tbody></table>`;
+  const _ctInvRows=inventoryRows(true);
+  if(_ctInvRows){html+='<div class="rsec">Additional Scope</div><table class="rtbl"><thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr></thead><tbody>'+_ctInvRows+'</tbody></table>';}
+  html+=`<div class="rfooter">INTERNAL USE ONLY — Contains cost data. Do not distribute to client.</div></div>`;
+  return html;
+  html+=buildCustomPages('contractor');
+}
+
+// ── ESTIMATING REPORTS ──
+function buildEstimatingReports(){
+  loadThemesIntoProject();
+  const clientEl=document.getElementById('report-client');
+  const contractorEl=document.getElementById('report-contractor');
+  const foremanEl=document.getElementById('report-foreman');
+  const completionEl=document.getElementById('report-completion');
+  if(clientEl){clientEl.innerHTML=buildClientHtml('rmap-est-client');requestAnimationFrame(()=>paintReportMap('rmap-est-client'));}
+  if(contractorEl)contractorEl.innerHTML=buildContractorHtml();
+  if(foremanEl){foremanEl.innerHTML=buildForemanHtml('rmap-est-foreman');requestAnimationFrame(()=>paintReportMap('rmap-est-foreman'));}
+  if(completionEl)completionEl.innerHTML=buildCompletionHtml();
+}
+
+// ── ACTIVE JOB REPORTS ──
+function buildActiveReports(){
+  const c=document.getElementById('report-client-a');
+  const f=document.getElementById('report-foreman-a');
+  const comp=document.getElementById('report-completion-a');
+  if(c){c.innerHTML=buildClientHtml('rmap-act-client');requestAnimationFrame(()=>paintReportMap('rmap-act-client'));}
+  if(f){f.innerHTML=buildForemanHtml('rmap-act-foreman');requestAnimationFrame(()=>paintReportMap('rmap-act-foreman'));}
+  if(comp)comp.innerHTML=buildCompletionHtml();
+}
+
+// ── COMPLETE REPORTS ──
+function buildCompleteReports(){
+  const c=document.getElementById('report-client-c');
+  const f=document.getElementById('report-foreman-c');
+  const comp=document.getElementById('report-completion-c');
+  if(c){c.innerHTML=buildClientHtml('rmap-comp-client');requestAnimationFrame(()=>paintReportMap('rmap-comp-client'));}
+  if(f){f.innerHTML=buildForemanHtml('rmap-comp-foreman');requestAnimationFrame(()=>paintReportMap('rmap-comp-foreman'));}
+  if(comp)comp.innerHTML=buildCompletionHtml();
+}
+
+// ── DELETE ──
+async function deleteProject(){
+  if(!confirm('Delete this project? Cannot be undone.'))return;
+  await sb.from('projects').delete().eq('id',projectId).eq('user_id',currentUser.id);
+  localStorage.removeItem('paveview_proj_details_'+projectId);
+  window.location.replace('dashboard.html');
+}
+</script>
+</body>
+</html>
