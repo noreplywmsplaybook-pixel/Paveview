@@ -1819,7 +1819,231 @@ function projName(){return document.getElementById('bc-name')?.textContent||'Pro
 function today(){return new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});}
 function varBadge(actual,bid){if(!bid||!actual)return'—';const pct=((actual-bid)/bid*100),over=pct>5;return`<span style="font-family:JetBrains Mono,monospace;font-size:9px;font-weight:600;color:${over?'#ef4444':'#22c55e'}">${over?'▲':'▼'} ${Math.abs(pct).toFixed(1)}% ${over?'over':'under'}</span>`;}
 
+function getThemeForType(type){
+  if(!activeReportTheme||!activeReportTheme.sections)return null;
+  const sections=activeReportTheme.sections[type];
+  if(!Array.isArray(sections)||!sections.length)return null;
+  return{
+    colors:{
+      primary:'#111111',
+      accent:'#d4a843',
+      bg:'#ffffff',
+      textcol:'#1a1a1a',
+      ...(activeReportTheme.colors||{})
+    },
+    fonts:{
+      heading:'Inter',
+      body:'Inter',
+      ...(activeReportTheme.fonts||{})
+    },
+    headerStyle:activeReportTheme.headerStyle||'split',
+    stripe:activeReportTheme.stripe||'gradient',
+    tableStyle:activeReportTheme.tableStyle||'clean',
+    pagePad:activeReportTheme.pagePad||'normal',
+    sections
+  };
+}
+
+function buildThemedReportHtml(type,rMapId){
+  const t=getThemeForType(type);
+  if(!t)return null;
+  const d=getDetails(),calc=getCalc();
+  const mapHtml=rMapId?reportMapBlock(rMapId):'';
+  const logo=localStorage.getItem('paveview_logo')||'';
+  const userName=localStorage.getItem('paveview_user_name')||'';
+  const coName=company();
+  const P=t.colors.primary||'#111111';
+  const A=t.colors.accent||'#d4a843';
+  const BG=t.colors.bg||'#ffffff';
+  const TX=t.colors.textcol||'#1a1a1a';
+  const HF=t.fonts.heading||'Inter';
+  const BF=t.fonts.body||'Inter';
+  const PAD={normal:'48px',tight:'28px',wide:'64px'}[t.pagePad]||'48px';
+  const docLbl={client:'CLIENT PROPOSAL',foreman:'FOREMAN WORK ORDER',contractor:'CONTRACTOR COPY'}[type]||'REPORT';
+  const logoEl=logo?`<img src="${logo}" style="height:52px;max-width:160px;object-fit:contain;display:block;margin-bottom:10px">`:'';
+
+  function stripeHtml(){
+    if(t.stripe==='none')return'';
+    if(t.stripe==='solid')return`<div style="height:4px;background:${A}"></div>`;
+    if(t.stripe==='double')return`<div style="height:2px;background:${A}"></div><div style="height:1px;background:${P}33;margin-top:2px"></div>`;
+    if(t.stripe==='thick')return`<div style="height:7px;background:${A}"></div>`;
+    return`<div style="height:4px;background:linear-gradient(90deg,${P} 0%,${A} 40%,${P} 100%)"></div>`;
+  }
+
+  function headerHtml(){
+    const badge=`<div style="display:inline-block;background:${P};color:${A};font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.2em;padding:6px 16px">${docLbl}</div>`;
+    const sub=userName||'Professional Paving Services';
+    if(t.headerStyle==='banner')return`<div style="background:${P};padding:36px ${PAD};display:flex;justify-content:space-between;align-items:center">
+      ${logoEl?`<div>${logoEl}</div>`:`<div style="font-size:28px;font-weight:800;color:#fff;font-family:'${HF}'">${coName}</div>`}
+      <div style="text-align:right">${badge}<div style="font-size:11px;color:#ffffff99;margin-top:6px">${today()}</div></div>
+    </div>`;
+    if(t.headerStyle==='centered')return`<div style="padding:36px ${PAD} 24px;text-align:center;border-bottom:1px solid #e5e7eb">
+      ${logoEl?`<div style="display:flex;justify-content:center;margin-bottom:10px">${logoEl}</div>`:''}
+      <div style="font-size:28px;font-weight:800;font-family:'${HF}';color:${TX}">${coName}</div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:4px">${sub}</div>
+      <div style="margin-top:14px">${badge}</div>
+    </div>`;
+    if(t.headerStyle==='minimal')return`<div style="padding:24px ${PAD};display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid ${A}">
+      <div style="font-size:22px;font-weight:700;font-family:'${HF}';color:${TX};border-left:4px solid ${A};padding-left:12px">${coName}</div>
+      <div style="font-size:9px;color:#9ca3af;letter-spacing:.2em;text-transform:uppercase">${docLbl}</div>
+    </div>`;
+    if(t.headerStyle==='sidebar')return`<div style="display:grid;grid-template-columns:8px 1fr">
+      <div style="background:${A}"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:28px ${PAD};border-bottom:1px solid #e5e7eb">
+        <div>${logoEl}<div style="font-size:26px;font-weight:800;font-family:'${HF}';color:${TX}">${coName}</div><div style="font-size:11px;color:#9ca3af;margin-top:3px">${sub}</div></div>
+        <div style="text-align:right">${badge}<div style="font-size:11px;color:#9ca3af;margin-top:6px">${today()}</div></div>
+      </div>
+    </div>`;
+    return`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:36px ${PAD} 28px;border-bottom:1px solid #e5e7eb">
+      <div>${logoEl}<div style="font-size:26px;font-weight:800;font-family:'${HF}';color:${TX};letter-spacing:-.03em">${coName}</div><div style="font-size:11px;color:#9ca3af;margin-top:3px">${sub}</div></div>
+      <div style="text-align:right">${badge}<div style="font-size:11px;color:#9ca3af;line-height:2;margin-top:8px">${today()}${d.jobNum?`<br>Job #: ${d.jobNum}`:''}${d.estimator?`<br>Est: ${d.estimator}`:''}</div></div>
+    </div>`;
+  }
+
+  function tableCss(){
+    const base=`<style>
+      .th-rptbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:18px;font-family:'${BF}'}
+      .th-rptbl th{font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6b7280;padding:9px 12px;text-align:left}
+      .th-rptbl td{padding:10px 12px;color:#374151}
+      .th-rptbl td.n{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right}
+      .th-rptbl tr.tot td{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;padding:12px}
+    </style>`;
+    const variants={
+      clean:`<style>.th-rptbl thead tr{background:#f8f8f8;border-top:2px solid ${P};border-bottom:1px solid #e5e7eb}.th-rptbl tbody tr{border-bottom:1px solid #f5f5f5}.th-rptbl tr.tot td{background:${P};color:${A}}</style>`,
+      striped:`<style>.th-rptbl thead tr{background:${P}}.th-rptbl th{color:${A}!important}.th-rptbl tbody tr:nth-child(even){background:#f8f8f8}.th-rptbl tr.tot td{background:${P};color:${A}}</style>`,
+      bordered:`<style>.th-rptbl,.th-rptbl th,.th-rptbl td{border:1px solid #e5e7eb!important}.th-rptbl tr.tot td{background:${P};color:${A}}</style>`,
+      'dark-header':`<style>.th-rptbl thead tr{background:${P}}.th-rptbl th{color:${A}!important}.th-rptbl tbody tr{border-bottom:1px solid #f0f0f0}.th-rptbl tr.tot td{background:${P};color:${A}}</style>`,
+      minimal:`<style>.th-rptbl thead tr{border-bottom:2px solid ${P}}.th-rptbl th{color:${P}!important}.th-rptbl tbody tr{border-bottom:1px solid #e5e7eb}.th-rptbl tr.tot td{color:${P}}</style>`
+    };
+    return base+(variants[t.tableStyle]||variants.clean);
+  }
+
+  function labelHtml(text){
+    return`<div style="font-size:8px;font-weight:700;color:${A};letter-spacing:.22em;text-transform:uppercase;margin:24px 0 10px;padding-bottom:6px;border-bottom:1.5px solid #f0f0f0;font-family:'JetBrains Mono',monospace">${text||''}</div>`;
+  }
+
+  function kpiCardsHtml(){
+    const inv=getSiteInventory();
+    if(type==='foreman')return`
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid #f0f0f0">
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Area</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${Math.round(calc.totalSqft||0).toLocaleString()} sf</div></div>
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Asphalt</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${(calc.totalTons||0).toFixed(1)} tons</div></div>
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Zones</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${(calc.closed||[]).length}</div></div>
+        <div style="padding:16px"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Stalls</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${(inv.stalls||0)+(inv.ada||0)}</div></div>
+      </div>`;
+    if(type==='contractor')return`
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid #f0f0f0">
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Area</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${Math.round(calc.totalSqft||0).toLocaleString()} sf</div></div>
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Tons</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${(calc.totalTons||0).toFixed(1)}</div></div>
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Base</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${(calc.totalBaseTons||0).toFixed(1)}</div></div>
+        <div style="padding:16px"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Est. Cost</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">$${Math.round(calc.totalCost||0).toLocaleString()}</div></div>
+      </div>`;
+    return`
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid #f0f0f0">
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Total Area</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${Math.round(calc.totalSqft||0).toLocaleString()} sf</div></div>
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Acreage</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${((calc.totalSqft||0)/43560).toFixed(3)}</div></div>
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Stalls</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${(inv.stalls||0)+(inv.ada||0)}</div></div>
+        <div style="padding:16px"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Est. Total</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">$${Math.round(calc.totalCost||0).toLocaleString()}</div></div>
+      </div>`;
+  }
+
+  function scopeRows(showPricing){
+    let rows='';
+    (calc.closed||[]).forEach(z=>{
+      const a=polyArea(z.pts||[])*calc.scale*calc.scale;
+      const tons=a*(calc.depth/12)*145/2000*calc.comp;
+      const base=a*(calc.base/12)*110/2000;
+      const cost=tons*calc.pa+base*calc.pb+a*calc.pl;
+      if(type==='contractor'){
+        rows+=`<tr><td>${z.name}</td><td class="n">${Math.round(a).toLocaleString()}</td><td class="n">${tons.toFixed(1)}</td><td class="n">${base.toFixed(1)}</td><td class="n">${showPricing?'$'+Math.round(cost).toLocaleString():'—'}</td></tr>`;
+      }else{
+        rows+=`<tr><td><strong>${z.name}</strong> — Asphalt Paving (${calc.depth}" depth)</td><td class="n">${Math.round(a).toLocaleString()}</td><td class="n">sq ft</td><td class="n">${showPricing?'$'+Math.round(cost).toLocaleString():'—'}</td></tr>`;
+      }
+    });
+    rows+=inventoryRows(showPricing);
+    return rows;
+  }
+
+  function renderSection(s){
+    if(!s||!s.vis)return'';
+    const c=s.content||{};
+    if(s.type==='header')return headerHtml();
+    if(s.type==='stripe')return stripeHtml();
+    if(s.type==='infoband')return`<div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;border-bottom:1px solid #f0f0f0;font-family:'${BF}'">
+      <div style="padding:20px ${PAD};border-right:1px solid #f0f0f0">
+        <div style="font-size:8px;font-weight:700;color:${A};letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px">${c.labelPrepared||'Prepared For'}</div>
+        <div style="font-size:17px;font-weight:700;color:${TX};font-family:'${HF}';margin-bottom:3px">${d.clientName||c.preparedFor||'Client Name'}</div>
+        <div style="font-size:11px;color:#6b7280;line-height:1.6">${[d.contact||c.contact,d.phone||c.phone,d.email||c.email].filter(Boolean).join('<br>')}</div>
+      </div>
+      <div style="padding:20px ${PAD};border-right:1px solid #f0f0f0">
+        <div style="font-size:8px;font-weight:700;color:${A};letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px">${c.labelSite||'Job Site'}</div>
+        <div style="font-size:15px;font-weight:600;color:${TX};font-family:'${HF}'">${d.address||c.site||'Site Address'}</div>
+      </div>
+      <div style="padding:20px ${PAD}">
+        <div style="font-size:8px;font-weight:700;color:${A};letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px">${c.labelProject||'Project'}</div>
+        <div style="font-size:15px;font-weight:600;color:${TX};font-family:'${HF}'">${projName()||c.project||'Project Name'}</div>
+      </div>
+    </div>`;
+    if(s.type==='kpis')return kpiCardsHtml();
+    if(s.type==='map')return`<div style="padding:0 ${PAD}">${labelHtml(s.label||'Site Plan')}${mapHtml||'<div style="background:#f5f5f5;border:1px dashed #ddd;padding:30px;text-align:center;color:#999;font-family:JetBrains Mono,monospace;font-size:10px">Map preview unavailable</div>'}</div>`;
+    if(s.type==='scope'){
+      const contractor=type==='contractor';
+      const rows=scopeRows(contractor||type==='client');
+      const total=type==='foreman'?(c.total||'See Estimate'):('$'+Math.round(calc.totalCost||0).toLocaleString());
+      return`<div style="padding:0 ${PAD}">${labelHtml(s.label||'Scope of Work')}
+        <table class="th-rptbl"><thead><tr>${contractor?'<th>Zone</th><th style="text-align:right">Area (sf)</th><th style="text-align:right">Tons</th><th style="text-align:right">Base (t)</th><th style="text-align:right">Cost</th>':'<th>Description</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Est. Cost</th>'}</tr></thead><tbody>
+        ${rows||((c.rows||[]).map(r=>`<tr><td>${r.desc||''}</td><td class="n">${r.qty||''}</td><td class="n">${r.unit||''}</td><td class="n">${r.cost||''}</td></tr>`).join(''))}
+        <tr class="tot"><td colspan="${contractor?4:3}">${type==='contractor'?'TOTAL':'ESTIMATED TOTAL'}</td><td style="text-align:right">${total}</td></tr>
+        </tbody></table>
+      </div>`;
+    }
+    if(s.type==='notes'||s.type==='conditions'){
+      const autoText=s.type==='conditions'?(d.conditions||''):(type==='foreman'?(d.pmNotes||d.scope||''):(d.scope||''));
+      const txt=c.text||autoText||'';
+      if(!txt)return'';
+      const style=(c.style||'callout');
+      const box=style==='callout'?`border-left:3px solid ${A};padding:14px 18px;background:${A}08`:style==='box'?`border:1px solid ${A}44;padding:14px 18px`:'padding:4px 0';
+      return`<div style="padding:0 ${PAD}">${labelHtml(s.label||'Notes')}<div style="${box};font-size:${c.fontSize||13}px;color:#4b5563;line-height:1.8;font-family:'${BF}';margin-bottom:16px;white-space:pre-wrap">${txt}</div></div>`;
+    }
+    if(s.type==='sigs'){
+      const defs={client:['Contractor / Date','Client Signature / Date','Project Start Date'],foreman:['Foreman / Date','PM Review / Date','Hours Recorded / Date'],contractor:['Project Manager / Date','Owner Approval / Date','Start Date Confirmed']};
+      const lines=(c.lines&&c.lines.length?c.lines:defs[type]||defs.client);
+      return`<div style="padding:0 ${PAD}">${labelHtml(s.label||'Authorization')}<div style="display:grid;grid-template-columns:${lines.map(()=> '1fr').join(' ')};gap:24px;margin:0 0 24px">${lines.map(l=>`<div><div style="height:1px;background:${P};margin-bottom:7px"></div><div style="font-size:9px;color:#9ca3af;letter-spacing:.12em;text-transform:uppercase;font-family:'JetBrains Mono',monospace">${l}</div></div>`).join('')}</div></div>`;
+    }
+    if(s.type==='footer'){
+      const txt=c.text||(type==='contractor'?'INTERNAL USE ONLY — Contains cost data. Do not distribute to client.':'By signing, both parties agree to the scope and estimated costs outlined above. Final invoice may vary based on field conditions.');
+      return`<div style="font-size:9px;color:#9ca3af;line-height:1.6;border-top:1px solid #f0f0f0;padding:12px ${PAD};display:flex;justify-content:space-between;font-family:'${BF}'"><span style="font-weight:600;color:${P}">${c.footerCo||coName}</span><span>${txt}</span></div>`;
+    }
+    if(s.type==='custom-text')return`<div style="padding:40px ${PAD}"><div style="height:3px;background:${A};margin-bottom:32px"></div><h2 style="font-size:24px;font-weight:800;font-family:'${HF}';color:${TX};letter-spacing:-.02em;margin:0 0 18px">${c.title||'Section Title'}</h2><div style="font-size:${c.fontSize||13}px;color:#374151;line-height:1.9;font-family:'${BF}';white-space:pre-wrap">${c.text||''}</div></div>`;
+    if(s.type==='photo'){
+      const w=c.width||100,align=c.align||'center';
+      return`<div style="padding:28px ${PAD}"><div style="font-size:8px;font-weight:700;color:${A};letter-spacing:.2em;text-transform:uppercase;margin-bottom:10px;font-family:'JetBrains Mono',monospace">${c.caption||''}</div><div style="text-align:${align}">${c.image?`<img src="${c.image}" style="width:${w}%;max-height:480px;object-fit:contain;border-radius:3px;display:inline-block">`:'<div style="background:#f5f5f5;border:2px dashed #ddd;height:220px;display:flex;align-items:center;justify-content:center;border-radius:3px;font-size:11px;color:#aaa;font-family:JetBrains Mono,monospace">No image selected</div>'}</div>${c.description?`<div style="font-size:11px;color:#6b7280;line-height:1.7;margin-top:10px;font-style:italic;font-family:'${BF}'">${c.description}</div>`:''}</div>`;
+    }
+    if(s.type==='two-col')return`<div style="padding:0 ${PAD}">${labelHtml(c.title||s.label||'')}<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:18px"><div style="font-size:12px;color:#374151;line-height:1.8;font-family:'${BF}'">${c.left||''}</div><div style="font-size:12px;color:#374151;line-height:1.8;font-family:'${BF}'">${c.right||''}</div></div></div>`;
+    if(s.type==='divider'){
+      const ds={line:'height:1px;background:#e5e7eb',thick:`height:5px;background:${A}`,dots:'height:1px;border-top:2px dotted #ddd',space:'height:24px'};
+      return`<div style="padding:0 ${PAD}"><div style="${ds[c.style||'line']||ds.line};margin:12px 0"></div></div>`;
+    }
+    if(s.type==='phase'){
+      const phase=(reportPhases||[]).find(ph=>ph.screenshot);
+      const phaseName=(phase&&phase.name)||c.phaseName||'Phase 1';
+      const zoneNames=phase?(projectData.zones||[]).filter(z=>phase.zoneIds.includes(z.id)).map(z=>z.name).join(', '):(c.zoneNames||'');
+      const screenshot=(phase&&phase.screenshot)||c.screenshot||'';
+      return`<div style="padding:0"><div style="height:4px;background:${A}"></div><div style="padding:28px ${PAD} 16px"><div style="font-size:8px;font-weight:700;color:${A};letter-spacing:.2em;text-transform:uppercase;margin-bottom:8px;font-family:'JetBrains Mono',monospace">${c.phaseLabel||'Phase Map'}</div><div style="font-size:22px;font-weight:800;font-family:'${HF}';color:${TX};letter-spacing:-.02em;margin-bottom:6px">${phaseName}</div>${zoneNames?`<div style="font-size:11px;color:#6b7280">Zones: ${zoneNames}</div>`:''}</div>${screenshot?`<div style="padding:0 ${PAD} 28px"><img src="${screenshot}" style="width:100%;border-radius:4px;border:1px solid #e5e7eb"></div>`:`<div style="margin:0 ${PAD} 28px;background:#f5f5f5;border:2px dashed #ddd;height:200px;display:flex;align-items:center;justify-content:center;border-radius:3px"><span style="font-size:11px;color:#aaa;font-family:'JetBrains Mono',monospace">Phase screenshot unavailable</span></div>`}${c.description?`<div style="padding:0 ${PAD} 24px"><div style="font-size:12px;color:#6b7280;line-height:1.7;font-family:'${BF}'">${c.description}</div></div>`:''}</div>`;
+    }
+    return'';
+  }
+
+  let html=`<div class="rpage" style="background:${BG};color:${TX};font-family:'${BF}'">${tableCss()}`;
+  t.sections.forEach(s=>{html+=renderSection(s);});
+  html+=buildCustomPages(type);
+  html+='</div>';
+  return html;
+}
+
 function buildClientHtml(rMapId){
+  const themed=buildThemedReportHtml('client',rMapId);
+  if(themed)return themed;
   const d=getDetails(),calc=getCalc();
   const mapHtml=rMapId?reportMapBlock(rMapId):'';
   const logo=localStorage.getItem('paveview_logo')||'';
@@ -1962,6 +2186,8 @@ function buildClientHtml(rMapId){
 
 
 function buildForemanHtml(rMapId){
+  const themed=buildThemedReportHtml('foreman',rMapId);
+  if(themed)return themed;
   const d=getDetails(),calc=getCalc();
   const concerns=[[d.c1,d.c1s],[d.c2,d.c2s],[d.c3,d.c3s]].filter(c=>c[0]);
   const mapHtml=rMapId?reportMapBlock(rMapId):'';
@@ -2038,7 +2264,9 @@ function buildCompletionHtml(){
   return html;
 }
 
-function buildContractorHtml(){
+function buildContractorHtml(rMapId){
+  const themed=buildThemedReportHtml('contractor',rMapId);
+  if(themed)return themed;
   const d=getDetails(),calc=getCalc();
   let html=`<div class="rpage"><div class="rlh"><div><div class="rco">${company()}</div><div class="rco-sub">Internal Work Order</div></div><div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600">CONTRACTOR COPY</div><div class="rdoc-meta">${today()}${d.jobNum?'<br>Job #: '+d.jobNum:''}</div></div></div>`;
   html+='<div class="rstripe"></div>';
@@ -2049,9 +2277,10 @@ function buildContractorHtml(){
   html+=`<tr class="gtot"><td colspan="4">TOTAL</td><td class="num">$${Math.round(calc.totalCost).toLocaleString()}</td></tr></tbody></table>`;
   const _ctInvRows=inventoryRows(true);
   if(_ctInvRows){html+='<div class="rsec">Additional Scope</div><table class="rtbl"><thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr></thead><tbody>'+_ctInvRows+'</tbody></table>';}
-  html+=`<div class="rfooter">INTERNAL USE ONLY — Contains cost data. Do not distribute to client.</div></div>`;
-  return html;
+  html+=`<div class="rfooter">INTERNAL USE ONLY — Contains cost data. Do not distribute to client.</div>`;
   html+=buildCustomPages('contractor');
+  html+='</div>';
+  return html;
 }
 
 // ── ESTIMATING REPORTS ──
@@ -2062,7 +2291,7 @@ function buildEstimatingReports(){
   const foremanEl=document.getElementById('report-foreman');
   const completionEl=document.getElementById('report-completion');
   if(clientEl){clientEl.innerHTML=buildClientHtml('rmap-est-client');requestAnimationFrame(()=>paintReportMap('rmap-est-client'));}
-  if(contractorEl)contractorEl.innerHTML=buildContractorHtml();
+  if(contractorEl)contractorEl.innerHTML=buildContractorHtml('rmap-est-contractor');
   if(foremanEl){foremanEl.innerHTML=buildForemanHtml('rmap-est-foreman');requestAnimationFrame(()=>paintReportMap('rmap-est-foreman'));}
   if(completionEl)completionEl.innerHTML=buildCompletionHtml();
 }
