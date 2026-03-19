@@ -58,6 +58,13 @@ button{-webkit-appearance:none;appearance:none;}
 #proj-debug-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--accent)}
 #proj-debug-body{padding:10px}
 #proj-debug pre{font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.55;color:var(--text2);white-space:pre-wrap;word-break:break-word}
+.proj-dbg-fab{
+  position:fixed;left:14px;bottom:14px;z-index:1700;
+  font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;
+  border:1px solid var(--border);background:var(--surface2);color:var(--accent);
+  padding:7px 10px;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.35)
+}
+.proj-dbg-fab:hover{border-color:var(--accent);background:var(--accent-bg)}
 /* MAIN */
 #main{flex:1;padding:24px;max-width:1100px;margin:0 auto;width:100%}
 /* STATS BAR */
@@ -310,7 +317,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
 @media print{
   #hdr,#status-row,#confirm-banner,#job-mgmt .sec:not(.printing),
   .print-bar,.rtab-bar,.sec:not(.report-sec),.mgmt-grid,.kpi-row,
-  #map-container,#proj-debug{display:none!important}
+  #map-container,#proj-debug,.proj-dbg-fab{display:none!important}
   .rpanel{display:block!important}
   .report-preview-wrap{max-height:none!important;background:#fff!important;padding:0!important}
   .report-paper{border:none!important;box-shadow:none!important;margin:0!important;display:block!important}
@@ -356,6 +363,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
   </div>
   <div id="proj-debug-body"><pre id="proj-debug-pre">Loading…</pre></div>
 </div>
+<button class="proj-dbg-fab" onclick="toggleProjectDebug()">Debug</button>
 
 <div id="main" style="display:none">
 
@@ -783,6 +791,7 @@ function toggleThemeProj(){
   }
   document.getElementById('auth-check').remove();
   document.getElementById('main').style.display='block';
+  maybeOpenProjectDebugFromUrl();
   // Load map image
   if(projectData.planPath){loadMapImage(projectData.planPath);}
 })();
@@ -1456,6 +1465,16 @@ async function copyProjectDebug(){
     await navigator.clipboard.writeText(txt);
   }catch(e){}
 }
+
+function maybeOpenProjectDebugFromUrl(){
+  try{
+    const u=new URL(window.location.href);
+    if(u.searchParams.get('debug')==='1') toggleProjectDebug();
+  }catch(e){}
+}
+window.addEventListener('keydown',e=>{
+  if(e&&e.shiftKey&&e.key&&e.key.toLowerCase()==='d') toggleProjectDebug();
+});
 
 function getProjectThemeKey(){
   return projectId?`${PROJECT_THEME_KEY_PREFIX}${projectId}`:'';

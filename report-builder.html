@@ -38,6 +38,13 @@ body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--txt);height:
 #rb-debug-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--acc)}
 #rb-debug-body{padding:10px}
 #rb-debug pre{font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.55;color:var(--txt2);white-space:pre-wrap;word-break:break-word}
+.rb-dbg-fab{
+  position:fixed;left:14px;bottom:14px;z-index:1300;
+  font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;
+  border:1px solid var(--bdr);background:var(--surf2);color:var(--acc);
+  padding:7px 10px;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.35)
+}
+.rb-dbg-fab:hover{border-color:var(--acc);background:var(--acc-bg)}
 
 /* BODY */
 #body{display:flex;flex:1;overflow:hidden}
@@ -278,6 +285,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--bdr);padding:2px
   </div>
   <div id="rb-debug-body"><pre id="rb-debug-pre">Loading…</pre></div>
 </div>
+<button class="rb-dbg-fab" onclick="toggleBuilderDebug()">Debug</button>
 
 <script>
 var LS = 'paveview_report_themes'; // legacy
@@ -477,6 +485,13 @@ function toggleBuilderDebug() {
   var open = box.style.display === 'block';
   box.style.display = open ? 'none' : 'block';
   if (!open) refreshBuilderDebug();
+}
+
+function maybeOpenBuilderDebugFromUrl() {
+  try {
+    var u = new URL(window.location.href);
+    if (u.searchParams.get('debug') === '1') toggleBuilderDebug();
+  } catch (e) {}
 }
 
 // ── LOAD / SAVE ──
@@ -1079,6 +1094,10 @@ async function init() {
     var box = document.getElementById('rb-debug');
     if (box && box.style.display === 'block') refreshBuilderDebug();
   });
+  window.addEventListener('keydown', function(e) {
+    if (e && e.shiftKey && e.key && e.key.toLowerCase() === 'd') toggleBuilderDebug();
+  });
+  maybeOpenBuilderDebugFromUrl();
 }
 
 init();
