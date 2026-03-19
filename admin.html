@@ -194,12 +194,12 @@ tr:hover td{background:#141414}
     <div class="field">
       <label>Grant Access To</label>
       <select id="add-product">
-        <option value="takeoff">PaveView Takeoff ($500)</option>
+        <option value="takeoff">PaveView Takeoff ($5,000)</option>
       </select>
     </div>
     <div class="field">
       <label>Payment Amount</label>
-      <input type="number" id="add-amount" placeholder="500" value="500">
+      <input type="number" id="add-amount" placeholder="5000" value="5000">
     </div>
     <div class="msg" id="add-msg"></div>
     <div class="mfooter">
@@ -237,10 +237,15 @@ tr:hover td{background:#141414}
 const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const DEFAULT_TAKEOFF_PRICE_CENTS = 500000; // $5,000
 
 let allCustomers = [];
 let revokeTarget = null;
 let restoreTarget = null;
+let profilesById = {};
+let liveChannel = null;
+let refreshTimer = null;
+let loadingData = false;
 
 // ── AUTH ──
 async function googleLogin() {
@@ -280,9 +285,11 @@ function showApp(email) {
   document.getElementById('nav').style.display = 'flex';
   document.getElementById('wrap').style.display = 'block';
   document.getElementById('nav-user').textContent = email;
+  startLiveUpdates();
 }
 
 async function signOut() {
+  stopLiveUpdates();
   await sb.auth.signOut();
   location.reload();
 }
@@ -299,38 +306,46 @@ document.addEventListener('keydown', e => {
 
 // ── LOAD DATA ──
 async function loadData() {
+  if (loadingData) return;
+  loadingData = true;
   document.getElementById('tbl-body').innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
+  try {
+    const [{ data: profiles, error: profilesErr }, { data: purchases, error: purchasesErr }] = await Promise.all([
+      sb.from('profiles').select('*').order('created_at', { ascending: false }),
+      sb.from('purchases').select('*').order('created_at', { ascending: false })
+    ]);
+    if (profilesErr) throw profilesErr;
+    if (purchasesErr) throw purchasesErr;
 
-  // Load profiles
-  const { data: profiles } = await sb.from('profiles').select('*').order('created_at', { ascending: false });
+    const profileRows = profiles || [];
+    const purchaseRows = purchases || [];
+    profilesById = Object.fromEntries(profileRows.map(p => [p.id, p]));
 
-  // Load purchases
-  const { data: purchases } = await sb.from('purchases').select('*').order('created_at', { ascending: false });
-
-  if (!profiles) return;
-
-  // Map purchases to users
-  const purchaseMap = {};
-  if (purchases) {
-    purchases.forEach(p => {
+    // Map most-recent purchase to each user
+    const purchaseMap = {};
+    purchaseRows.forEach(p => {
       if (!purchaseMap[p.user_id]) purchaseMap[p.user_id] = p;
     });
+
+    allCustomers = profileRows.map(p => ({
+      ...p,
+      purchase: purchaseMap[p.id] || null
+    }));
+
+    renderTable(allCustomers);
+    renderPurchases(purchaseRows);
+    updateStats(allCustomers, purchaseRows);
+  } catch (err) {
+    document.getElementById('tbl-body').innerHTML = `<tr><td colspan="7" class="empty">Failed to load data: ${err.message || err}</td></tr>`;
+    document.getElementById('purchases-body').innerHTML = '<tr><td colspan="6" class="empty">Failed to load purchases.</td></tr>';
+  } finally {
+    loadingData = false;
   }
-
-  // Build customer list
-  allCustomers = profiles.map(p => ({
-    ...p,
-    purchase: purchaseMap[p.id] || null
-  }));
-
-  renderTable(allCustomers);
-  renderPurchases(purchases || []);
-  updateStats(allCustomers, purchases || []);
 }
 
 function updateStats(customers, purchases) {
   const active = purchases.filter(p => p.status === 'active').length;
-  const revenue = purchases.filter(p => p.status === 'active').reduce((s, p) => s + (p.amount_paid || 50000), 0);
+  const revenue = purchases.filter(p => p.status === 'active').reduce((s, p) => s + (p.amount_paid || DEFAULT_TAKEOFF_PRICE_CENTS), 0);
   const thisMonth = customers.filter(c => {
     const d = new Date(c.created_at);
     const now = new Date();
@@ -377,11 +392,12 @@ function renderPurchases(purchases) {
 
   tbody.innerHTML = purchases.slice(0, 50).map(p => {
     const status = p.status === 'active' ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Revoked</span>';
-    const amount = p.amount_paid ? '$' + (p.amount_paid / 100).toLocaleString() : '$500';
+    const amount = p.amount_paid ? '$' + (p.amount_paid / 100).toLocaleString() : '$5,000';
     const date = new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const stripeId = p.stripe_payment_intent ? `<span class="mono" style="font-size:10px;color:#444">${p.stripe_payment_intent.substring(0, 20)}…</span>` : '—';
+    const email = profilesById[p.user_id]?.email || `${(p.user_id || '').substring(0, 8)}…`;
     return `<tr>
-      <td class="mono">${p.user_id.substring(0, 8)}…</td>
+      <td class="mono">${email}</td>
       <td><span class="badge badge-yellow">${p.product || 'takeoff'}</span></td>
       <td class="mono">${amount}</td>
       <td>${status}</td>
@@ -409,7 +425,7 @@ async function addAccount() {
   const email = document.getElementById('add-email').value.trim();
   const pass = document.getElementById('add-pass').value;
   const product = document.getElementById('add-product').value;
-  const amount = parseInt(document.getElementById('add-amount').value) || 500;
+  const amount = parseInt(document.getElementById('add-amount').value) || 5000;
 
   if (!email || !pass) { showMsg('add-msg', 'Email and password required.', 'err'); return; }
 
@@ -482,9 +498,30 @@ async function confirmRestore() {
 
 // ── GRANT ACCESS (no purchase yet) ──
 async function grantAccess(userId, email) {
-  const { error } = await sb.from('purchases').insert({ user_id: userId, product: 'takeoff', amount_paid: 50000, status: 'active' });
+  const { error } = await sb.from('purchases').insert({ user_id: userId, product: 'takeoff', amount_paid: DEFAULT_TAKEOFF_PRICE_CENTS, status: 'active' });
   if (error) alert('Error: ' + error.message);
   else loadData();
+}
+
+function stopLiveUpdates() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+  if (liveChannel) {
+    sb.removeChannel(liveChannel);
+    liveChannel = null;
+  }
+}
+
+function startLiveUpdates() {
+  stopLiveUpdates();
+  refreshTimer = setInterval(() => { loadData(); }, 30000);
+  liveChannel = sb
+    .channel('admin-live-updates')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => loadData())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases' }, () => loadData())
+    .subscribe();
 }
 
 // ── MODAL HELPERS ──

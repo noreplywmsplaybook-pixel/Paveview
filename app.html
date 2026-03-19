@@ -2908,33 +2908,30 @@ function loadSettingsValues(){
       if(el)el.value=val;
     });
   }catch(e){}
+  const fsEl=document.getElementById('si-fontsize');
+  if(fsEl&&window.setFontSize){
+    window.setFontSize(parseInt(fsEl.value||localStorage.getItem('paveview_fontsize')||'14'));
+  }
 }
 document.getElementById('btn-settings-close').onclick=()=>closeModal('settings-modal');
 document.getElementById('btn-settings-cancel').onclick=()=>closeModal('settings-modal');
 document.getElementById('btn-settings-save').onclick=()=>{
-  const map={'si-depth':'s-depth','si-comp':'s-comp','si-base':'s-base','si-pa':'s-pa','si-pb':'s-pb','si-pl':'s-pl','si-plin':'s-plin'};
+  const map={'si-depth':'s-depth','si-comp':'s-comp','si-base':'s-base','si-pa':'s-pa','si-pb':'s-pb','si-pl':'s-pl','si-plin':'s-plin','si-pseal':'s-pseal','si-pcrack':'s-pcrack','si-pstripe':'s-pstripe'};
   Object.entries(map).forEach(([src,dst])=>{document.getElementById(dst).value=document.getElementById(src).value});
   document.getElementById('s-company').value=document.getElementById('si-company').value;
+  // Persist all settings inputs
+  const savedSettings={};
+  document.querySelectorAll('[id^="si-"]').forEach(el=>{savedSettings[el.id]=el.value;});
+  localStorage.setItem('paveview_settings',JSON.stringify(savedSettings));
   // Apply font size
   const fs=document.getElementById('si-fontsize')?.value||14;
-  document.documentElement.style.setProperty('--fs',fs+'px');
-  localStorage.setItem('paveview_fontsize',fs);
+  if(window.setFontSize)window.setFontSize(parseInt(fs));
+  else{
+    document.documentElement.style.setProperty('--fs',fs+'px');
+    localStorage.setItem('paveview_fontsize',fs);
+  }
   updateStats();closeModal('settings-modal');
 };
-// Font size slider live preview
-(()=>{
-  const sl=document.getElementById('si-fontsize');
-  const vl=document.getElementById('si-fontsize-val');
-  if(sl&&vl){
-    // Load saved
-    const saved=localStorage.getItem('paveview_fontsize');
-    if(saved){sl.value=saved;vl.textContent=saved+'px';document.documentElement.style.setProperty('--fs',saved+'px');}
-    sl.addEventListener('input',()=>{
-      vl.textContent=sl.value+'px';
-      document.documentElement.style.setProperty('--fs',sl.value+'px');
-    });
-  }
-})();
 
 // ── STENCIL ──
 document.querySelectorAll('.so:not(.sign-opt)').forEach(opt=>{
@@ -3229,15 +3226,6 @@ document.getElementById('stall-mode-click').onclick=()=>{stallDotMode=false;docu
 
 // ── Job Type ──
 document.getElementById('job-type').addEventListener('change',updateStats);
-
-// ── Settings save sealcoat ──
-const _origSave=document.getElementById('btn-settings-save').onclick;
-document.getElementById('btn-settings-save').onclick=()=>{
-  if(_origSave)_origSave();
-  ['si-pseal','si-pcrack','si-pstripe'].forEach(id=>{const s=document.getElementById(id);const d=document.getElementById(id.replace('si-','s-'));if(s&&d)d.value=s.value;});
-  closeModal('settings-modal');
-};
-
 
 </script>
 

@@ -13,6 +13,7 @@
   --accent:#d4a843;--accent-bg:rgba(212,168,67,.07);--accent-dim:rgba(212,168,67,.2);
   --ok:#22c55e;--ok-bg:rgba(34,197,94,.08);--ok-border:rgba(34,197,94,.2);
   --red:#ef4444;--blue:#3b82f6;--orange:#f97316;--green:#22c55e;--purple:#a855f7;
+  --fs:14px;
 }
 body.light{
   --bg:#f0ede8;--surface:#fff;--surface2:#f8f6f2;
@@ -22,7 +23,7 @@ body.light{
   --ok:#16a34a;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;display:flex;flex-direction:column}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-size:var(--fs);min-height:100vh;display:flex;flex-direction:column}
 button{-webkit-appearance:none;appearance:none;}
 #auth-check{position:fixed;inset:0;background:#0a0a0a;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;font-family:'JetBrains Mono',monospace}
 .spin{width:14px;height:14px;border:2px solid #1e1e1e;border-top-color:#d4a843;border-radius:50%;animation:spin .7s linear infinite}
@@ -46,6 +47,25 @@ button{-webkit-appearance:none;appearance:none;}
 .btn.danger:hover{border-color:var(--red);background:rgba(239,68,68,.06)}
 .btn:disabled{opacity:.4;cursor:not-allowed}
 .hdiv{width:1px;height:16px;background:var(--border);margin:0 3px}
+#proj-debug{
+  position:fixed;right:16px;bottom:16px;z-index:1600;display:none;
+  width:min(560px,94vw);max-height:70vh;overflow:auto;
+  background:var(--surface);border:1px solid var(--border);box-shadow:0 12px 32px rgba(0,0,0,.45)
+}
+#proj-debug-hdr{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:8px 10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface2)
+}
+#proj-debug-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--accent)}
+#proj-debug-body{padding:10px}
+#proj-debug pre{font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.55;color:var(--text2);white-space:pre-wrap;word-break:break-word}
+.proj-dbg-fab{
+  position:fixed;left:14px;bottom:14px;z-index:1700;
+  font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;
+  border:1px solid var(--border);background:var(--surface2);color:var(--accent);
+  padding:7px 10px;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.35)
+}
+.proj-dbg-fab:hover{border-color:var(--accent);background:var(--accent-bg)}
 /* MAIN */
 #main{flex:1;padding:24px;max-width:1100px;margin:0 auto;width:100%}
 /* STATS BAR */
@@ -112,6 +132,10 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
 .phase-card,.eq-card{background:var(--surface2);border:1px solid var(--border);padding:10px 12px;margin-bottom:8px}
 .phase-card-hdr,.eq-card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .phase-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.phase-card.done{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.06)}
+.phase-pill{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border:1px solid var(--border);color:var(--text3)}
+.phase-pill.done{border-color:rgba(34,197,94,.45);color:#22c55e;background:rgba(34,197,94,.08)}
+.phase-pill.active{border-color:rgba(212,168,67,.45);color:var(--accent);background:rgba(212,168,67,.08)}
 .sub-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .sub-field{display:flex;flex-direction:column;gap:3px}
 .sub-lbl{font-family:'JetBrains Mono',monospace;font-size:7px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)}
@@ -298,7 +322,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
 @media print{
   #hdr,#status-row,#confirm-banner,#job-mgmt .sec:not(.printing),
   .print-bar,.rtab-bar,.sec:not(.report-sec),.mgmt-grid,.kpi-row,
-  #map-container{display:none!important}
+  #map-container,#proj-debug,.proj-dbg-fab{display:none!important}
   .rpanel{display:block!important}
   .report-preview-wrap{max-height:none!important;background:#fff!important;padding:0!important}
   .report-paper{border:none!important;box-shadow:none!important;margin:0!important;display:block!important}
@@ -328,9 +352,23 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
     <div class="hdiv"></div>
     <button class="btn" onclick="window.print()">Print</button>
     <button class="btn" id="btn-theme-proj" onclick="toggleThemeProj()">Light</button>
+    <button class="btn" onclick="toggleProjectDebug()">Debug</button>
     <button class="btn danger" id="btn-delete">Delete</button>
   </div>
 </div>
+
+<div id="proj-debug">
+  <div id="proj-debug-hdr">
+    <span id="proj-debug-title">PROJECT THEME DEBUG</span>
+    <div style="display:flex;gap:6px">
+      <button class="btn" onclick="refreshProjectDebug()">Refresh</button>
+      <button class="btn" onclick="copyProjectDebug()">Copy</button>
+      <button class="btn" onclick="toggleProjectDebug()">Close</button>
+    </div>
+  </div>
+  <div id="proj-debug-body"><pre id="proj-debug-pre">Loading…</pre></div>
+</div>
+<button class="proj-dbg-fab" onclick="toggleProjectDebug()">Debug</button>
 
 <div id="main" style="display:none">
 
@@ -672,15 +710,24 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
     <!-- Map preview for screenshotting -->
     <div style="padding:0 20px 20px">
       <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3,#666);margin-bottom:8px">
-        Phase Preview — click a phase above to highlight its zones, then screenshot
+        Phase Preview — click a phase above, then zoom/pan to frame your shot
       </div>
       <div style="position:relative;background:#0d0d0f;border:1px solid var(--border,#2a2a2c)">
-        <canvas id="phase-preview-canvas" width="700" height="380" style="display:block;width:100%"></canvas>
+        <canvas id="phase-preview-canvas" width="700" height="380" style="display:block;width:100%;cursor:grab"></canvas>
+        <div style="position:absolute;top:8px;left:8px;display:flex;gap:6px">
+          <button id="btn-phase-mode-phase" onclick="setPhasePreviewMode('phase')" class="btn" style="font-size:9px;padding:4px 10px;background:var(--accent);border-color:var(--accent);color:#000">Phase View</button>
+          <button id="btn-phase-mode-site" onclick="setPhasePreviewMode('site')" class="btn" style="font-size:9px;padding:4px 10px;background:var(--surface,#1c1c1e);border-color:var(--border,#2a2a2c);color:var(--text,#f0eeea)">Site Map View</button>
+        </div>
         <div style="position:absolute;top:8px;right:8px;display:flex;gap:6px">
+          <button onclick="zoomPhasePreview(1.2)" class="btn" style="font-size:9px;padding:4px 8px;background:var(--accent);border-color:var(--accent);color:#000">＋</button>
+          <button onclick="zoomPhasePreview(1/1.2)" class="btn" style="font-size:9px;padding:4px 8px;background:var(--accent);border-color:var(--accent);color:#000">－</button>
+          <button onclick="fitPhasePreview()" class="btn" style="font-size:9px;padding:4px 8px;background:var(--accent);border-color:var(--accent);color:#000">Fit</button>
+          <button onclick="captureMainMapScreenshot()" class="btn" style="font-size:9px;padding:4px 10px;background:var(--accent);border-color:var(--accent);color:#000">🗺 Main Map</button>
           <button onclick="capturePhaseScreenshot()" class="btn accent" style="font-size:9px;padding:4px 10px">📷 Capture</button>
         </div>
       </div>
       <div id="phase-capture-status" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ok,#22c55e);margin-top:6px;display:none">✓ Phase captured — will appear in report</div>
+      <div id="main-map-capture-status" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ok,#22c55e);margin-top:4px;display:none">✓ Main site map captured — will be used in report map sections</div>
     </div>
     <div style="padding:12px 20px;border-top:1px solid var(--border,#2a2a2c);display:flex;justify-content:flex-end;gap:8px">
       <button onclick="document.getElementById('phase-modal').style.display='none'" class="btn">Done</button>
@@ -712,8 +759,11 @@ let currentUser=null,projectId=null,projectData={},phases=[],equipment=[],dailyL
 let brandPrimary=localStorage.getItem('paveview_brand_primary')||'#111111';
 let brandAccent=localStorage.getItem('paveview_brand_accent')||'#d4a843';
 let reportPhases=[]; // [{id,name,zoneIds,screenshot}]
+let reportMapSnapshot='';
 
 let mapZoom=1,mapPanX=0,mapPanY=0,mapDragging=false,mapLastX=0,mapLastY=0,mapImgW=0,mapImgH=0,mapBgImg=null;
+let phasePreviewZoom=1,phasePreviewPanX=0,phasePreviewPanY=0,phasePreviewDragging=false,phasePreviewLastX=0,phasePreviewLastY=0,phasePreviewBound=false;
+let phasePreviewMode='phase';
 
 // ── THEME ──
 function toggleThemeProj(){
@@ -748,6 +798,7 @@ function toggleThemeProj(){
   document.getElementById('btn-delete').onclick=deleteProject;
   // Pre-fill pricing from projectData
   ['pa','pb','pl','depth','base','comp'].forEach(k=>{if(projectData[k])sv2('f-'+k,projectData[k]);});
+  await syncThemesFromIndexedDb();
   loadSavedDetails();
   // Auto-load account defaults if no pricing has been set yet
   if(!gv('f-pa')&&!projectData.pa){
@@ -757,6 +808,7 @@ function toggleThemeProj(){
   }
   document.getElementById('auth-check').remove();
   document.getElementById('main').style.display='block';
+  maybeOpenProjectDebugFromUrl();
   // Load map image
   if(projectData.planPath){loadMapImage(projectData.planPath);}
 })();
@@ -798,6 +850,8 @@ async function loadMapImage(planPath){
       mapBgImg=img;mapImgW=img.naturalWidth;mapImgH=img.naturalHeight;
       URL.revokeObjectURL(url);
       initMap();
+      if(document.getElementById('view-active')?.style.display!=='none') renderPhasesMgmt();
+      if(document.getElementById('phase-modal')?.style.display==='block') fitPhasePreview();
     };
     img.src=url;
   }catch(e){console.warn('Map load failed:',e);}
@@ -922,6 +976,9 @@ function getDetails(){
     c1:gv('f-c1'),c1s:gv('f-c1s'),c2:gv('f-c2'),c2s:gv('f-c2s'),c3:gv('f-c3'),c3s:gv('f-c3s'),
     actualStart:gv('f-actual-start'),actualEnd:gv('f-actual-end'),
     invoice:gv('f-invoice'),changeOrder:gv('f-change-order'),compNotes:gv('f-comp-notes'),
+    reportThemeId:projectReportThemeId||'',
+    reportPhases,
+    reportMapSnapshot,
     status:currentStatus(),phases,equipment,dailyLogs,confirmed,
   };
 }
@@ -930,6 +987,7 @@ function loadSavedDetails(){
   const key='paveview_proj_details_'+projectId;
   let d={};
   try{d=JSON.parse(localStorage.getItem(key)||'{}');}catch(e){}
+  projectReportThemeId=d.reportThemeId||getStoredProjectThemeId()||'';
   const fieldMap={
     'f-client-name':'clientName','f-contact':'contact','f-phone':'phone','f-email':'email',
     'f-address':'address','f-job-num':'jobNum','f-pa':'pa','f-pb':'pb','f-pl':'pl',
@@ -942,10 +1000,16 @@ function loadSavedDetails(){
     'f-invoice':'invoice','f-change-order':'changeOrder','f-comp-notes':'compNotes'
   };
   Object.entries(fieldMap).forEach(([id,k])=>{if(d[k])sv2(id,d[k]);});
-  if(d.phases){phases=d.phases;renderPhases();renderPhasesMgmt();}
+  if(Array.isArray(d.reportPhases)) reportPhases=d.reportPhases;
+  reportMapSnapshot=d.reportMapSnapshot||'';
+  if(d.phases){phases=d.phases;}
+  normalizePhases();
+  renderPhases();
+  renderPhasesMgmt();
   if(d.equipment){equipment=d.equipment;renderEquipment();}
   if(d.dailyLogs){dailyLogs=d.dailyLogs;renderDailyLogs();}
   if(d.confirmed){confirmed=true;showConfirmedState();}
+  loadThemesIntoProject();
   setStatus(d.status||'estimating');
   populateEqPicker();
 }
@@ -1077,18 +1141,168 @@ function updateCompleteKpis(){
   if(el('ckpi-days'))el('ckpi-days').textContent=dailyLogs.length||'—';
 }
 
+function rerenderCurrentReports(){
+  const s=currentStatus();
+  if(s==='estimating') buildEstimatingReports();
+  else if(s==='awarded'||s==='in_progress') buildActiveReports();
+  else buildCompleteReports();
+}
+
 // ── PHASES ──
-document.getElementById('btn-add-phase').onclick=()=>{phases.push({name:'',time:'',area:'',hours:'',crew:'',traffic:'',notes:''});renderPhases();renderPhasesMgmt();saveDetails();};
-document.getElementById('btn-add-phase-mgmt').onclick=()=>{phases.push({name:'',time:'',area:'',hours:'',crew:'',traffic:'',notes:''});renderPhases();renderPhasesMgmt();saveDetails();};
+function allZoneIds(){return (projectData.zones||[]).map(z=>z.id);}
+
+function normalizePhase(ph,idx){
+  const zids=allZoneIds();
+  const out=ph&&typeof ph==='object'?ph:{};
+  const zoneIds=Array.isArray(out.zoneIds)&&out.zoneIds.length?out.zoneIds.filter(Boolean):zids;
+  return{
+    id:out.id||('ph_'+Date.now()+'_'+idx+'_'+Math.floor(Math.random()*1000)),
+    name:out.name||'',
+    time:out.time||'',
+    area:out.area||'',
+    hours:out.hours||'',
+    crew:out.crew||'',
+    traffic:out.traffic||'',
+    notes:out.notes||'',
+    done:!!out.done,
+    zoneIds:[...new Set(zoneIds)]
+  };
+}
+
+function syncReportPhasesFromPhases(){
+  const byId=new Map((reportPhases||[]).map(r=>[r.id,r]));
+  reportPhases=phases.map((ph,i)=>{
+    const prev=byId.get(ph.id)||{};
+    return{
+      id:ph.id,
+      name:ph.name||('Phase '+(i+1)),
+      zoneIds:Array.isArray(ph.zoneIds)&&ph.zoneIds.length?ph.zoneIds.slice():allZoneIds(),
+      screenshot:prev.screenshot||null,
+      done:!!ph.done
+    };
+  });
+  phases=phases.map((ph,i)=>{
+    const rp=reportPhases[i];
+    return{
+      ...ph,
+      name:ph.name||rp.name,
+      zoneIds:rp.zoneIds.slice(),
+      done:!!ph.done
+    };
+  });
+}
+
+function normalizePhases(){
+  phases=(phases||[]).map((ph,i)=>normalizePhase(ph,i));
+  syncReportPhasesFromPhases();
+}
+
+function addPhase(){
+  phases.push(normalizePhase({name:'',time:'',area:'',hours:'',crew:'',traffic:'',notes:'',done:false},phases.length));
+  syncReportPhasesFromPhases();
+  renderPhases();
+  renderPhasesMgmt();
+  saveDetails();
+}
+
+function removePhaseAt(idx){
+  if(idx<0||idx>=phases.length)return;
+  phases.splice(idx,1);
+  syncReportPhasesFromPhases();
+  if(activePhaseIdx!==null){
+    if(activePhaseIdx===idx)activePhaseIdx=null;
+    else if(activePhaseIdx>idx)activePhaseIdx--;
+  }
+  renderPhases();
+  renderPhasesMgmt();
+  renderPhaseBuilderList();
+  if(activePhaseIdx!==null)drawPhasePreview(activePhaseIdx);
+  saveDetails();
+}
+
+function renamePhase(idx,val){
+  if(!phases[idx])return;
+  phases[idx].name=val;
+  syncReportPhasesFromPhases();
+  renderPhases();
+  renderPhasesMgmt();
+  renderPhaseBuilderList();
+  saveDetails();
+}
+
+function setPhaseDone(idx,isDone){
+  if(!phases[idx])return;
+  phases[idx].done=!!isDone;
+  syncReportPhasesFromPhases();
+  renderPhases();
+  renderPhasesMgmt();
+  renderPhaseBuilderList();
+  rerenderCurrentReports();
+  saveDetails();
+}
+
+function drawPhaseMiniMap(canvas,ph){
+  if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0d0d0f';ctx.fillRect(0,0,W,H);
+  if(!mapImgW){
+    ctx.fillStyle='#888';
+    ctx.font='11px "JetBrains Mono", monospace';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('Map unavailable',W/2,H/2);
+    return;
+  }
+  const pad=12;
+  const zoom=Math.min((W-pad*2)/mapImgW,(H-pad*2)/mapImgH);
+  const panX=(W-mapImgW*zoom)/2,panY=(H-mapImgH*zoom)/2;
+  const activeZoneIds=Array.isArray(ph.zoneIds)?ph.zoneIds:[];
+  ctx.save();ctx.translate(panX,panY);ctx.scale(zoom,zoom);
+  if(mapBgImg)ctx.drawImage(mapBgImg,0,0);
+  (projectData.zones||[]).forEach(z=>{
+    if(!z.pts||z.pts.length<3)return;
+    const isActive=!activeZoneIds.length||activeZoneIds.includes(z.id);
+    ctx.globalAlpha=isActive?1:0.14;
+    ctx.beginPath();z.pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));ctx.closePath();
+    ctx.fillStyle=(z.color||'#d4a843')+'44';ctx.fill();
+    ctx.strokeStyle=z.color||'#d4a843';ctx.lineWidth=(isActive?2.5:1)/zoom;ctx.stroke();
+    if(isActive){
+      const cx2=z.pts.reduce((s,p)=>s+p.x,0)/z.pts.length;
+      const cy2=z.pts.reduce((s,p)=>s+p.y,0)/z.pts.length;
+      const fs=Math.max(9,11/zoom);
+      ctx.font=`700 ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+      const tw=ctx.measureText(z.name).width;
+      ctx.globalAlpha=1;
+      ctx.fillStyle='rgba(0,0,0,.78)';ctx.fillRect(cx2-tw/2-6,cy2-fs/2-4,tw+12,fs+8);
+      ctx.fillStyle=z.color||'#d4a843';ctx.fillText(z.name,cx2,cy2);
+    }
+    ctx.globalAlpha=1;
+  });
+  ctx.restore();
+}
+
+document.getElementById('btn-add-phase').onclick=addPhase;
+document.getElementById('btn-add-phase-mgmt').onclick=addPhase;
 
 function renderPhases(){
   const list=document.getElementById('phases-list');if(!list)return;
+  normalizePhases();
   list.innerHTML='';
   phases.forEach((ph,i)=>{
-    const el=document.createElement('div');el.className='phase-card';
-    el.innerHTML=`<div class="phase-card-hdr"><span class="phase-lbl">Phase ${i+1}</span><button onclick="phases.splice(${i},1);renderPhases();renderPhasesMgmt();saveDetails()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px">✕</button></div>
+    const rp=reportPhases.find(r=>r.id===ph.id);
+    const shot=rp&&rp.screenshot;
+    const el=document.createElement('div');el.className='phase-card'+(ph.done?' done':'');
+    el.innerHTML=`<div class="phase-card-hdr"><span class="phase-lbl">Phase ${i+1}${ph.name?' — '+ph.name:''}</span><div style="display:flex;gap:6px;align-items:center"><span class="phase-pill ${ph.done?'done':'active'}">${ph.done?'Complete':'Pending'}</span><button onclick="removePhaseAt(${i})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px">✕</button></div></div>
     <div class="sub-grid">
-      ${['name:Name','time:Time/Day','area:Area','hours:Bid Hrs','crew:Crew','traffic:Traffic Control','notes:Notes'].map(([k,l])=>l?`<div class="sub-field"><div class="sub-lbl">${l}</div><input class="sub-inp" value="${ph[k]||''}" placeholder="${l}…" oninput="phases[${i}]['${k}']=this.value;renderPhasesMgmt();saveDetails()"></div>`:'').join('')}
+      <div class="sub-field"><div class="sub-lbl">Name</div><input class="sub-inp" value="${ph.name||''}" placeholder="Name…" oninput="renamePhase(${i},this.value)"></div>
+      <div class="sub-field"><div class="sub-lbl">Time/Day</div><input class="sub-inp" value="${ph.time||''}" placeholder="Time/Day…" oninput="phases[${i}].time=this.value;renderPhasesMgmt();saveDetails()"></div>
+      <div class="sub-field"><div class="sub-lbl">Area</div><input class="sub-inp" value="${ph.area||''}" placeholder="Area…" oninput="phases[${i}].area=this.value;renderPhasesMgmt();saveDetails()"></div>
+      <div class="sub-field"><div class="sub-lbl">Bid Hrs</div><input class="sub-inp" value="${ph.hours||''}" placeholder="Bid Hrs…" oninput="phases[${i}].hours=this.value;renderPhasesMgmt();saveDetails()"></div>
+      <div class="sub-field"><div class="sub-lbl">Crew</div><input class="sub-inp" value="${ph.crew||''}" placeholder="Crew…" oninput="phases[${i}].crew=this.value;renderPhasesMgmt();saveDetails()"></div>
+      <div class="sub-field"><div class="sub-lbl">Traffic Control</div><input class="sub-inp" value="${ph.traffic||''}" placeholder="Traffic Control…" oninput="phases[${i}].traffic=this.value;renderPhasesMgmt();saveDetails()"></div>
+      <div class="sub-field"><div class="sub-lbl">Notes</div><input class="sub-inp" value="${ph.notes||''}" placeholder="Notes…" oninput="phases[${i}].notes=this.value;renderPhasesMgmt();saveDetails()"></div>
+      <div class="sub-field"><div class="sub-lbl">Mark Complete</div><label style="display:flex;align-items:center;gap:6px;color:var(--text2);font-size:10px"><input type="checkbox" ${ph.done?'checked':''} onchange="setPhaseDone(${i},this.checked)" style="accent-color:#22c55e"><span>${ph.done?'Done':'Open'}</span></label></div>
     </div>`;
     list.appendChild(el);
   });
@@ -1096,17 +1310,31 @@ function renderPhases(){
 
 function renderPhasesMgmt(){
   const list=document.getElementById('phases-list-mgmt');if(!list)return;
-  if(!phases.length){list.innerHTML='<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--text3);padding:8px">No phases added. Click + Add Phase to begin.</div>';return;}
+  normalizePhases();
+  if(!phases.length){list.innerHTML="<div style=\"font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);padding:8px\">No phases added. Click + Add Phase to begin.</div>";return;}
   list.innerHTML='';
   phases.forEach((ph,i)=>{
-    const el=document.createElement('div');el.className='phase-card';
-    el.innerHTML=`<div class="phase-card-hdr"><span class="phase-lbl">Phase ${i+1}${ph.name?' — '+ph.name:''}</span><div style="display:flex;gap:4px">
+    const rp=reportPhases.find(r=>r.id===ph.id);
+    const shot=rp&&rp.screenshot;
+    const el=document.createElement('div');el.className='phase-card'+(ph.done?' done':'');
+    const doneBtn=ph.done?'<button class="btn" onclick="setPhaseDone('+i+',false)" style="padding:2px 8px;font-size:8px">↺ Reopen</button>':'<button class="btn ok" onclick="setPhaseDone('+i+',true)" style="padding:2px 8px;font-size:8px">✓ Mark Done</button>';
+    el.innerHTML=`<div class="phase-card-hdr"><span class="phase-lbl">Phase ${i+1}${ph.name?' — '+ph.name:''}</span><div style="display:flex;gap:6px;align-items:center">
+      <span class="phase-pill ${ph.done?'done':'active'}">${ph.done?'Complete':'In Progress'}</span>
       ${ph.time?`<span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3)">${ph.time}</span>`:''}
-      <button onclick="phases.splice(${i},1);renderPhases();renderPhasesMgmt();saveDetails()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px">✕</button></div></div>
+      ${doneBtn}
+      <button onclick="removePhaseAt(${i})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px">✕</button></div></div>
     <div class="sub-grid">
       ${['area:Area','hours:Bid Hrs','crew:Crew','traffic:Traffic','notes:Notes'].map(([k,l])=>l?`<div class="sub-field"><div class="sub-lbl">${l}</div><input class="sub-inp" value="${ph[k]||''}" placeholder="${l}…" oninput="phases[${i}]['${k}']=this.value;renderPhases();saveDetails()"></div>`:'').join('')}
+    </div>
+    <div style="margin-top:8px;border:1px solid var(--border);background:#0d0d0f;padding:6px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);letter-spacing:.08em;margin-bottom:4px;text-transform:uppercase">Phase Map ${Array.isArray(ph.zoneIds)&&ph.zoneIds.length?`(${ph.zoneIds.length} zones)`:''}</div>
+      <div style="width:180px;height:180px;border:1px solid #1a1a1a;background:#0d0d0f;display:flex;align-items:center;justify-content:center;overflow:hidden">
+        ${shot?`<img src="${shot}" style="width:100%;height:100%;object-fit:contain">`:`<canvas width="180" height="180" data-phase-mini="${i}" style="width:180px;height:180px;display:block;background:#0d0d0f"></canvas>`}
+      </div>
     </div>`;
     list.appendChild(el);
+    const c=el.querySelector('canvas[data-phase-mini]');
+    if(c)drawPhaseMiniMap(c,ph);
   });
 }
 
@@ -1217,6 +1445,9 @@ function getCalc(){
 
 // ── MAP BLOCK FOR REPORTS ──
 function reportMapBlock(canvasId){
+  if(reportMapSnapshot){
+    return`<div style="margin:14px 0"><div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#888;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e5e7eb">SITE MAP</div><img src="${reportMapSnapshot}" style="width:100%;height:auto;display:block;border:1px solid #e5e7eb;background:#0d0d0f"></div>`;
+  }
   if(!mapImgW)return'';
   return`<div style="margin:14px 0"><div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#888;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e5e7eb">SITE MAP</div><canvas id="${canvasId}" width="860" height="320" style="width:100%;height:auto;display:block;border:1px solid #e5e7eb;background:#0d0d0f"></canvas></div>`;
 }
@@ -1276,40 +1507,255 @@ function removeAttachedPage(idx){
 }
 
 // ── THEME FROM REPORT BUILDER ──
-function loadThemesIntoProject(){
+const REPORT_THEME_KEYS=['paveview_report_templates','paveview_report_themes']; // new + legacy
+const REPORT_THEME_UPDATED_KEY='paveview_report_templates_updated_at';
+const REPORT_IDB_DB='paveview_report_store';
+const REPORT_IDB_STORE='kv';
+const REPORT_IDB_KEY='report_templates_v1';
+const PROJECT_THEME_KEY_PREFIX='paveview_project_report_theme_';
+let projectReportThemeId='';
+let reportDbPromise=null;
+let reportThemeSyncPromise=null;
+
+function asTs(v){
+  const n=parseInt(v||'0',10);
+  return Number.isNaN(n)?0:n;
+}
+
+function openReportDb(){
+  if(!window.indexedDB)return Promise.resolve(null);
+  if(reportDbPromise)return reportDbPromise;
+  reportDbPromise=new Promise(resolve=>{
+    try{
+      const req=indexedDB.open(REPORT_IDB_DB,1);
+      req.onupgradeneeded=ev=>{
+        const db=ev.target.result;
+        if(!db.objectStoreNames.contains(REPORT_IDB_STORE))db.createObjectStore(REPORT_IDB_STORE);
+      };
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>resolve(null);
+    }catch(e){resolve(null);}
+  });
+  return reportDbPromise;
+}
+
+function idbGetReportTemplates(){
+  return openReportDb().then(db=>{
+    if(!db)return null;
+    return new Promise(resolve=>{
+      try{
+        const tx=db.transaction(REPORT_IDB_STORE,'readonly');
+        const req=tx.objectStore(REPORT_IDB_STORE).get(REPORT_IDB_KEY);
+        req.onsuccess=()=>resolve(req.result||null);
+        req.onerror=()=>resolve(null);
+      }catch(e){resolve(null);}
+    });
+  });
+}
+
+function syncThemesFromIndexedDb(){
+  if(reportThemeSyncPromise)return reportThemeSyncPromise;
+  reportThemeSyncPromise=(async()=>{
+    const snap=await idbGetReportTemplates();
+    if(!snap||!Array.isArray(snap.themes)||!snap.themes.length)return false;
+    const idbTs=asTs(snap.updatedAt);
+    const localTs=asTs(localStorage.getItem(REPORT_THEME_UPDATED_KEY));
+    const localThemesRaw=localStorage.getItem('paveview_report_templates');
+    const shouldReplace=idbTs>=localTs||!localThemesRaw;
+    if(!shouldReplace)return false;
+    const payload=JSON.stringify(snap.themes);
+    localStorage.setItem('paveview_report_templates',payload);
+    localStorage.setItem(REPORT_THEME_UPDATED_KEY,String(idbTs||Date.now()));
+    try{localStorage.setItem('paveview_report_themes',payload);}catch(e){}
+    if(snap.activeId&&!localStorage.getItem('paveview_active_theme')) localStorage.setItem('paveview_active_theme',snap.activeId);
+    return true;
+  })().catch(()=>false).finally(()=>{reportThemeSyncPromise=null;});
+  return reportThemeSyncPromise;
+}
+
+function fmtDebugTs(ts){
+  if(!ts)return'—';
+  try{return new Date(ts).toLocaleString();}catch(e){return String(ts);}
+}
+
+function countThemes(raw){
+  if(!raw)return 0;
   try{
-    const themes=JSON.parse(localStorage.getItem('paveview_report_themes')||'[]');
-    const picker=document.getElementById('theme-picker');
-    if(!picker)return;
-    picker.innerHTML='<option value="">Default</option>'+
-      themes.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
-    // Auto-select last active
-    const active=localStorage.getItem('paveview_active_theme');
-    if(active)picker.value=active;
-    if(picker.value)applyTheme(picker.value);
+    const parsed=JSON.parse(raw);
+    return Array.isArray(parsed)?parsed.length:0;
+  }catch(e){return 0;}
+}
+
+function getProjectDetailsSnapshot(){
+  const key='paveview_proj_details_'+(projectId||'');
+  try{
+    const parsed=JSON.parse(localStorage.getItem(key)||'{}');
+    return {key,data:parsed||{}};
+  }catch(e){
+    return {key,data:{}};
+  }
+}
+
+async function refreshProjectDebug(){
+  const out=document.getElementById('proj-debug-pre');
+  if(!out)return;
+  const picker=document.getElementById('theme-picker');
+  const projectKey=getProjectThemeKey();
+  const detailsSnap=getProjectDetailsSnapshot();
+  const idbSnap=await idbGetReportTemplates();
+  const idbCount=idbSnap&&Array.isArray(idbSnap.themes)?idbSnap.themes.length:0;
+  const localNewRaw=localStorage.getItem('paveview_report_templates');
+  const localLegacyRaw=localStorage.getItem('paveview_report_themes');
+  const lines=[
+    '[Project Theme Debug]',
+    '',
+    'Runtime:',
+    '  projectId: '+(projectId||'—'),
+    '  status: '+currentStatus(),
+    '  confirmed: '+String(!!confirmed),
+    '  picker.value: '+(picker?picker.value||'—':'(no picker)'),
+    '  projectReportThemeId var: '+(projectReportThemeId||'—'),
+    '  activeReportTheme.id: '+((activeReportTheme&&activeReportTheme.id)||'—'),
+    '',
+    'Per-project persistence:',
+    '  key: '+(projectKey||'—'),
+    '  key value: '+(projectKey?localStorage.getItem(projectKey)||'—':'—'),
+    '  details key: '+detailsSnap.key,
+    '  details.reportThemeId: '+(detailsSnap.data.reportThemeId||'—'),
+    '',
+    'LocalStorage template cache:',
+    '  paveview_report_templates: '+countThemes(localNewRaw)+' themes',
+    '  paveview_report_themes: '+countThemes(localLegacyRaw)+' themes',
+    '  paveview_report_templates_updated_at: '+(localStorage.getItem(REPORT_THEME_UPDATED_KEY)||'—'),
+    '  updatedAt (fmt): '+fmtDebugTs(asTs(localStorage.getItem(REPORT_THEME_UPDATED_KEY))),
+    '  paveview_active_theme: '+(localStorage.getItem('paveview_active_theme')||'—'),
+    '',
+    'IndexedDB snapshot:',
+    '  db/store/key: '+REPORT_IDB_DB+' / '+REPORT_IDB_STORE+' / '+REPORT_IDB_KEY,
+    '  themes: '+idbCount,
+    '  activeId: '+((idbSnap&&idbSnap.activeId)||'—'),
+    '  updatedAt: '+((idbSnap&&idbSnap.updatedAt)||'—'),
+    '  updatedAt (fmt): '+fmtDebugTs(idbSnap&&idbSnap.updatedAt),
+    '',
+    'Last refresh: '+new Date().toLocaleTimeString()
+  ];
+  out.textContent=lines.join('\n');
+}
+
+function toggleProjectDebug(){
+  const box=document.getElementById('proj-debug');
+  if(!box)return;
+  const open=box.style.display==='block';
+  box.style.display=open?'none':'block';
+  if(!open)refreshProjectDebug();
+}
+
+async function copyProjectDebug(){
+  const pre=document.getElementById('proj-debug-pre');
+  if(!pre)return;
+  const txt=pre.textContent||'';
+  try{
+    await navigator.clipboard.writeText(txt);
   }catch(e){}
 }
 
+function maybeOpenProjectDebugFromUrl(){
+  try{
+    const u=new URL(window.location.href);
+    if(u.searchParams.get('debug')==='1') toggleProjectDebug();
+  }catch(e){}
+}
+window.addEventListener('keydown',e=>{
+  if(e&&e.shiftKey&&e.key&&e.key.toLowerCase()==='d') toggleProjectDebug();
+});
+
+function getProjectThemeKey(){
+  return projectId?`${PROJECT_THEME_KEY_PREFIX}${projectId}`:'';
+}
+
+function getStoredProjectThemeId(){
+  const key=getProjectThemeKey();
+  return key?localStorage.getItem(key)||'':'';
+}
+
+function setStoredProjectThemeId(themeId){
+  const key=getProjectThemeKey();
+  if(!key)return;
+  if(themeId)localStorage.setItem(key,themeId);
+  else localStorage.removeItem(key);
+}
+
+function getSavedReportThemes(){
+  for(const key of REPORT_THEME_KEYS){
+    try{
+      const parsed=JSON.parse(localStorage.getItem(key)||'[]');
+      if(Array.isArray(parsed)&&parsed.length)return parsed;
+    }catch(e){}
+  }
+  return [];
+}
+
+async function loadThemesIntoProject(){
+  await syncThemesFromIndexedDb();
+  try{
+    const themes=getSavedReportThemes().filter(t=>t&&t.id);
+    const picker=document.getElementById('theme-picker');
+    if(!picker)return;
+    const priorValue=projectReportThemeId||getStoredProjectThemeId()||picker.value||localStorage.getItem('paveview_active_theme')||'';
+    picker.innerHTML='<option value="">Default</option>'+
+      themes.map(t=>`<option value="${t.id}">${t.name||'Untitled Report'}</option>`).join('');
+    const hasPrior=priorValue&&themes.some(t=>t.id===priorValue);
+    picker.value=hasPrior?priorValue:'';
+    applyTheme(picker.value||'');
+  }catch(e){
+    applyTheme('');
+  }
+}
+
 function applyTheme(themeId){
-  if(!themeId){
+  const selected=themeId||'';
+  projectReportThemeId=selected;
+  setStoredProjectThemeId(selected);
+  const picker=document.getElementById('theme-picker');
+  if(picker&&picker.value!==selected)picker.value=selected;
+  if(!selected){
     brandPrimary=localStorage.getItem('paveview_brand_primary')||'#111111';
     brandAccent=localStorage.getItem('paveview_brand_accent')||'#d4a843';
     activeReportTheme=null;
   } else {
-    try{
-      const themes=JSON.parse(localStorage.getItem('paveview_report_themes')||'[]');
-      const t=themes.find(x=>x.id===themeId);
-      if(t){
-        brandPrimary=t.colors.primary||'#111111';
-        brandAccent=t.colors.accent||'#d4a843';
-        activeReportTheme=t;
-      }
-    }catch(e){}
+    const themes=getSavedReportThemes();
+    const t=themes.find(x=>x.id===selected);
+    if(t){
+      brandPrimary=(t.colors&&t.colors.primary)||'#111111';
+      brandAccent=(t.colors&&t.colors.accent)||'#d4a843';
+      activeReportTheme=t;
+      localStorage.setItem('paveview_active_theme',selected);
+    } else {
+      brandPrimary=localStorage.getItem('paveview_brand_primary')||'#111111';
+      brandAccent=localStorage.getItem('paveview_brand_accent')||'#d4a843';
+      activeReportTheme=null;
+    }
+  }
+  if(projectId&&document.getElementById('main')?.style.display==='block'){
+    saveDetails();
   }
   refreshReport('client');
   refreshReport('foreman');
   refreshReport('contractor');
+  if(document.getElementById('proj-debug')?.style.display==='block') refreshProjectDebug();
 }
+
+window.addEventListener('focus',function(){
+  syncThemesFromIndexedDb().then(loadThemesIntoProject);
+  if(document.getElementById('proj-debug')?.style.display==='block') refreshProjectDebug();
+});
+window.addEventListener('storage',function(ev){
+  if(!ev||!ev.key)return;
+  if(REPORT_THEME_KEYS.includes(ev.key)||ev.key==='paveview_active_theme'||ev.key==='paveview_report_templates_updated_at'||ev.key===getProjectThemeKey()){
+    syncThemesFromIndexedDb().then(loadThemesIntoProject);
+    if(document.getElementById('proj-debug')?.style.display==='block') refreshProjectDebug();
+  }
+});
 
 let activeReportTheme=null;
 
@@ -1340,37 +1786,41 @@ function setBrandColor(type,val){
 let activePhaseIdx=null;
 
 function openPhaseBuilder(){
+  normalizePhases();
+  phasePreviewMode='phase';
   document.getElementById('phase-modal').style.display='block';
+  initPhasePreviewControls();
+  if(activePhaseIdx===null&&reportPhases.length)activePhaseIdx=0;
   renderPhaseBuilderList();
-  drawPhasePreview(null);
+  refreshPhasePreviewModeButtons();
+  fitPhasePreview();
 }
 
 function addReportPhase(){
-  const allZones=projectData.zones||[];
-  reportPhases.push({
-    id:'ph'+Date.now(),
-    name:'Phase '+(reportPhases.length+1),
-    zoneIds:allZones.map(z=>z.id), // default all zones
-    screenshot:null
-  });
+  addPhase();
+  activePhaseIdx=Math.max(0,reportPhases.length-1);
   renderPhaseBuilderList();
+  drawPhasePreview(activePhaseIdx);
 }
 
 function renderPhaseBuilderList(){
   const list=document.getElementById('phase-builder-list');
   if(!list)return;
+  normalizePhases();
   const allZones=projectData.zones||[];
   list.innerHTML=reportPhases.map((ph,i)=>`
-    <div style="background:var(--surface,#1c1c1e);border:1px solid var(--border,#2a2a2c);border-radius:3px;padding:12px;margin-bottom:8px">
+    <div style="background:var(--surface,#1c1c1e);border:1px solid ${ph.done?'rgba(34,197,94,.4)':'var(--border,#2a2a2c)'};border-radius:3px;padding:12px;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
         <div style="width:10px;height:10px;border-radius:50%;background:${ph.screenshot?'#22c55e':'#444'}"></div>
         <input type="text" value="${ph.name}" placeholder="Phase name"
           style="flex:1;background:var(--bg,#141416);border:1px solid var(--border,#2a2a2c);color:var(--text,#f0eeea);font-family:'JetBrains Mono',monospace;font-size:10px;padding:4px 8px;outline:none"
-          oninput="reportPhases[${i}].name=this.value">
+          oninput="renamePhase(${i},this.value)">
+        <span class="phase-pill ${ph.done?'done':'active'}">${ph.done?'Complete':'Open'}</span>
+        <button onclick="setPhaseDone(${i},${ph.done?'false':'true'})" class="btn" style="font-size:8px;padding:2px 6px">${ph.done?'Reopen':'Done'}</button>
         <button onclick="setActivePhase(${i})" class="btn${activePhaseIdx===i?' accent':''}" style="font-size:9px;padding:3px 8px">
           ${activePhaseIdx===i?'▶ Active':'Preview'}
         </button>
-        <button onclick="reportPhases.splice(${i},1);activePhaseIdx=null;renderPhaseBuilderList()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px">✕</button>
+        <button onclick="removePhaseAt(${i})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px">✕</button>
       </div>
       <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3,#666);margin-bottom:6px;letter-spacing:.08em">INCLUDE ZONES:</div>
       <div style="display:flex;flex-wrap:wrap;gap:4px">
@@ -1380,39 +1830,130 @@ function renderPhaseBuilderList(){
             <span style="color:${z.color||'#d4a843'}">${z.name}</span>
           </label>`).join('')}
       </div>
-      ${ph.screenshot?`<div style="margin-top:8px"><img src="${ph.screenshot}" style="width:100%;max-height:100px;object-fit:cover;border-radius:2px;border:1px solid var(--border,#2a2a2c)"></div>`:''}
+      ${ph.screenshot?`<div style="margin-top:8px;display:flex;justify-content:flex-start"><div style="width:120px;height:120px;border:1px solid var(--border,#2a2a2c);border-radius:2px;background:#0d0d0f;display:flex;align-items:center;justify-content:center;overflow:hidden"><img src="${ph.screenshot}" style="width:100%;height:100%;object-fit:contain"></div></div>`:''}
     </div>`).join('')||`<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3,#666);padding:12px;text-align:center">No phases yet. Click + Add Phase.</div>`;
 }
 
 function togglePhaseZone(phIdx,zoneId,checked){
+  if(!reportPhases[phIdx])return;
   if(checked){
     if(!reportPhases[phIdx].zoneIds.includes(zoneId)) reportPhases[phIdx].zoneIds.push(zoneId);
   } else {
     reportPhases[phIdx].zoneIds=reportPhases[phIdx].zoneIds.filter(id=>id!==zoneId);
   }
+  const pidx=phases.findIndex(p=>p.id===reportPhases[phIdx].id);
+  if(pidx>-1) phases[pidx].zoneIds=reportPhases[phIdx].zoneIds.slice();
+  renderPhasesMgmt();
+  renderPhases();
+  saveDetails();
   if(activePhaseIdx===phIdx) drawPhasePreview(phIdx);
 }
 
 function setActivePhase(idx){
   activePhaseIdx=idx;
+  phasePreviewMode='phase';
+  refreshPhasePreviewModeButtons();
   renderPhaseBuilderList();
   drawPhasePreview(idx);
 }
 
-function drawPhasePreview(phIdx){
-  const canvas=document.getElementById('phase-preview-canvas');
+function phasePreviewCanvas(){return document.getElementById('phase-preview-canvas');}
+
+function initPhasePreviewControls(){
+  if(phasePreviewBound)return;
+  const canvas=phasePreviewCanvas();
   if(!canvas)return;
-  const ctx=canvas.getContext('2d');
-  const W=canvas.width,H=canvas.height;
+  phasePreviewBound=true;
+  canvas.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const r=canvas.getBoundingClientRect();
+    zoomPhasePreview(e.deltaY<0?1.12:1/1.12,e.clientX-r.left,e.clientY-r.top);
+  },{passive:false});
+  canvas.addEventListener('mousedown',e=>{
+    phasePreviewDragging=true;
+    phasePreviewLastX=e.clientX;phasePreviewLastY=e.clientY;
+    canvas.style.cursor='grabbing';
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!phasePreviewDragging)return;
+    phasePreviewPanX+=e.clientX-phasePreviewLastX;
+    phasePreviewPanY+=e.clientY-phasePreviewLastY;
+    phasePreviewLastX=e.clientX;phasePreviewLastY=e.clientY;
+    drawPhasePreview(activePhaseIdx);
+  });
+  window.addEventListener('mouseup',()=>{
+    if(!phasePreviewDragging)return;
+    phasePreviewDragging=false;
+    const c=phasePreviewCanvas();
+    if(c)c.style.cursor='grab';
+  });
+}
+
+function fitPhasePreview(){
+  const canvas=phasePreviewCanvas();
+  if(!canvas||!mapImgW)return;
+  const pad=20;
+  phasePreviewZoom=Math.min((canvas.width-pad*2)/mapImgW,(canvas.height-pad*2)/mapImgH);
+  phasePreviewPanX=(canvas.width-mapImgW*phasePreviewZoom)/2;
+  phasePreviewPanY=(canvas.height-mapImgH*phasePreviewZoom)/2;
+  drawPhasePreview(activePhaseIdx);
+}
+
+function zoomPhasePreview(factor,cx,cy){
+  const canvas=phasePreviewCanvas();
+  if(!canvas||!mapImgW)return;
+  const zx=typeof cx==='number'?cx:canvas.width/2;
+  const zy=typeof cy==='number'?cy:canvas.height/2;
+  const nz=Math.max(0.05,Math.min(40,phasePreviewZoom*factor));
+  phasePreviewPanX=zx-(zx-phasePreviewPanX)*(nz/phasePreviewZoom);
+  phasePreviewPanY=zy-(zy-phasePreviewPanY)*(nz/phasePreviewZoom);
+  phasePreviewZoom=nz;
+  drawPhasePreview(activePhaseIdx);
+}
+
+function refreshPhasePreviewModeButtons(){
+  const bp=document.getElementById('btn-phase-mode-phase');
+  const bs=document.getElementById('btn-phase-mode-site');
+  if(bp){
+    const on=phasePreviewMode==='phase';
+    bp.style.background=on?'var(--accent)':'var(--surface,#1c1c1e)';
+    bp.style.borderColor=on?'var(--accent)':'var(--border,#2a2a2c)';
+    bp.style.color=on?'#000':'var(--text,#f0eeea)';
+  }
+  if(bs){
+    const on=phasePreviewMode==='site';
+    bs.style.background=on?'var(--accent)':'var(--surface,#1c1c1e)';
+    bs.style.borderColor=on?'var(--accent)':'var(--border,#2a2a2c)';
+    bs.style.color=on?'#000':'var(--text,#f0eeea)';
+  }
+}
+
+function setPhasePreviewMode(mode){
+  phasePreviewMode=(mode==='site')?'site':'phase';
+  refreshPhasePreviewModeButtons();
+  drawPhasePreview(activePhaseIdx);
+}
+
+function drawPhasePreviewScene(ctx,W,H,opts){
+  opts=opts||{};
+  const phIdx=opts.phaseIdx!==undefined?opts.phaseIdx:activePhaseIdx;
+  const mode=opts.mode||phasePreviewMode;
+  const zoom=opts.zoom||phasePreviewZoom;
+  const panX=opts.panX!==undefined?opts.panX:phasePreviewPanX;
+  const panY=opts.panY!==undefined?opts.panY:phasePreviewPanY;
+  const uiScale=opts.uiScale||1;
   ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#0d0d0f';ctx.fillRect(0,0,W,H);
-  if(!mapImgW)return;
-  const pad=20;
-  const zoom=Math.min((W-pad*2)/mapImgW,(H-pad*2)/mapImgH);
-  const panX=(W-mapImgW*zoom)/2,panY=(H-mapImgH*zoom)/2;
+  if(!mapImgW){
+    ctx.fillStyle='#777';
+    ctx.font=`${12*uiScale}px "JetBrains Mono", monospace`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('Map unavailable',W/2,H/2);
+    return;
+  }
   ctx.save();ctx.translate(panX,panY);ctx.scale(zoom,zoom);
   if(mapBgImg)ctx.drawImage(mapBgImg,0,0);
-  const activeZoneIds=phIdx!==null?(reportPhases[phIdx]?.zoneIds||[]):null;
+  const activeZoneIds=opts.activeZoneIds!==undefined?opts.activeZoneIds:(mode==='site'?null:(phIdx!==null?(reportPhases[phIdx]?.zoneIds||[]):null));
   (projectData.zones||[]).forEach(z=>{
     if(!z.pts||z.pts.length<3)return;
     const isActive=activeZoneIds===null||activeZoneIds.includes(z.id);
@@ -1432,30 +1973,78 @@ function drawPhasePreview(phIdx){
     }
     ctx.globalAlpha=1;
   });
-  // Phase label
-  if(phIdx!==null&&reportPhases[phIdx]){
-    ctx.font='bold 14px sans-serif';ctx.textAlign='left';ctx.textBaseline='top';
-    ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(10/zoom,8/zoom,200/zoom,26/zoom);
-    ctx.fillStyle='#d4a843';ctx.fillText(reportPhases[phIdx].name,16/zoom,13/zoom);
-  }
   ctx.restore();
+  if(opts.showPhaseLabel!==false&&mode==='phase'&&phIdx!==null&&reportPhases[phIdx]){
+    const label=reportPhases[phIdx].name||`Phase ${phIdx+1}`;
+    ctx.font=`bold ${14*uiScale}px sans-serif`;ctx.textAlign='left';ctx.textBaseline='top';
+    ctx.fillStyle='rgba(0,0,0,.72)';ctx.fillRect(10*uiScale,8*uiScale,Math.max(220,Math.min(420,label.length*10))*uiScale,26*uiScale);
+    ctx.fillStyle='#d4a843';ctx.fillText(label,16*uiScale,12*uiScale);
+  }
+}
+
+function drawPhasePreview(phIdx){
+  const canvas=phasePreviewCanvas();
+  if(!canvas)return;
+  drawPhasePreviewScene(canvas.getContext('2d'),canvas.width,canvas.height,{phaseIdx:phIdx,showPhaseLabel:true});
+}
+
+function captureFromPhaseView(opts){
+  const canvas=phasePreviewCanvas();
+  if(!canvas)return'';
+  const scale=3;
+  const out=document.createElement('canvas');
+  out.width=canvas.width*scale;
+  out.height=canvas.height*scale;
+  const zoom=(opts&&opts.zoom)||phasePreviewZoom;
+  const panX=(opts&&opts.panX)!==undefined?opts.panX:phasePreviewPanX;
+  const panY=(opts&&opts.panY)!==undefined?opts.panY:phasePreviewPanY;
+  drawPhasePreviewScene(out.getContext('2d'),out.width,out.height,{
+    phaseIdx:opts&&opts.phaseIdx!==undefined?opts.phaseIdx:activePhaseIdx,
+    activeZoneIds:opts&&opts.activeZoneIds,
+    showPhaseLabel:opts&&opts.showPhaseLabel,
+    mode:opts&&opts.mode,
+    zoom:zoom*scale,
+    panX:panX*scale,
+    panY:panY*scale,
+    uiScale:scale
+  });
+  return out.toDataURL('image/jpeg',0.95);
+}
+
+function showCaptureStatus(id){
+  const status=document.getElementById(id);
+  if(status){status.style.display='block';setTimeout(()=>status.style.display='none',2600);}
 }
 
 function capturePhaseScreenshot(){
   if(activePhaseIdx===null){alert('Click "Preview" on a phase first.');return;}
-  const canvas=document.getElementById('phase-preview-canvas');
-  if(!canvas)return;
-  reportPhases[activePhaseIdx].screenshot=canvas.toDataURL('image/jpeg',0.9);
-  const status=document.getElementById('phase-capture-status');
-  if(status){status.style.display='block';setTimeout(()=>status.style.display='none',2500);}
+  const shot=captureFromPhaseView({phaseIdx:activePhaseIdx,showPhaseLabel:true});
+  if(!shot)return;
+  reportPhases[activePhaseIdx].screenshot=shot;
+  showCaptureStatus('phase-capture-status');
+  rerenderCurrentReports();
+  renderPhasesMgmt();
   renderPhaseBuilderList();
+  saveDetails();
+}
+
+function captureMainMapScreenshot(){
+  phasePreviewMode='site';
+  refreshPhasePreviewModeButtons();
+  drawPhasePreview(activePhaseIdx);
+  const shot=captureFromPhaseView({phaseIdx:null,activeZoneIds:null,showPhaseLabel:false,mode:'site'});
+  if(!shot)return;
+  reportMapSnapshot=shot;
+  showCaptureStatus('main-map-capture-status');
+  rerenderCurrentReports();
+  saveDetails();
 }
 
 function applyPhasesToReport(){
+  syncReportPhasesFromPhases();
   document.getElementById('phase-modal').style.display='none';
-  refreshReport('client');
-  refreshReport('foreman');
-  refreshReport('contractor');
+  rerenderCurrentReports();
+  saveDetails();
 }
 
 // ── PAGE TEMPLATES ──
@@ -1631,22 +2220,35 @@ function buildCustomPages(type){
 }
 
 function buildPhasePages(){
-  if(!reportPhases.length)return'';
-  return reportPhases.map(ph=>{
-    if(!ph.screenshot)return'';
-    const zoneNames=(projectData.zones||[]).filter(z=>ph.zoneIds.includes(z.id)).map(z=>z.name).join(', ');
-    return `<div class="rpage" style="padding:0">
+  const captured=(reportPhases||[]).filter(ph=>ph&&ph.screenshot);
+  if(!captured.length)return'';
+  const perPage=9;
+  let out='';
+  for(let i=0;i<captured.length;i+=perPage){
+    const slice=captured.slice(i,i+perPage);
+    out+=`<div class="rpage" style="padding:0">
       <div style="height:4px;background:${brandAccent}"></div>
-      <div style="padding:32px 48px 20px;border-bottom:1px solid #f0f0f0">
-        <div style="font-size:8px;font-weight:700;color:${brandAccent};letter-spacing:.2em;text-transform:uppercase;margin-bottom:8px">Phase Map</div>
-        <div style="font-size:22px;font-weight:800;color:${brandPrimary};letter-spacing:-.02em">${ph.name}</div>
-        ${zoneNames?`<div style="font-size:11px;color:#6b7280;margin-top:4px">Zones: ${zoneNames}</div>`:''}
+      <div style="padding:22px 26px 10px;border-bottom:1px solid #f0f0f0">
+        <div style="font-size:8px;font-weight:700;color:${brandAccent};letter-spacing:.2em;text-transform:uppercase;margin-bottom:8px">Phase Maps</div>
+        <div style="font-size:20px;font-weight:800;color:${brandPrimary};letter-spacing:-.02em">Phasing Overview</div>
       </div>
-      <div style="padding:20px 48px">
-        <img src="${ph.screenshot}" style="width:100%;border-radius:4px;border:1px solid #e5e7eb">
+      <div style="padding:16px 20px 24px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+        ${slice.map((ph,idx)=>{
+          const zoneNames=(projectData.zones||[]).filter(z=>(ph.zoneIds||[]).includes(z.id)).map(z=>z.name).join(', ');
+          return `<div style="border:1px solid #e5e7eb;border-radius:4px;overflow:hidden;background:#fff;display:flex;flex-direction:column">
+            <div style="padding:8px 10px;border-bottom:1px solid #f0f0f0">
+              <div style="font-size:10px;font-weight:700;color:${brandPrimary};line-height:1.3">${ph.name||('Phase '+(i+idx+1))}</div>
+              ${zoneNames?`<div style="font-size:9px;color:#6b7280;line-height:1.4;margin-top:3px">${zoneNames}</div>`:''}
+            </div>
+            <div style="aspect-ratio:1 / 1;background:#0d0d0f;display:flex;align-items:center;justify-content:center;padding:4px">
+              <img src="${ph.screenshot}" style="max-width:100%;max-height:100%;object-fit:contain;display:block">
+            </div>
+          </div>`;
+        }).join('')}
       </div>
     </div>`;
-  }).join('');
+  }
+  return out;
 }
 
 function refreshReport(type){
@@ -1793,7 +2395,231 @@ function projName(){return document.getElementById('bc-name')?.textContent||'Pro
 function today(){return new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});}
 function varBadge(actual,bid){if(!bid||!actual)return'—';const pct=((actual-bid)/bid*100),over=pct>5;return`<span style="font-family:JetBrains Mono,monospace;font-size:9px;font-weight:600;color:${over?'#ef4444':'#22c55e'}">${over?'▲':'▼'} ${Math.abs(pct).toFixed(1)}% ${over?'over':'under'}</span>`;}
 
+function getThemeForType(type){
+  if(!activeReportTheme||!activeReportTheme.sections)return null;
+  const sections=activeReportTheme.sections[type];
+  if(!Array.isArray(sections)||!sections.length)return null;
+  return{
+    colors:{
+      primary:'#111111',
+      accent:'#d4a843',
+      bg:'#ffffff',
+      textcol:'#1a1a1a',
+      ...(activeReportTheme.colors||{})
+    },
+    fonts:{
+      heading:'Inter',
+      body:'Inter',
+      ...(activeReportTheme.fonts||{})
+    },
+    headerStyle:activeReportTheme.headerStyle||'split',
+    stripe:activeReportTheme.stripe||'gradient',
+    tableStyle:activeReportTheme.tableStyle||'clean',
+    pagePad:activeReportTheme.pagePad||'normal',
+    sections
+  };
+}
+
+function buildThemedReportHtml(type,rMapId){
+  const t=getThemeForType(type);
+  if(!t)return null;
+  const d=getDetails(),calc=getCalc();
+  const mapHtml=rMapId?reportMapBlock(rMapId):'';
+  const logo=localStorage.getItem('paveview_logo')||'';
+  const userName=localStorage.getItem('paveview_user_name')||'';
+  const coName=company();
+  const P=t.colors.primary||'#111111';
+  const A=t.colors.accent||'#d4a843';
+  const BG=t.colors.bg||'#ffffff';
+  const TX=t.colors.textcol||'#1a1a1a';
+  const HF=t.fonts.heading||'Inter';
+  const BF=t.fonts.body||'Inter';
+  const PAD={normal:'48px',tight:'28px',wide:'64px'}[t.pagePad]||'48px';
+  const docLbl={client:'CLIENT PROPOSAL',foreman:'FOREMAN WORK ORDER',contractor:'CONTRACTOR COPY'}[type]||'REPORT';
+  const logoEl=logo?`<img src="${logo}" style="height:52px;max-width:160px;object-fit:contain;display:block;margin-bottom:10px">`:'';
+
+  function stripeHtml(){
+    if(t.stripe==='none')return'';
+    if(t.stripe==='solid')return`<div style="height:4px;background:${A}"></div>`;
+    if(t.stripe==='double')return`<div style="height:2px;background:${A}"></div><div style="height:1px;background:${P}33;margin-top:2px"></div>`;
+    if(t.stripe==='thick')return`<div style="height:7px;background:${A}"></div>`;
+    return`<div style="height:4px;background:linear-gradient(90deg,${P} 0%,${A} 40%,${P} 100%)"></div>`;
+  }
+
+  function headerHtml(){
+    const badge=`<div style="display:inline-block;background:${P};color:${A};font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.2em;padding:6px 16px">${docLbl}</div>`;
+    const sub=userName||'Professional Paving Services';
+    if(t.headerStyle==='banner')return`<div style="background:${P};padding:36px ${PAD};display:flex;justify-content:space-between;align-items:center">
+      ${logoEl?`<div>${logoEl}</div>`:`<div style="font-size:28px;font-weight:800;color:#fff;font-family:'${HF}'">${coName}</div>`}
+      <div style="text-align:right">${badge}<div style="font-size:11px;color:#ffffff99;margin-top:6px">${today()}</div></div>
+    </div>`;
+    if(t.headerStyle==='centered')return`<div style="padding:36px ${PAD} 24px;text-align:center;border-bottom:1px solid #e5e7eb">
+      ${logoEl?`<div style="display:flex;justify-content:center;margin-bottom:10px">${logoEl}</div>`:''}
+      <div style="font-size:28px;font-weight:800;font-family:'${HF}';color:${TX}">${coName}</div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:4px">${sub}</div>
+      <div style="margin-top:14px">${badge}</div>
+    </div>`;
+    if(t.headerStyle==='minimal')return`<div style="padding:24px ${PAD};display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid ${A}">
+      <div style="font-size:22px;font-weight:700;font-family:'${HF}';color:${TX};border-left:4px solid ${A};padding-left:12px">${coName}</div>
+      <div style="font-size:9px;color:#9ca3af;letter-spacing:.2em;text-transform:uppercase">${docLbl}</div>
+    </div>`;
+    if(t.headerStyle==='sidebar')return`<div style="display:grid;grid-template-columns:8px 1fr">
+      <div style="background:${A}"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:28px ${PAD};border-bottom:1px solid #e5e7eb">
+        <div>${logoEl}<div style="font-size:26px;font-weight:800;font-family:'${HF}';color:${TX}">${coName}</div><div style="font-size:11px;color:#9ca3af;margin-top:3px">${sub}</div></div>
+        <div style="text-align:right">${badge}<div style="font-size:11px;color:#9ca3af;margin-top:6px">${today()}</div></div>
+      </div>
+    </div>`;
+    return`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:36px ${PAD} 28px;border-bottom:1px solid #e5e7eb">
+      <div>${logoEl}<div style="font-size:26px;font-weight:800;font-family:'${HF}';color:${TX};letter-spacing:-.03em">${coName}</div><div style="font-size:11px;color:#9ca3af;margin-top:3px">${sub}</div></div>
+      <div style="text-align:right">${badge}<div style="font-size:11px;color:#9ca3af;line-height:2;margin-top:8px">${today()}${d.jobNum?`<br>Job #: ${d.jobNum}`:''}${d.estimator?`<br>Est: ${d.estimator}`:''}</div></div>
+    </div>`;
+  }
+
+  function tableCss(){
+    const base=`<style>
+      .th-rptbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:18px;font-family:'${BF}'}
+      .th-rptbl th{font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6b7280;padding:9px 12px;text-align:left}
+      .th-rptbl td{padding:10px 12px;color:#374151}
+      .th-rptbl td.n{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right}
+      .th-rptbl tr.tot td{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;padding:12px}
+    </style>`;
+    const variants={
+      clean:`<style>.th-rptbl thead tr{background:#f8f8f8;border-top:2px solid ${P};border-bottom:1px solid #e5e7eb}.th-rptbl tbody tr{border-bottom:1px solid #f5f5f5}.th-rptbl tr.tot td{background:${P};color:${A}}</style>`,
+      striped:`<style>.th-rptbl thead tr{background:${P}}.th-rptbl th{color:${A}!important}.th-rptbl tbody tr:nth-child(even){background:#f8f8f8}.th-rptbl tr.tot td{background:${P};color:${A}}</style>`,
+      bordered:`<style>.th-rptbl,.th-rptbl th,.th-rptbl td{border:1px solid #e5e7eb!important}.th-rptbl tr.tot td{background:${P};color:${A}}</style>`,
+      'dark-header':`<style>.th-rptbl thead tr{background:${P}}.th-rptbl th{color:${A}!important}.th-rptbl tbody tr{border-bottom:1px solid #f0f0f0}.th-rptbl tr.tot td{background:${P};color:${A}}</style>`,
+      minimal:`<style>.th-rptbl thead tr{border-bottom:2px solid ${P}}.th-rptbl th{color:${P}!important}.th-rptbl tbody tr{border-bottom:1px solid #e5e7eb}.th-rptbl tr.tot td{color:${P}}</style>`
+    };
+    return base+(variants[t.tableStyle]||variants.clean);
+  }
+
+  function labelHtml(text){
+    return`<div style="font-size:8px;font-weight:700;color:${A};letter-spacing:.22em;text-transform:uppercase;margin:24px 0 10px;padding-bottom:6px;border-bottom:1.5px solid #f0f0f0;font-family:'JetBrains Mono',monospace">${text||''}</div>`;
+  }
+
+  function kpiCardsHtml(){
+    const inv=getSiteInventory();
+    if(type==='foreman')return`
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid #f0f0f0">
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Area</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${Math.round(calc.totalSqft||0).toLocaleString()} sf</div></div>
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Asphalt</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${(calc.totalTons||0).toFixed(1)} tons</div></div>
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Zones</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${(calc.closed||[]).length}</div></div>
+        <div style="padding:16px"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Stalls</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${(inv.stalls||0)+(inv.ada||0)}</div></div>
+      </div>`;
+    if(type==='contractor')return`
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid #f0f0f0">
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Area</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${Math.round(calc.totalSqft||0).toLocaleString()} sf</div></div>
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Tons</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${(calc.totalTons||0).toFixed(1)}</div></div>
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Base</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${(calc.totalBaseTons||0).toFixed(1)}</div></div>
+        <div style="padding:16px"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Est. Cost</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">$${Math.round(calc.totalCost||0).toLocaleString()}</div></div>
+      </div>`;
+    return`
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid #f0f0f0">
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Total Area</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${Math.round(calc.totalSqft||0).toLocaleString()} sf</div></div>
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Acreage</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${((calc.totalSqft||0)/43560).toFixed(3)}</div></div>
+        <div style="padding:16px;border-right:1px solid #f0f0f0"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Stalls</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">${(inv.stalls||0)+(inv.ada||0)}</div></div>
+        <div style="padding:16px"><div style="font-size:8px;letter-spacing:.15em;color:#9ca3af;text-transform:uppercase;font-family:'JetBrains Mono',monospace">Est. Total</div><div style="font-size:20px;font-weight:800;font-family:'${HF}';color:${TX}">$${Math.round(calc.totalCost||0).toLocaleString()}</div></div>
+      </div>`;
+  }
+
+  function scopeRows(showPricing){
+    let rows='';
+    (calc.closed||[]).forEach(z=>{
+      const a=polyArea(z.pts||[])*calc.scale*calc.scale;
+      const tons=a*(calc.depth/12)*145/2000*calc.comp;
+      const base=a*(calc.base/12)*110/2000;
+      const cost=tons*calc.pa+base*calc.pb+a*calc.pl;
+      if(type==='contractor'){
+        rows+=`<tr><td>${z.name}</td><td class="n">${Math.round(a).toLocaleString()}</td><td class="n">${tons.toFixed(1)}</td><td class="n">${base.toFixed(1)}</td><td class="n">${showPricing?'$'+Math.round(cost).toLocaleString():'—'}</td></tr>`;
+      }else{
+        rows+=`<tr><td><strong>${z.name}</strong> — Asphalt Paving (${calc.depth}" depth)</td><td class="n">${Math.round(a).toLocaleString()}</td><td class="n">sq ft</td><td class="n">${showPricing?'$'+Math.round(cost).toLocaleString():'—'}</td></tr>`;
+      }
+    });
+    rows+=inventoryRows(showPricing);
+    return rows;
+  }
+
+  function renderSection(s){
+    if(!s||!s.vis)return'';
+    const c=s.content||{};
+    if(s.type==='header')return headerHtml();
+    if(s.type==='stripe')return stripeHtml();
+    if(s.type==='infoband')return`<div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;border-bottom:1px solid #f0f0f0;font-family:'${BF}'">
+      <div style="padding:20px ${PAD};border-right:1px solid #f0f0f0">
+        <div style="font-size:8px;font-weight:700;color:${A};letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px">${c.labelPrepared||'Prepared For'}</div>
+        <div style="font-size:17px;font-weight:700;color:${TX};font-family:'${HF}';margin-bottom:3px">${d.clientName||c.preparedFor||'Client Name'}</div>
+        <div style="font-size:11px;color:#6b7280;line-height:1.6">${[d.contact||c.contact,d.phone||c.phone,d.email||c.email].filter(Boolean).join('<br>')}</div>
+      </div>
+      <div style="padding:20px ${PAD};border-right:1px solid #f0f0f0">
+        <div style="font-size:8px;font-weight:700;color:${A};letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px">${c.labelSite||'Job Site'}</div>
+        <div style="font-size:15px;font-weight:600;color:${TX};font-family:'${HF}'">${d.address||c.site||'Site Address'}</div>
+      </div>
+      <div style="padding:20px ${PAD}">
+        <div style="font-size:8px;font-weight:700;color:${A};letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px">${c.labelProject||'Project'}</div>
+        <div style="font-size:15px;font-weight:600;color:${TX};font-family:'${HF}'">${projName()||c.project||'Project Name'}</div>
+      </div>
+    </div>`;
+    if(s.type==='kpis')return kpiCardsHtml();
+    if(s.type==='map')return`<div style="padding:0 ${PAD}">${labelHtml(s.label||'Site Plan')}${mapHtml||'<div style="background:#f5f5f5;border:1px dashed #ddd;padding:30px;text-align:center;color:#999;font-family:JetBrains Mono,monospace;font-size:10px">Map preview unavailable</div>'}</div>`;
+    if(s.type==='scope'){
+      const contractor=type==='contractor';
+      const rows=scopeRows(contractor||type==='client');
+      const total=type==='foreman'?(c.total||'See Estimate'):('$'+Math.round(calc.totalCost||0).toLocaleString());
+      return`<div style="padding:0 ${PAD}">${labelHtml(s.label||'Scope of Work')}
+        <table class="th-rptbl"><thead><tr>${contractor?'<th>Zone</th><th style="text-align:right">Area (sf)</th><th style="text-align:right">Tons</th><th style="text-align:right">Base (t)</th><th style="text-align:right">Cost</th>':'<th>Description</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Est. Cost</th>'}</tr></thead><tbody>
+        ${rows||((c.rows||[]).map(r=>`<tr><td>${r.desc||''}</td><td class="n">${r.qty||''}</td><td class="n">${r.unit||''}</td><td class="n">${r.cost||''}</td></tr>`).join(''))}
+        <tr class="tot"><td colspan="${contractor?4:3}">${type==='contractor'?'TOTAL':'ESTIMATED TOTAL'}</td><td style="text-align:right">${total}</td></tr>
+        </tbody></table>
+      </div>`;
+    }
+    if(s.type==='notes'||s.type==='conditions'){
+      const autoText=s.type==='conditions'?(d.conditions||''):(type==='foreman'?(d.pmNotes||d.scope||''):(d.scope||''));
+      const txt=c.text||autoText||'';
+      if(!txt)return'';
+      const style=(c.style||'callout');
+      const box=style==='callout'?`border-left:3px solid ${A};padding:14px 18px;background:${A}08`:style==='box'?`border:1px solid ${A}44;padding:14px 18px`:'padding:4px 0';
+      return`<div style="padding:0 ${PAD}">${labelHtml(s.label||'Notes')}<div style="${box};font-size:${c.fontSize||13}px;color:#4b5563;line-height:1.8;font-family:'${BF}';margin-bottom:16px;white-space:pre-wrap">${txt}</div></div>`;
+    }
+    if(s.type==='sigs'){
+      const defs={client:['Contractor / Date','Client Signature / Date','Project Start Date'],foreman:['Foreman / Date','PM Review / Date','Hours Recorded / Date'],contractor:['Project Manager / Date','Owner Approval / Date','Start Date Confirmed']};
+      const lines=(c.lines&&c.lines.length?c.lines:defs[type]||defs.client);
+      return`<div style="padding:0 ${PAD}">${labelHtml(s.label||'Authorization')}<div style="display:grid;grid-template-columns:${lines.map(()=> '1fr').join(' ')};gap:24px;margin:0 0 24px">${lines.map(l=>`<div><div style="height:1px;background:${P};margin-bottom:7px"></div><div style="font-size:9px;color:#9ca3af;letter-spacing:.12em;text-transform:uppercase;font-family:'JetBrains Mono',monospace">${l}</div></div>`).join('')}</div></div>`;
+    }
+    if(s.type==='footer'){
+      const txt=c.text||(type==='contractor'?'INTERNAL USE ONLY — Contains cost data. Do not distribute to client.':'By signing, both parties agree to the scope and estimated costs outlined above. Final invoice may vary based on field conditions.');
+      return`<div style="font-size:9px;color:#9ca3af;line-height:1.6;border-top:1px solid #f0f0f0;padding:12px ${PAD};display:flex;justify-content:space-between;font-family:'${BF}'"><span style="font-weight:600;color:${P}">${c.footerCo||coName}</span><span>${txt}</span></div>`;
+    }
+    if(s.type==='custom-text')return`<div style="padding:40px ${PAD}"><div style="height:3px;background:${A};margin-bottom:32px"></div><h2 style="font-size:24px;font-weight:800;font-family:'${HF}';color:${TX};letter-spacing:-.02em;margin:0 0 18px">${c.title||'Section Title'}</h2><div style="font-size:${c.fontSize||13}px;color:#374151;line-height:1.9;font-family:'${BF}';white-space:pre-wrap">${c.text||''}</div></div>`;
+    if(s.type==='photo'){
+      const w=c.width||100,align=c.align||'center';
+      return`<div style="padding:28px ${PAD}"><div style="font-size:8px;font-weight:700;color:${A};letter-spacing:.2em;text-transform:uppercase;margin-bottom:10px;font-family:'JetBrains Mono',monospace">${c.caption||''}</div><div style="text-align:${align}">${c.image?`<img src="${c.image}" style="width:${w}%;max-height:480px;object-fit:contain;border-radius:3px;display:inline-block">`:'<div style="background:#f5f5f5;border:2px dashed #ddd;height:220px;display:flex;align-items:center;justify-content:center;border-radius:3px;font-size:11px;color:#aaa;font-family:JetBrains Mono,monospace">No image selected</div>'}</div>${c.description?`<div style="font-size:11px;color:#6b7280;line-height:1.7;margin-top:10px;font-style:italic;font-family:'${BF}'">${c.description}</div>`:''}</div>`;
+    }
+    if(s.type==='two-col')return`<div style="padding:0 ${PAD}">${labelHtml(c.title||s.label||'')}<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:18px"><div style="font-size:12px;color:#374151;line-height:1.8;font-family:'${BF}'">${c.left||''}</div><div style="font-size:12px;color:#374151;line-height:1.8;font-family:'${BF}'">${c.right||''}</div></div></div>`;
+    if(s.type==='divider'){
+      const ds={line:'height:1px;background:#e5e7eb',thick:`height:5px;background:${A}`,dots:'height:1px;border-top:2px dotted #ddd',space:'height:24px'};
+      return`<div style="padding:0 ${PAD}"><div style="${ds[c.style||'line']||ds.line};margin:12px 0"></div></div>`;
+    }
+    if(s.type==='phase'){
+      const phase=(reportPhases||[]).find(ph=>ph.screenshot);
+      const phaseName=(phase&&phase.name)||c.phaseName||'Phase 1';
+      const zoneNames=phase?(projectData.zones||[]).filter(z=>phase.zoneIds.includes(z.id)).map(z=>z.name).join(', '):(c.zoneNames||'');
+      const screenshot=(phase&&phase.screenshot)||c.screenshot||'';
+      return`<div style="padding:0"><div style="height:4px;background:${A}"></div><div style="padding:28px ${PAD} 16px"><div style="font-size:8px;font-weight:700;color:${A};letter-spacing:.2em;text-transform:uppercase;margin-bottom:8px;font-family:'JetBrains Mono',monospace">${c.phaseLabel||'Phase Map'}</div><div style="font-size:22px;font-weight:800;font-family:'${HF}';color:${TX};letter-spacing:-.02em;margin-bottom:6px">${phaseName}</div>${zoneNames?`<div style="font-size:11px;color:#6b7280">Zones: ${zoneNames}</div>`:''}</div>${screenshot?`<div style="padding:0 ${PAD} 28px"><img src="${screenshot}" style="width:100%;border-radius:4px;border:1px solid #e5e7eb"></div>`:`<div style="margin:0 ${PAD} 28px;background:#f5f5f5;border:2px dashed #ddd;height:200px;display:flex;align-items:center;justify-content:center;border-radius:3px"><span style="font-size:11px;color:#aaa;font-family:'JetBrains Mono',monospace">Phase screenshot unavailable</span></div>`}${c.description?`<div style="padding:0 ${PAD} 24px"><div style="font-size:12px;color:#6b7280;line-height:1.7;font-family:'${BF}'">${c.description}</div></div>`:''}</div>`;
+    }
+    return'';
+  }
+
+  let html=`<div class="rpage" style="background:${BG};color:${TX};font-family:'${BF}'">${tableCss()}`;
+  t.sections.forEach(s=>{html+=renderSection(s);});
+  html+=buildCustomPages(type);
+  html+='</div>';
+  return html;
+}
+
 function buildClientHtml(rMapId){
+  const themed=buildThemedReportHtml('client',rMapId);
+  if(themed)return themed;
   const d=getDetails(),calc=getCalc();
   const mapHtml=rMapId?reportMapBlock(rMapId):'';
   const logo=localStorage.getItem('paveview_logo')||'';
@@ -1936,6 +2762,8 @@ function buildClientHtml(rMapId){
 
 
 function buildForemanHtml(rMapId){
+  const themed=buildThemedReportHtml('foreman',rMapId);
+  if(themed)return themed;
   const d=getDetails(),calc=getCalc();
   const concerns=[[d.c1,d.c1s],[d.c2,d.c2s],[d.c3,d.c3s]].filter(c=>c[0]);
   const mapHtml=rMapId?reportMapBlock(rMapId):'';
@@ -1966,7 +2794,7 @@ function buildForemanHtml(rMapId){
     html+='<div class="rsec">Phasing Plan</div>';
     html+=`<div style="display:grid;grid-template-columns:${phases.length===1?'1fr':'1fr 1fr'};gap:10px;margin-bottom:14px">`;
     phases.forEach((ph,i)=>{
-      html+=`<div style="border:1px solid #e5e7eb;overflow:hidden"><div style="background:#111;padding:7px 10px;display:flex;justify-content:space-between"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#f5c842">Phase ${i+1}${ph.name?' — '+ph.name:''}</span><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#888">${ph.time||''}</span></div><div style="padding:8px 10px;background:#fafafa">`;
+      html+=`<div style="border:1px solid #e5e7eb;overflow:hidden"><div style="background:#111;padding:7px 10px;display:flex;justify-content:space-between;gap:8px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#f5c842">Phase ${i+1}${ph.name?' — '+ph.name:''}</span><span style="display:flex;align-items:center;gap:8px"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:${ph.done?'#22c55e':'#888'};border:1px solid ${ph.done?'rgba(34,197,94,.35)':'rgba(255,255,255,.15)'};padding:1px 6px;text-transform:uppercase;letter-spacing:.08em">${ph.done?'Complete':'Open'}</span><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#888">${ph.time||''}</span></span></div><div style="padding:8px 10px;background:#fafafa">`;
       if(ph.area)html+=`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #f0f0f0"><span style="color:#888">Area</span><span style="font-family:monospace;font-size:10px;font-weight:600">${ph.area}</span></div>`;
       if(ph.hours)html+=`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #f0f0f0"><span style="color:#888">Bid hours</span><span style="font-family:monospace;font-size:10px;font-weight:600;color:#16a34a">${ph.hours} MH</span></div>`;
       if(ph.crew)html+=`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #f0f0f0"><span style="color:#888">Crew</span><span style="font-family:monospace;font-size:10px;font-weight:600">${ph.crew}</span></div>`;
@@ -2012,7 +2840,9 @@ function buildCompletionHtml(){
   return html;
 }
 
-function buildContractorHtml(){
+function buildContractorHtml(rMapId){
+  const themed=buildThemedReportHtml('contractor',rMapId);
+  if(themed)return themed;
   const d=getDetails(),calc=getCalc();
   let html=`<div class="rpage"><div class="rlh"><div><div class="rco">${company()}</div><div class="rco-sub">Internal Work Order</div></div><div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600">CONTRACTOR COPY</div><div class="rdoc-meta">${today()}${d.jobNum?'<br>Job #: '+d.jobNum:''}</div></div></div>`;
   html+='<div class="rstripe"></div>';
@@ -2023,9 +2853,10 @@ function buildContractorHtml(){
   html+=`<tr class="gtot"><td colspan="4">TOTAL</td><td class="num">$${Math.round(calc.totalCost).toLocaleString()}</td></tr></tbody></table>`;
   const _ctInvRows=inventoryRows(true);
   if(_ctInvRows){html+='<div class="rsec">Additional Scope</div><table class="rtbl"><thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr></thead><tbody>'+_ctInvRows+'</tbody></table>';}
-  html+=`<div class="rfooter">INTERNAL USE ONLY — Contains cost data. Do not distribute to client.</div></div>`;
-  return html;
+  html+=`<div class="rfooter">INTERNAL USE ONLY — Contains cost data. Do not distribute to client.</div>`;
   html+=buildCustomPages('contractor');
+  html+='</div>';
+  return html;
 }
 
 // ── ESTIMATING REPORTS ──
@@ -2036,13 +2867,14 @@ function buildEstimatingReports(){
   const foremanEl=document.getElementById('report-foreman');
   const completionEl=document.getElementById('report-completion');
   if(clientEl){clientEl.innerHTML=buildClientHtml('rmap-est-client');requestAnimationFrame(()=>paintReportMap('rmap-est-client'));}
-  if(contractorEl)contractorEl.innerHTML=buildContractorHtml();
+  if(contractorEl)contractorEl.innerHTML=buildContractorHtml('rmap-est-contractor');
   if(foremanEl){foremanEl.innerHTML=buildForemanHtml('rmap-est-foreman');requestAnimationFrame(()=>paintReportMap('rmap-est-foreman'));}
   if(completionEl)completionEl.innerHTML=buildCompletionHtml();
 }
 
 // ── ACTIVE JOB REPORTS ──
 function buildActiveReports(){
+  loadThemesIntoProject();
   const c=document.getElementById('report-client-a');
   const f=document.getElementById('report-foreman-a');
   const comp=document.getElementById('report-completion-a');
@@ -2053,6 +2885,7 @@ function buildActiveReports(){
 
 // ── COMPLETE REPORTS ──
 function buildCompleteReports(){
+  loadThemesIntoProject();
   const c=document.getElementById('report-client-c');
   const f=document.getElementById('report-foreman-c');
   const comp=document.getElementById('report-completion-c');
@@ -2068,6 +2901,18 @@ async function deleteProject(){
   localStorage.removeItem('paveview_proj_details_'+projectId);
   window.location.replace('dashboard.html');
 }
+
+// Keep project page font size synced with account setting.
+(function(){
+  function applyFs(v){
+    const fs=parseInt(v)||14;
+    document.documentElement.style.setProperty('--fs',fs+'px');
+  }
+  applyFs(localStorage.getItem('paveview_fontsize')||'14');
+  window.addEventListener('storage',function(ev){
+    if(ev.key==='paveview_fontsize')applyFs(ev.newValue||'14');
+  });
+})();
 </script>
 </body>
 </html>

@@ -26,6 +26,25 @@ body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--txt);height:
 .btn{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;padding:5px 12px;border:1px solid var(--bdr);background:none;color:var(--txt);cursor:pointer;letter-spacing:.04em}
 .btn.acc{background:var(--acc);border-color:var(--acc);color:#000}
 #save-msg{font-family:'JetBrains Mono',monospace;font-size:9px;display:none}
+#rb-debug{
+  position:fixed;right:16px;bottom:16px;z-index:1200;display:none;
+  width:min(520px,92vw);max-height:62vh;overflow:auto;
+  background:var(--surf);border:1px solid var(--bdr);box-shadow:0 10px 30px rgba(0,0,0,.45)
+}
+#rb-debug-hdr{
+  display:flex;align-items:center;gap:8px;justify-content:space-between;
+  padding:8px 10px;border-bottom:1px solid var(--bdr);position:sticky;top:0;background:var(--surf2)
+}
+#rb-debug-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--acc)}
+#rb-debug-body{padding:10px}
+#rb-debug pre{font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.55;color:var(--txt2);white-space:pre-wrap;word-break:break-word}
+.rb-dbg-fab{
+  position:fixed;left:14px;bottom:14px;z-index:1300;
+  font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;
+  border:1px solid var(--bdr);background:var(--surf2);color:var(--acc);
+  padding:7px 10px;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.35)
+}
+.rb-dbg-fab:hover{border-color:var(--acc);background:var(--acc-bg)}
 
 /* BODY */
 #body{display:flex;flex:1;overflow:hidden}
@@ -129,7 +148,8 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--bdr);padding:2px
   <span id="save-msg"></span>
   <div class="topright">
     <button class="btn" onclick="dupTheme()">Duplicate</button>
-    <button class="btn acc" onclick="doSave()">💾 Save Themes</button>
+    <button class="btn acc" onclick="doSave()">💾 Save Report</button>
+    <button class="btn" onclick="toggleBuilderDebug()">Debug</button>
     <a href="dashboard.html" class="btn" style="text-decoration:none">← Dashboard</a>
   </div>
 </div>
@@ -255,15 +275,34 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--bdr);padding:2px
   <div id="tgrid"></div>
 </div>
 
+<div id="rb-debug">
+  <div id="rb-debug-hdr">
+    <span id="rb-debug-title">REPORT BUILDER DEBUG</span>
+    <div style="display:flex;gap:6px">
+      <button class="btn" onclick="refreshBuilderDebug()">Refresh</button>
+      <button class="btn" onclick="toggleBuilderDebug()">Close</button>
+    </div>
+  </div>
+  <div id="rb-debug-body"><pre id="rb-debug-pre">Loading…</pre></div>
+</div>
+<button class="rb-dbg-fab" onclick="toggleBuilderDebug()">Debug</button>
+
 <script>
-var LS = 'paveview_report_themes';
+var LS = 'paveview_report_themes'; // legacy
+var LS_REPORTS = 'paveview_report_templates';
+var LS_REPORTS_UPDATED = 'paveview_report_templates_updated_at';
 var LA = 'paveview_active_theme';
+var IDB_DB = 'paveview_report_store';
+var IDB_STORE = 'kv';
+var IDB_KEY = 'report_templates_v1';
 
 var themes = [];
 var activeId = null;
 var activeTab = 'client';
 var zmVal = 0.85;
 var dragIdx = null;
+var idbOpenPromise = null;
+var pendingIdbSave = Promise.resolve(false);
 
 // ── DEFAULTS ──
 var DFLT_COLORS = {primary:'#111111', accent:'#d4a843', bg:'#ffffff', textcol:'#1a1a1a'};
@@ -307,12 +346,187 @@ function makeSections(type) {
   ];
 }
 
+function parseTs(v) {
+  var n = parseInt(v || '0', 10);
+  return isNaN(n) ? 0 : n;
+}
+
+function openReportDb() {
+  if (!window.indexedDB) return Promise.resolve(null);
+  if (idbOpenPromise) return idbOpenPromise;
+  idbOpenPromise = new Promise(function(resolve) {
+    try {
+      var req = indexedDB.open(IDB_DB, 1);
+      req.onupgradeneeded = function(ev) {
+        var db = ev.target.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+      };
+      req.onsuccess = function() { resolve(req.result); };
+      req.onerror = function() { resolve(null); };
+    } catch (e) {
+      resolve(null);
+    }
+  });
+  return idbOpenPromise;
+}
+
+function idbGet(key) {
+  return openReportDb().then(function(db) {
+    if (!db) return null;
+    return new Promise(function(resolve) {
+      try {
+        var tx = db.transaction(IDB_STORE, 'readonly');
+        var store = tx.objectStore(IDB_STORE);
+        var req = store.get(key);
+        req.onsuccess = function() { resolve(req.result || null); };
+        req.onerror = function() { resolve(null); };
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  });
+}
+
+function idbSet(key, val) {
+  return openReportDb().then(function(db) {
+    if (!db) return false;
+    return new Promise(function(resolve) {
+      try {
+        var tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.oncomplete = function() { resolve(true); };
+        tx.onerror = function() { resolve(false); };
+        tx.objectStore(IDB_STORE).put(val, key);
+      } catch (e) {
+        resolve(false);
+      }
+    });
+  });
+}
+
+function buildThemeSnapshot() {
+  return {
+    themes: JSON.parse(JSON.stringify(themes)),
+    activeId: activeId || '',
+    updatedAt: Date.now()
+  };
+}
+
+function queueIdbThemeSave(snapshot) {
+  pendingIdbSave = idbSet(IDB_KEY, snapshot).catch(function() { return false; });
+  return pendingIdbSave;
+}
+
+function readLocalThemes() {
+  var raw = localStorage.getItem(LS_REPORTS) || localStorage.getItem(LS);
+  if (!raw) return [];
+  try {
+    var parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function readSavedThemes() {
+  return readLocalThemes();
+}
+
+function fmtTs(ts) {
+  if (!ts) return '—';
+  try { return new Date(ts).toLocaleString(); } catch (e) { return String(ts); }
+}
+
+function themeCountFromRaw(raw) {
+  if (!raw) return 0;
+  try {
+    var p = JSON.parse(raw);
+    return Array.isArray(p) ? p.length : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+async function refreshBuilderDebug() {
+  var out = document.getElementById('rb-debug-pre');
+  if (!out) return;
+  var rawNew = localStorage.getItem(LS_REPORTS);
+  var rawLegacy = localStorage.getItem(LS);
+  var snap = await idbGet(IDB_KEY);
+  var idbThemes = snap && Array.isArray(snap.themes) ? snap.themes.length : 0;
+  var lines = [
+    '[Report Builder Debug]',
+    '',
+    'In-memory:',
+    '  themes.length: ' + themes.length,
+    '  activeId: ' + (activeId || '—'),
+    '',
+    'LocalStorage:',
+    '  ' + LS_REPORTS + ': ' + themeCountFromRaw(rawNew) + ' themes',
+    '  ' + LS + ': ' + themeCountFromRaw(rawLegacy) + ' themes',
+    '  ' + LS_REPORTS_UPDATED + ': ' + (localStorage.getItem(LS_REPORTS_UPDATED) || '—'),
+    '  updatedAt (fmt): ' + fmtTs(parseTs(localStorage.getItem(LS_REPORTS_UPDATED))),
+    '  ' + LA + ': ' + (localStorage.getItem(LA) || '—'),
+    '',
+    'IndexedDB:',
+    '  db/store/key: ' + IDB_DB + ' / ' + IDB_STORE + ' / ' + IDB_KEY,
+    '  snapshot themes: ' + idbThemes,
+    '  snapshot activeId: ' + ((snap && snap.activeId) || '—'),
+    '  snapshot updatedAt: ' + ((snap && snap.updatedAt) || '—'),
+    '  snapshot updatedAt (fmt): ' + fmtTs(snap && snap.updatedAt),
+    '',
+    'Last refresh: ' + new Date().toLocaleTimeString()
+  ];
+  out.textContent = lines.join('\n');
+}
+
+function toggleBuilderDebug() {
+  var box = document.getElementById('rb-debug');
+  if (!box) return;
+  var open = box.style.display === 'block';
+  box.style.display = open ? 'none' : 'block';
+  if (!open) refreshBuilderDebug();
+}
+
+function maybeOpenBuilderDebugFromUrl() {
+  try {
+    var u = new URL(window.location.href);
+    if (u.searchParams.get('debug') === '1') toggleBuilderDebug();
+  } catch (e) {}
+}
+
 // ── LOAD / SAVE ──
-function loadThemes() {
-  var raw = localStorage.getItem(LS);
-  if (!raw) { themes = []; return; }
-  try { themes = JSON.parse(raw); } catch(e) { themes = []; }
+async function loadThemes() {
+  var localThemes = readLocalThemes();
+  var localUpdated = parseTs(localStorage.getItem(LS_REPORTS_UPDATED));
+  var snap = await idbGet(IDB_KEY);
+  var idbThemes = snap && Array.isArray(snap.themes) ? snap.themes : [];
+  var idbUpdated = snap ? parseTs(snap.updatedAt) : 0;
+  var useIdb = idbThemes.length && (idbUpdated >= localUpdated || !localThemes.length);
+  themes = useIdb ? idbThemes : localThemes;
+  if (useIdb) {
+    try {
+      var payload = JSON.stringify(themes);
+      localStorage.setItem(LS_REPORTS, payload);
+      localStorage.setItem(LS_REPORTS_UPDATED, String(idbUpdated || Date.now()));
+      localStorage.setItem(LA, (snap && snap.activeId) || '');
+      try { localStorage.setItem(LS, payload); } catch (e) {}
+    } catch (e) {}
+  }
   themes.forEach(function(t) {
+    if (!t.id) t.id = 't' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    if (!t.name) t.name = 'Untitled Report';
+    if (!t.colors || typeof t.colors !== 'object') t.colors = {};
+    if (!t.fonts || typeof t.fonts !== 'object') t.fonts = {};
+    t.colors.primary = t.colors.primary || DFLT_COLORS.primary;
+    t.colors.accent = t.colors.accent || DFLT_COLORS.accent;
+    t.colors.bg = t.colors.bg || DFLT_COLORS.bg;
+    t.colors.textcol = t.colors.textcol || DFLT_COLORS.textcol;
+    t.fonts.heading = t.fonts.heading || DFLT_FONTS.heading;
+    t.fonts.body = t.fonts.body || DFLT_FONTS.body;
+    if (!t.headerStyle) t.headerStyle = 'split';
+    if (!t.stripe) t.stripe = 'gradient';
+    if (!t.tableStyle) t.tableStyle = 'clean';
+    if (!t.pagePad) t.pagePad = 'normal';
     if (!t.sections) t.sections = {};
     ['client','foreman','contractor'].forEach(function(r) {
       if (!t.sections[r]) t.sections[r] = makeSections(r);
@@ -321,29 +535,45 @@ function loadThemes() {
 }
 
 function saveNow() {
-  localStorage.setItem(LS, JSON.stringify(themes));
-  localStorage.setItem(LA, activeId || '');
-  var t = getT();
-  if (t) {
-    localStorage.setItem('paveview_brand_primary', t.colors.primary);
-    localStorage.setItem('paveview_brand_accent', t.colors.accent);
+  var snapshot = buildThemeSnapshot();
+  queueIdbThemeSave(snapshot);
+  try {
+    var payload = JSON.stringify(snapshot.themes);
+    localStorage.setItem(LS_REPORTS, payload);
+    localStorage.setItem(LS_REPORTS_UPDATED, String(snapshot.updatedAt));
+    localStorage.setItem(LA, snapshot.activeId);
+    try { localStorage.setItem(LS, payload); } catch (e) {}
+    var t = getT();
+    if (t) {
+      localStorage.setItem('paveview_brand_primary', t.colors.primary);
+      localStorage.setItem('paveview_brand_accent', t.colors.accent);
+    }
+    return true;
+  } catch (e) {
+    console.error('[PaveView] Failed to save report templates:', e);
+    return false;
   }
 }
 
-function doSave() {
+async function doSave() {
   console.log('[PaveView] doSave called, themes:', themes.length);
-  saveNow();
-  var back = localStorage.getItem(LS);
+  var localOk = saveNow();
+  var idbOk = await pendingIdbSave.catch(function() { return false; });
+  var back = localStorage.getItem(LS_REPORTS) || localStorage.getItem(LS);
   var parsed = [];
   try { parsed = JSON.parse(back || '[]'); } catch(e) {}
-  var ok = parsed.length === themes.length;
+  var lenOk = Array.isArray(parsed) && parsed.length === themes.length;
+  var ok = (localOk && lenOk) || idbOk;
   console.log('[PaveView] save verify ok:', ok, 'stored:', parsed.length, 'expected:', themes.length);
   var msg = document.getElementById('save-msg');
   if (msg) {
-    msg.textContent = ok ? ('✓ Saved ' + themes.length + ' theme' + (themes.length !== 1 ? 's' : '')) : '✗ Save failed';
+    msg.textContent = ok ? ('✓ Saved ' + themes.length + ' report' + (themes.length !== 1 ? 's' : '')) : '✗ Save failed (storage unavailable/full)';
     msg.style.color = ok ? 'var(--ok)' : 'var(--red)';
     msg.style.display = 'block';
     setTimeout(function() { msg.style.display = 'none'; }, 3000);
+  }
+  if (document.getElementById('rb-debug') && document.getElementById('rb-debug').style.display === 'block') {
+    refreshBuilderDebug();
   }
 }
 
@@ -837,9 +1067,9 @@ function initDivider(){
 }
 
 // ── INIT ──
-function init() {
+async function init() {
   console.log('[PaveView] Report Builder init start');
-  loadThemes();
+  await loadThemes();
   console.log('[PaveView] Themes loaded:', themes.length);
   if (!themes.length) {
     newTheme();
@@ -860,6 +1090,14 @@ function init() {
     renderPreview();
     console.log('[PaveView] renderPreview complete');
   }, 150);
+  window.addEventListener('focus', function() {
+    var box = document.getElementById('rb-debug');
+    if (box && box.style.display === 'block') refreshBuilderDebug();
+  });
+  window.addEventListener('keydown', function(e) {
+    if (e && e.shiftKey && e.key && e.key.toLowerCase() === 'd') toggleBuilderDebug();
+  });
+  maybeOpenBuilderDebugFromUrl();
 }
 
 init();

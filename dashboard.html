@@ -25,6 +25,7 @@
   --blue:     #3b82f6;
   --orange:   #f97316;
   --border-hover: #3a3a3c;
+  --fs:       14px;
 }
 body.light {
   --bg:       #f0ede8;
@@ -44,7 +45,7 @@ body.light {
   --border-hover:#c5c1ba;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;display:flex;flex-direction:column}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-size:var(--fs);min-height:100vh;display:flex;flex-direction:column}
 
 /* HEADER */
 #hdr{background:var(--surface);border-bottom:1px solid var(--border);height:46px;display:flex;align-items:center;padding:0 24px;gap:0;flex-shrink:0}
@@ -467,14 +468,20 @@ function showTab(tab){
 
 async function loadProfile(){
   const {data}=await sb.from('profiles').select('*').eq('id',currentUser.id).single();
-  if(!data)return;
-  if(data.full_name){document.getElementById('p-name').value=data.full_name;localStorage.setItem('paveview_user_name',data.full_name);}
-  if(data.company_name){document.getElementById('p-company').value=data.company_name;localStorage.setItem('paveview_company',data.company_name);}
-  if(data.logo_url){
-    const prev=document.getElementById('logo-preview');
-    prev.innerHTML=`<img src="${data.logo_url}" alt="Logo">`;
-    logoDataUrl=data.logo_url;
-    localStorage.setItem('paveview_logo',data.logo_url);
+  const profile=data||{};
+  if(profile.full_name){document.getElementById('p-name').value=profile.full_name;localStorage.setItem('paveview_user_name',profile.full_name);}
+  if(profile.company_name){document.getElementById('p-company').value=profile.company_name;localStorage.setItem('paveview_company',profile.company_name);}
+  const savedLocalLogo=localStorage.getItem('paveview_logo')||'';
+  const selectedLogo=profile.logo_url||savedLocalLogo;
+  const prev=document.getElementById('logo-preview');
+  if(prev){
+    if(selectedLogo){
+      prev.innerHTML=`<img src="${selectedLogo}" alt="Logo">`;
+      logoDataUrl=selectedLogo;
+      localStorage.setItem('paveview_logo',selectedLogo);
+    }else{
+      prev.innerHTML='<span class="logo-preview-empty">▦</span>';
+    }
   }
   // Load pricing from localStorage (saved locally)
   const pricing=JSON.parse(localStorage.getItem('paveview_pricing')||'{}');
@@ -551,6 +558,7 @@ function handleLogoUpload(e){
     logoDataUrl=ev.target.result;
     const prev=document.getElementById('logo-preview');
     prev.innerHTML=`<img src="${logoDataUrl}" alt="Logo">`;
+    localStorage.setItem('paveview_logo',logoDataUrl);
   };
   reader.readAsDataURL(file);
 }
@@ -562,10 +570,15 @@ async function saveCompany(){
   // Always save to localStorage immediately
   if(company)localStorage.setItem('paveview_company',company);
   if(name)localStorage.setItem('paveview_user_name',name);
-  if(logoDataUrl&&logoDataUrl.startsWith('data:'))localStorage.setItem('paveview_logo',logoDataUrl);
-  // Save to Supabase - only columns that exist in schema
-  const updates={full_name:name,company_name:company,updated_at:new Date().toISOString()};
-  const {error}=await sb.from('profiles').upsert({id:currentUser.id,...updates});
+  if(logoDataUrl)localStorage.setItem('paveview_logo',logoDataUrl);
+  // Save to Supabase
+  const baseUpdates={id:currentUser.id,full_name:name,company_name:company,updated_at:new Date().toISOString()};
+  let {error}=await sb.from('profiles').upsert({...baseUpdates,logo_url:logoDataUrl||null});
+  // Backward compatibility for older schemas without logo_url column
+  if(error&&String(error.message||'').toLowerCase().includes('logo_url')){
+    const retry=await sb.from('profiles').upsert(baseUpdates);
+    error=retry.error||null;
+  }
   if(error){
     // Still show success since localStorage saved fine
     showMsg('msg-company','✓ Company info saved locally (Supabase: '+error.message+')','ok',null);
@@ -902,7 +915,7 @@ async function renderAnalytics(allParsed){
         const statusColors={estimating:'#888',active:'#888',awarded:'#3b82f6',in_progress:'#f5c842',complete:'#22c55e',cancelled:'#ef4444'};
         compHtml+=`<tr style="border-bottom:1px solid var(--border2)">
           <td style="padding:8px 10px;color:var(--text)">${p.name}</td>
-          <td style="padding:8px 10px;text-align:right"><span style="font-family:JetBrains Mono,monospace;font-size:9px;color:${statusColors[cd.status||'active']||'#888'}">${(cd.status||'active').replace('_',' ').toUpperCase()}</span></td>
+          <td style="padding:8px 10px;text-align:right"><span style="font-family:JetBrains Mono,monospace;font-size:9px;color:${statusColors[p.status||'active']||'#888'}">${(p.status||'active').replace('_',' ').toUpperCase()}</span></td>
           <td style="padding:8px 10px;font-family:JetBrains Mono,monospace;font-size:10px;text-align:right;color:var(--stripe)">${invoice?'$'+invoice.toLocaleString():'—'}</td>
           <td style="padding:8px 10px;font-family:JetBrains Mono,monospace;font-size:10px;text-align:right;color:var(--dim)">${p.cost?'$'+p.cost.toLocaleString():'—'}</td>
           <td style="padding:8px 10px;font-family:JetBrains Mono,monospace;font-size:10px;text-align:right;color:${profitCol}">${profit?'$'+Math.round(profit).toLocaleString():'—'}</td>
