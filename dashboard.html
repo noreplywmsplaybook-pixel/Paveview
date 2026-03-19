@@ -574,12 +574,12 @@ async function saveCompany(){
   if(company)localStorage.setItem('paveview_company',company);
   if(name)localStorage.setItem('paveview_user_name',name);
   if(logoDataUrl)localStorage.setItem('paveview_logo',logoDataUrl);
-  // Save to Supabase
-  const baseUpdates={id:currentUser.id,full_name:name,company_name:company,updated_at:new Date().toISOString()};
-  let {error}=await sb.from('profiles').upsert({...baseUpdates,logo_url:logoDataUrl||null});
-  // Backward compatibility for older schemas without logo_url column
+  // Save to Supabase using UPDATE to avoid insert-policy 400s.
+  const baseUpdates={full_name:name,company_name:company,updated_at:new Date().toISOString()};
+  let {error}=await sb.from('profiles').update({...baseUpdates,logo_url:logoDataUrl||null}).eq('id',currentUser.id);
+  // Backward compatibility for older schemas without logo_url column.
   if(error&&String(error.message||'').toLowerCase().includes('logo_url')){
-    const retry=await sb.from('profiles').upsert(baseUpdates);
+    const retry=await sb.from('profiles').update(baseUpdates).eq('id',currentUser.id);
     error=retry.error||null;
   }
   if(error){
