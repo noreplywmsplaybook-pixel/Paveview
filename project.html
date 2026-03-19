@@ -46,6 +46,18 @@ button{-webkit-appearance:none;appearance:none;}
 .btn.danger:hover{border-color:var(--red);background:rgba(239,68,68,.06)}
 .btn:disabled{opacity:.4;cursor:not-allowed}
 .hdiv{width:1px;height:16px;background:var(--border);margin:0 3px}
+#proj-debug{
+  position:fixed;right:16px;bottom:16px;z-index:1600;display:none;
+  width:min(560px,94vw);max-height:70vh;overflow:auto;
+  background:var(--surface);border:1px solid var(--border);box-shadow:0 12px 32px rgba(0,0,0,.45)
+}
+#proj-debug-hdr{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:8px 10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface2)
+}
+#proj-debug-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--accent)}
+#proj-debug-body{padding:10px}
+#proj-debug pre{font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.55;color:var(--text2);white-space:pre-wrap;word-break:break-word}
 /* MAIN */
 #main{flex:1;padding:24px;max-width:1100px;margin:0 auto;width:100%}
 /* STATS BAR */
@@ -298,7 +310,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
 @media print{
   #hdr,#status-row,#confirm-banner,#job-mgmt .sec:not(.printing),
   .print-bar,.rtab-bar,.sec:not(.report-sec),.mgmt-grid,.kpi-row,
-  #map-container{display:none!important}
+  #map-container,#proj-debug{display:none!important}
   .rpanel{display:block!important}
   .report-preview-wrap{max-height:none!important;background:#fff!important;padding:0!important}
   .report-paper{border:none!important;box-shadow:none!important;margin:0!important;display:block!important}
@@ -328,8 +340,21 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
     <div class="hdiv"></div>
     <button class="btn" onclick="window.print()">Print</button>
     <button class="btn" id="btn-theme-proj" onclick="toggleThemeProj()">Light</button>
+    <button class="btn" onclick="toggleProjectDebug()">Debug</button>
     <button class="btn danger" id="btn-delete">Delete</button>
   </div>
+</div>
+
+<div id="proj-debug">
+  <div id="proj-debug-hdr">
+    <span id="proj-debug-title">PROJECT THEME DEBUG</span>
+    <div style="display:flex;gap:6px">
+      <button class="btn" onclick="refreshProjectDebug()">Refresh</button>
+      <button class="btn" onclick="copyProjectDebug()">Copy</button>
+      <button class="btn" onclick="toggleProjectDebug()">Close</button>
+    </div>
+  </div>
+  <div id="proj-debug-body"><pre id="proj-debug-pre">Loading…</pre></div>
 </div>
 
 <div id="main" style="display:none">
@@ -1346,6 +1371,92 @@ function syncThemesFromIndexedDb(){
   return reportThemeSyncPromise;
 }
 
+function fmtDebugTs(ts){
+  if(!ts)return'—';
+  try{return new Date(ts).toLocaleString();}catch(e){return String(ts);}
+}
+
+function countThemes(raw){
+  if(!raw)return 0;
+  try{
+    const parsed=JSON.parse(raw);
+    return Array.isArray(parsed)?parsed.length:0;
+  }catch(e){return 0;}
+}
+
+function getProjectDetailsSnapshot(){
+  const key='paveview_proj_details_'+(projectId||'');
+  try{
+    const parsed=JSON.parse(localStorage.getItem(key)||'{}');
+    return {key,data:parsed||{}};
+  }catch(e){
+    return {key,data:{}};
+  }
+}
+
+async function refreshProjectDebug(){
+  const out=document.getElementById('proj-debug-pre');
+  if(!out)return;
+  const picker=document.getElementById('theme-picker');
+  const projectKey=getProjectThemeKey();
+  const detailsSnap=getProjectDetailsSnapshot();
+  const idbSnap=await idbGetReportTemplates();
+  const idbCount=idbSnap&&Array.isArray(idbSnap.themes)?idbSnap.themes.length:0;
+  const localNewRaw=localStorage.getItem('paveview_report_templates');
+  const localLegacyRaw=localStorage.getItem('paveview_report_themes');
+  const lines=[
+    '[Project Theme Debug]',
+    '',
+    'Runtime:',
+    '  projectId: '+(projectId||'—'),
+    '  status: '+currentStatus(),
+    '  confirmed: '+String(!!confirmed),
+    '  picker.value: '+(picker?picker.value||'—':'(no picker)'),
+    '  projectReportThemeId var: '+(projectReportThemeId||'—'),
+    '  activeReportTheme.id: '+((activeReportTheme&&activeReportTheme.id)||'—'),
+    '',
+    'Per-project persistence:',
+    '  key: '+(projectKey||'—'),
+    '  key value: '+(projectKey?localStorage.getItem(projectKey)||'—':'—'),
+    '  details key: '+detailsSnap.key,
+    '  details.reportThemeId: '+(detailsSnap.data.reportThemeId||'—'),
+    '',
+    'LocalStorage template cache:',
+    '  paveview_report_templates: '+countThemes(localNewRaw)+' themes',
+    '  paveview_report_themes: '+countThemes(localLegacyRaw)+' themes',
+    '  paveview_report_templates_updated_at: '+(localStorage.getItem(REPORT_THEME_UPDATED_KEY)||'—'),
+    '  updatedAt (fmt): '+fmtDebugTs(asTs(localStorage.getItem(REPORT_THEME_UPDATED_KEY))),
+    '  paveview_active_theme: '+(localStorage.getItem('paveview_active_theme')||'—'),
+    '',
+    'IndexedDB snapshot:',
+    '  db/store/key: '+REPORT_IDB_DB+' / '+REPORT_IDB_STORE+' / '+REPORT_IDB_KEY,
+    '  themes: '+idbCount,
+    '  activeId: '+((idbSnap&&idbSnap.activeId)||'—'),
+    '  updatedAt: '+((idbSnap&&idbSnap.updatedAt)||'—'),
+    '  updatedAt (fmt): '+fmtDebugTs(idbSnap&&idbSnap.updatedAt),
+    '',
+    'Last refresh: '+new Date().toLocaleTimeString()
+  ];
+  out.textContent=lines.join('\n');
+}
+
+function toggleProjectDebug(){
+  const box=document.getElementById('proj-debug');
+  if(!box)return;
+  const open=box.style.display==='block';
+  box.style.display=open?'none':'block';
+  if(!open)refreshProjectDebug();
+}
+
+async function copyProjectDebug(){
+  const pre=document.getElementById('proj-debug-pre');
+  if(!pre)return;
+  const txt=pre.textContent||'';
+  try{
+    await navigator.clipboard.writeText(txt);
+  }catch(e){}
+}
+
 function getProjectThemeKey(){
   return projectId?`${PROJECT_THEME_KEY_PREFIX}${projectId}`:'';
 }
@@ -1419,13 +1530,18 @@ function applyTheme(themeId){
   refreshReport('client');
   refreshReport('foreman');
   refreshReport('contractor');
+  if(document.getElementById('proj-debug')?.style.display==='block') refreshProjectDebug();
 }
 
-window.addEventListener('focus',function(){ syncThemesFromIndexedDb().then(loadThemesIntoProject); });
+window.addEventListener('focus',function(){
+  syncThemesFromIndexedDb().then(loadThemesIntoProject);
+  if(document.getElementById('proj-debug')?.style.display==='block') refreshProjectDebug();
+});
 window.addEventListener('storage',function(ev){
   if(!ev||!ev.key)return;
   if(REPORT_THEME_KEYS.includes(ev.key)||ev.key==='paveview_active_theme'||ev.key==='paveview_report_templates_updated_at'||ev.key===getProjectThemeKey()){
     syncThemesFromIndexedDb().then(loadThemesIntoProject);
+    if(document.getElementById('proj-debug')?.style.display==='block') refreshProjectDebug();
   }
 });
 

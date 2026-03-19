@@ -26,6 +26,18 @@ body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--txt);height:
 .btn{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;padding:5px 12px;border:1px solid var(--bdr);background:none;color:var(--txt);cursor:pointer;letter-spacing:.04em}
 .btn.acc{background:var(--acc);border-color:var(--acc);color:#000}
 #save-msg{font-family:'JetBrains Mono',monospace;font-size:9px;display:none}
+#rb-debug{
+  position:fixed;right:16px;bottom:16px;z-index:1200;display:none;
+  width:min(520px,92vw);max-height:62vh;overflow:auto;
+  background:var(--surf);border:1px solid var(--bdr);box-shadow:0 10px 30px rgba(0,0,0,.45)
+}
+#rb-debug-hdr{
+  display:flex;align-items:center;gap:8px;justify-content:space-between;
+  padding:8px 10px;border-bottom:1px solid var(--bdr);position:sticky;top:0;background:var(--surf2)
+}
+#rb-debug-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--acc)}
+#rb-debug-body{padding:10px}
+#rb-debug pre{font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.55;color:var(--txt2);white-space:pre-wrap;word-break:break-word}
 
 /* BODY */
 #body{display:flex;flex:1;overflow:hidden}
@@ -130,6 +142,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--bdr);padding:2px
   <div class="topright">
     <button class="btn" onclick="dupTheme()">Duplicate</button>
     <button class="btn acc" onclick="doSave()">💾 Save Report</button>
+    <button class="btn" onclick="toggleBuilderDebug()">Debug</button>
     <a href="dashboard.html" class="btn" style="text-decoration:none">← Dashboard</a>
   </div>
 </div>
@@ -253,6 +266,17 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--bdr);padding:2px
     <button onclick="toggleAddBar()" style="background:none;border:none;color:var(--txt3);cursor:pointer;font-size:16px">✕</button>
   </div>
   <div id="tgrid"></div>
+</div>
+
+<div id="rb-debug">
+  <div id="rb-debug-hdr">
+    <span id="rb-debug-title">REPORT BUILDER DEBUG</span>
+    <div style="display:flex;gap:6px">
+      <button class="btn" onclick="refreshBuilderDebug()">Refresh</button>
+      <button class="btn" onclick="toggleBuilderDebug()">Close</button>
+    </div>
+  </div>
+  <div id="rb-debug-body"><pre id="rb-debug-pre">Loading…</pre></div>
 </div>
 
 <script>
@@ -399,6 +423,62 @@ function readSavedThemes() {
   return readLocalThemes();
 }
 
+function fmtTs(ts) {
+  if (!ts) return '—';
+  try { return new Date(ts).toLocaleString(); } catch (e) { return String(ts); }
+}
+
+function themeCountFromRaw(raw) {
+  if (!raw) return 0;
+  try {
+    var p = JSON.parse(raw);
+    return Array.isArray(p) ? p.length : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+async function refreshBuilderDebug() {
+  var out = document.getElementById('rb-debug-pre');
+  if (!out) return;
+  var rawNew = localStorage.getItem(LS_REPORTS);
+  var rawLegacy = localStorage.getItem(LS);
+  var snap = await idbGet(IDB_KEY);
+  var idbThemes = snap && Array.isArray(snap.themes) ? snap.themes.length : 0;
+  var lines = [
+    '[Report Builder Debug]',
+    '',
+    'In-memory:',
+    '  themes.length: ' + themes.length,
+    '  activeId: ' + (activeId || '—'),
+    '',
+    'LocalStorage:',
+    '  ' + LS_REPORTS + ': ' + themeCountFromRaw(rawNew) + ' themes',
+    '  ' + LS + ': ' + themeCountFromRaw(rawLegacy) + ' themes',
+    '  ' + LS_REPORTS_UPDATED + ': ' + (localStorage.getItem(LS_REPORTS_UPDATED) || '—'),
+    '  updatedAt (fmt): ' + fmtTs(parseTs(localStorage.getItem(LS_REPORTS_UPDATED))),
+    '  ' + LA + ': ' + (localStorage.getItem(LA) || '—'),
+    '',
+    'IndexedDB:',
+    '  db/store/key: ' + IDB_DB + ' / ' + IDB_STORE + ' / ' + IDB_KEY,
+    '  snapshot themes: ' + idbThemes,
+    '  snapshot activeId: ' + ((snap && snap.activeId) || '—'),
+    '  snapshot updatedAt: ' + ((snap && snap.updatedAt) || '—'),
+    '  snapshot updatedAt (fmt): ' + fmtTs(snap && snap.updatedAt),
+    '',
+    'Last refresh: ' + new Date().toLocaleTimeString()
+  ];
+  out.textContent = lines.join('\n');
+}
+
+function toggleBuilderDebug() {
+  var box = document.getElementById('rb-debug');
+  if (!box) return;
+  var open = box.style.display === 'block';
+  box.style.display = open ? 'none' : 'block';
+  if (!open) refreshBuilderDebug();
+}
+
 // ── LOAD / SAVE ──
 async function loadThemes() {
   var localThemes = readLocalThemes();
@@ -476,6 +556,9 @@ async function doSave() {
     msg.style.color = ok ? 'var(--ok)' : 'var(--red)';
     msg.style.display = 'block';
     setTimeout(function() { msg.style.display = 'none'; }, 3000);
+  }
+  if (document.getElementById('rb-debug') && document.getElementById('rb-debug').style.display === 'block') {
+    refreshBuilderDebug();
   }
 }
 
@@ -992,6 +1075,10 @@ async function init() {
     renderPreview();
     console.log('[PaveView] renderPreview complete');
   }, 150);
+  window.addEventListener('focus', function() {
+    var box = document.getElementById('rb-debug');
+    if (box && box.style.display === 'block') refreshBuilderDebug();
+  });
 }
 
 init();
