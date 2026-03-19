@@ -33,6 +33,7 @@
   --green:     #22c55e;
   --bg2:       #1a1a1c;
   --fs:         14px;  /* base font size — adjustable in settings */
+  --ui-zoom:    1;
 }
 button{-webkit-appearance:none;appearance:none;}
 
@@ -64,7 +65,7 @@ body {
   background:var(--bg);color:var(--text);
   font-family:'Syne',sans-serif;font-size:var(--fs);
   height:100vh;display:flex;flex-direction:column;
-  overflow:hidden;user-select:none;
+  overflow:hidden;user-select:none;zoom:var(--ui-zoom);
 }
 
 /* ── HEADER ── */
@@ -712,8 +713,6 @@ select.sc-inp{cursor:pointer;width:40px}
     <button class="btn" id="btn-save-only">Save</button><button class="btn y" id="btn-finish-estimation">Finish Estimation →</button>
     <div class="hd"></div>
     <button class="btn" onclick="window.location.href='/dashboard.html'">Dashboard</button>
-    <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3)">Aa</span>
-    <input type="range" id="hdr-fontsize" class="fs-slider" min="11" max="18" value="14" step="1" style="width:50px;accent-color:var(--accent);cursor:pointer" title="Font size">
     <button class="btn" id="btn-theme" onclick="toggleTheme()">Light</button>
     <button class="btn" id="btn-signout" style="padding:4px 8px">Sign Out</button>
   </div>
@@ -1039,12 +1038,6 @@ select.sc-inp{cursor:pointer;width:40px}
           <div class="srow"><span class="slbl">License #</span><input type="text" class="stxt" id="si-license" placeholder="Optional"></div>
         </div>
         <div class="ps"><div class="pt">Default Job Type</div>
-          <div class="srow"><span class="slbl">UI Font Size</span>
-            <div style="display:flex;align-items:center;gap:8px">
-              <input type="range" id="si-fontsize" class="fs-slider" min="11" max="18" value="14" step="1" style="width:80px;accent-color:var(--accent)">
-              <span id="si-fontsize-val" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);width:28px">14px</span>
-            </div>
-          </div>
           <div class="srow"><span class="slbl">Default job type</span>
             <select class="sinp" id="si-default-job" style="width:130px">
               <option value="paving">Paving</option>
@@ -2923,13 +2916,6 @@ document.getElementById('btn-settings-save').onclick=()=>{
   const savedSettings={};
   document.querySelectorAll('[id^="si-"]').forEach(el=>{savedSettings[el.id]=el.value;});
   localStorage.setItem('paveview_settings',JSON.stringify(savedSettings));
-  // Apply font size
-  const fs=document.getElementById('si-fontsize')?.value||14;
-  if(window.setFontSize)window.setFontSize(parseInt(fs));
-  else{
-    document.documentElement.style.setProperty('--fs',fs+'px');
-    localStorage.setItem('paveview_fontsize',fs);
-  }
   updateStats();closeModal('settings-modal');
 };
 
@@ -3249,18 +3235,26 @@ document.getElementById('job-type').addEventListener('change',updateStats);
 <script>
 (function(){
   var FS_KEY='paveview_fontsize';
-  function applyFs(v){
-    v=parseInt(v)||14;
-    document.documentElement.style.setProperty('--fs',v+'px');
-    localStorage.setItem(FS_KEY,String(v));
-    document.querySelectorAll('.fs-slider').forEach(function(s){s.value=v;});
-    var vl=document.getElementById('si-fontsize-val');
-    if(vl)vl.textContent=v+'px';
+  var FS_PRESET_KEY='paveview_fontsize_preset';
+  var FS_PRESETS={regular:14,large:16,xlarge:18};
+  var ZOOM_PRESETS={regular:1,large:1.08,xlarge:1.16};
+  function nearestPreset(px){
+    var n=parseInt(px)||14;
+    if(n>=17)return'xlarge';
+    if(n>=15)return'large';
+    return'regular';
   }
-  window.setFontSize=applyFs;
-  applyFs(parseInt(localStorage.getItem(FS_KEY)||'14'));
-  document.querySelectorAll('.fs-slider').forEach(function(el){
-    el.addEventListener('input',function(){applyFs(parseInt(this.value));});
+  function applyFsFromPrefs(){
+    var preset=localStorage.getItem(FS_PRESET_KEY)||nearestPreset(localStorage.getItem(FS_KEY));
+    var px=FS_PRESETS[preset]||14;
+    document.documentElement.style.setProperty('--fs',px+'px');
+    document.documentElement.style.setProperty('--ui-zoom',String(ZOOM_PRESETS[preset]||1));
+    // Keep legacy numeric key in sync for older pages.
+    localStorage.setItem(FS_KEY,String(px));
+  }
+  applyFsFromPrefs();
+  window.addEventListener('storage',function(ev){
+    if(ev.key===FS_PRESET_KEY||ev.key===FS_KEY)applyFsFromPrefs();
   });
 })();
 </script>

@@ -13,7 +13,7 @@
   --accent:#d4a843;--accent-bg:rgba(212,168,67,.07);--accent-dim:rgba(212,168,67,.2);
   --ok:#22c55e;--ok-bg:rgba(34,197,94,.08);--ok-border:rgba(34,197,94,.2);
   --red:#ef4444;--blue:#3b82f6;--orange:#f97316;--green:#22c55e;--purple:#a855f7;
-  --fs:14px;
+  --fs:14px;--ui-zoom:1;
 }
 body.light{
   --bg:#f0ede8;--surface:#fff;--surface2:#f8f6f2;
@@ -23,7 +23,7 @@ body.light{
   --ok:#16a34a;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-size:var(--fs);min-height:100vh;display:flex;flex-direction:column}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-size:var(--fs);min-height:100vh;display:flex;flex-direction:column;zoom:var(--ui-zoom)}
 button{-webkit-appearance:none;appearance:none;}
 #auth-check{position:fixed;inset:0;background:#0a0a0a;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;font-family:'JetBrains Mono',monospace}
 .spin{width:14px;height:14px;border:2px solid #1e1e1e;border-top-color:#d4a843;border-radius:50%;animation:spin .7s linear infinite}
@@ -323,12 +323,29 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
   #hdr,#status-row,#confirm-banner,#job-mgmt .sec:not(.printing),
   .print-bar,.rtab-bar,.sec:not(.report-sec),.mgmt-grid,.kpi-row,
   #map-container,#proj-debug,.proj-dbg-fab{display:none!important}
-  .rpanel{display:block!important}
-  .report-preview-wrap{max-height:none!important;background:#fff!important;padding:0!important}
-  .report-paper{border:none!important;box-shadow:none!important;margin:0!important;display:block!important}
+  .rpanel{display:none!important}
+  .rpanel.on{display:block!important}
+  .report-preview-wrap{max-height:none!important;background:#fff!important;padding:0!important;overflow:visible!important}
+  .report-paper{border:none!important;box-shadow:none!important;margin:0!important;display:block!important;overflow:visible!important}
   .attached-page{display:block!important}
-  body{background:#fff}
+  body{background:#fff;zoom:1!important}
   #main{padding:0;max-width:none}
+  @page{margin:12mm}
+  .rpage{
+    page-break-after:always!important;
+    break-after:page!important;
+    page-break-inside:avoid!important;
+    break-inside:avoid-page!important;
+  }
+  .rpage:last-child{page-break-after:auto!important;break-after:auto!important}
+  .r-header,.r-infoband,.rsumgrid,.rmap-wrap,.r-notes,.rsigblock,.r-custom-page,.attached-page{
+    page-break-inside:avoid!important;
+    break-inside:avoid-page!important;
+  }
+  .rtbl{page-break-inside:auto!important;break-inside:auto!important}
+  .rtbl thead{display:table-header-group}
+  .rtbl tr{page-break-inside:avoid!important;break-inside:avoid-page!important}
+  img,canvas,svg{page-break-inside:avoid!important;break-inside:avoid-page!important}
 }
 </style>
 </head>
@@ -350,7 +367,9 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
   <div class="hright">
     <button class="btn" id="btn-edit-takeoff">Edit Estimate</button>
     <div class="hdiv"></div>
-    <button class="btn" onclick="window.print()">Print</button>
+    <button class="btn" onclick="openSiteMapCapture()">Site Map Shot</button>
+    <button class="btn" onclick="printCurrentReport()">Print</button>
+    <button class="btn" onclick="downloadCurrentReportPdf()">Download PDF</button>
     <button class="btn" id="btn-theme-proj" onclick="toggleThemeProj()">Light</button>
     <button class="btn" onclick="toggleProjectDebug()">Debug</button>
     <button class="btn danger" id="btn-delete">Delete</button>
@@ -525,7 +544,9 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
       📎 Attach Pages
       <input type="file" accept="image/*,application/pdf" multiple style="display:none" onchange="attachReportPages(event)">
     </label>
-    <button class="btn accent" onclick="window.print()">⎙ Print / PDF</button>
+    <button class="btn" onclick="openSiteMapCapture()" style="font-size:9px;padding:4px 10px">🗺 Site Map</button>
+    <button class="btn" onclick="captureMainMapFromCurrentView()" style="font-size:9px;padding:4px 10px">🗺 Use map view</button>
+    <button class="btn accent" onclick="printCurrentReport()">⎙ Print / PDF</button>
   </div>
 </div>
 <div id="custom-pages-client" style="display:none;padding:12px 16px;background:#fafafa;border-bottom:1px solid #e5e7eb"></div>
@@ -533,7 +554,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
       </div>
       <div id="rpanel-contractor" class="rpanel">
         <div id="lock-contractor" class="lock-overlay"><div class="lock-icon">🔒</div><div class="lock-msg">Confirm project details to unlock</div></div>
-        <div id="pbar-contractor" class="print-bar" style="display:none"><span class="print-bar-lbl">Contractor Work Order</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div id="pbar-contractor" class="print-bar" style="display:none"><span class="print-bar-lbl">Contractor Work Order</span><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div>
         <div class="report-preview-wrap"><div id="report-contractor" class="report-paper" style="display:none"></div></div>
       </div>
       <div id="rpanel-foreman" class="rpanel">
@@ -542,7 +563,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
   <span class="print-bar-lbl">Foreman Work Order</span>
   <div style="display:flex;gap:8px;align-items:center">
     <button class="btn" onclick="addCustomPage('foreman')" style="font-size:9px;padding:4px 10px">+ Add Page</button>
-    <button class="btn accent" onclick="window.print()">Print / PDF</button>
+    <button class="btn accent" onclick="printCurrentReport()">Print / PDF</button>
   </div>
 </div>
 <div id="custom-pages-foreman" style="display:none;padding:12px 16px;background:#fafafa;border-bottom:1px solid #e5e7eb"></div>
@@ -550,7 +571,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
       </div>
       <div id="rpanel-completion" class="rpanel">
         <div id="lock-completion" class="lock-overlay"><div class="lock-icon">🔒</div><div class="lock-msg">Confirm project details to unlock</div></div>
-        <div id="pbar-completion" class="print-bar" style="display:none"><span class="print-bar-lbl">Completion Report</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div id="pbar-completion" class="print-bar" style="display:none"><span class="print-bar-lbl">Completion Report</span><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div>
         <div id="report-completion" class="report-paper" style="display:none"></div>
       </div>
     </div>
@@ -574,7 +595,10 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
     <div id="map-container">
       <div id="map-hdr">
         <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--text2)">Site Map</span>
-        <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3)">Scroll to zoom · Drag to pan</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn" id="btn-map-capture" style="padding:2px 9px;font-size:8px">📷 Use current view in reports</button>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3)">Scroll to zoom · Drag to pan</span>
+        </div>
       </div>
       <div id="map-canvas-wrap">
         <canvas id="proj-map"></canvas>
@@ -582,6 +606,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
         <button class="map-btn" id="map-zout">−</button>
         <button class="map-btn" id="map-fit">FIT</button>
       </div>
+      <div id="map-capture-status" style="display:none;padding:8px 12px;border-top:1px solid var(--border2);font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ok)">✓ Report site map set from current view</div>
     </div>
 
     <!-- TWO COL: PM Notes + Quick Info -->
@@ -643,15 +668,15 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
         <div class="rtab" data-tab="completion-a" onclick="switchReport('completion-a')">Completion</div>
       </div>
       <div id="rpanel-client-a" class="rpanel on">
-        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><div style="display:flex;gap:8px;align-items:center"><button class="btn" onclick="openSiteMapCapture()">Site Map</button><button class="btn" onclick="captureMainMapFromCurrentView()">Use map view</button><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div></div>
         <div id="report-client-a" class="report-paper"></div>
       </div>
       <div id="rpanel-foreman-a" class="rpanel">
-        <div class="print-bar"><span class="print-bar-lbl">Foreman Work Order</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div class="print-bar"><span class="print-bar-lbl">Foreman Work Order</span><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div>
         <div id="report-foreman-a" class="report-paper"></div>
       </div>
       <div id="rpanel-completion-a" class="rpanel">
-        <div class="print-bar"><span class="print-bar-lbl">Completion Report</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div class="print-bar"><span class="print-bar-lbl">Completion Report</span><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div>
         <div id="report-completion-a" class="report-paper"></div>
       </div>
     </div>
@@ -676,15 +701,15 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
         <div class="rtab" data-tab="completion-c" onclick="switchReport('completion-c')">Completion</div>
       </div>
       <div id="rpanel-client-c" class="rpanel on">
-        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div class="print-bar"><span class="print-bar-lbl">Client Proposal</span><div style="display:flex;gap:8px;align-items:center"><button class="btn" onclick="openSiteMapCapture()">Site Map</button><button class="btn" onclick="captureMainMapFromCurrentView()">Use map view</button><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div></div>
         <div id="report-client-c" class="report-paper"></div>
       </div>
       <div id="rpanel-foreman-c" class="rpanel">
-        <div class="print-bar"><span class="print-bar-lbl">Foreman</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div class="print-bar"><span class="print-bar-lbl">Foreman</span><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div>
         <div id="report-foreman-c" class="report-paper"></div>
       </div>
       <div id="rpanel-completion-c" class="rpanel">
-        <div class="print-bar"><span class="print-bar-lbl">Completion Report</span><button class="btn accent" onclick="window.print()">Print / PDF</button></div>
+        <div class="print-bar"><span class="print-bar-lbl">Completion Report</span><button class="btn accent" onclick="printCurrentReport()">Print / PDF</button></div>
         <div id="report-completion-c" class="report-paper"></div>
       </div>
     </div>
@@ -750,6 +775,31 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
   </div>
 </div>
 
+<!-- SITE MAP CAPTURE MODAL -->
+<div id="site-map-modal" style="display:none;position:fixed;inset:0;z-index:1002;background:rgba(0,0,0,.72);overflow:auto">
+  <div style="background:var(--bg,#141416);border:1px solid var(--border,#2a2a2c);max-width:860px;margin:40px auto;border-radius:4px;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--surface,#1c1c1e);border-bottom:1px solid var(--border,#2a2a2c)">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text,#f0eeea);letter-spacing:.08em">SITE MAP SHOT FOR REPORT</span>
+      <button onclick="document.getElementById('site-map-modal').style.display='none'" style="background:none;border:none;color:var(--text3,#666);cursor:pointer;font-size:16px">✕</button>
+    </div>
+    <div style="padding:16px 20px 20px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3,#666);margin-bottom:8px">
+        Zoom and pan to your preferred framing, then capture. This exact shot will be used in report PDF/print.
+      </div>
+      <div style="position:relative;background:#0d0d0f;border:1px solid var(--border,#2a2a2c)">
+        <canvas id="site-shot-canvas" width="780" height="420" style="display:block;width:100%;cursor:grab"></canvas>
+        <div style="position:absolute;top:8px;right:8px;display:flex;gap:6px">
+          <button onclick="zoomSiteShot(1.2)" class="btn" style="font-size:9px;padding:4px 8px;background:var(--accent);border-color:var(--accent);color:#000">＋</button>
+          <button onclick="zoomSiteShot(1/1.2)" class="btn" style="font-size:9px;padding:4px 8px;background:var(--accent);border-color:var(--accent);color:#000">－</button>
+          <button onclick="fitSiteShot()" class="btn" style="font-size:9px;padding:4px 8px;background:var(--accent);border-color:var(--accent);color:#000">Fit</button>
+          <button onclick="captureSiteMapScreenshot()" class="btn accent" style="font-size:9px;padding:4px 10px">📷 Capture</button>
+        </div>
+      </div>
+      <div id="site-shot-status" style="display:none;margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ok,#22c55e)">✓ Site map snapshot updated for report</div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const SB_URL='https://rqgyqqyxlwjpbdkapvpz.supabase.co';
@@ -764,6 +814,7 @@ let reportMapSnapshot='';
 let mapZoom=1,mapPanX=0,mapPanY=0,mapDragging=false,mapLastX=0,mapLastY=0,mapImgW=0,mapImgH=0,mapBgImg=null;
 let phasePreviewZoom=1,phasePreviewPanX=0,phasePreviewPanY=0,phasePreviewDragging=false,phasePreviewLastX=0,phasePreviewLastY=0,phasePreviewBound=false;
 let phasePreviewMode='phase';
+let siteShotZoom=1,siteShotPanX=0,siteShotPanY=0,siteShotDragging=false,siteShotLastX=0,siteShotLastY=0,siteShotBound=false;
 
 // ── THEME ──
 function toggleThemeProj(){
@@ -884,6 +935,8 @@ function initMap(){
   document.getElementById('map-zin').onclick=()=>{const c=document.getElementById('proj-map');if(!c)return;const cx=c.width/2,cy=c.height/2;const nz=Math.min(20,mapZoom*1.3);mapPanX=cx-(cx-mapPanX)*(nz/mapZoom);mapPanY=cy-(cy-mapPanY)*(nz/mapZoom);mapZoom=nz;mapDraw();};
   document.getElementById('map-zout').onclick=()=>{const c=document.getElementById('proj-map');if(!c)return;const cx=c.width/2,cy=c.height/2;const nz=Math.max(.05,mapZoom/1.3);mapPanX=cx-(cx-mapPanX)*(nz/mapZoom);mapPanY=cy-(cy-mapPanY)*(nz/mapZoom);mapZoom=nz;mapDraw();};
   document.getElementById('map-fit').onclick=mapFit;
+  const capBtn=document.getElementById('btn-map-capture');
+  if(capBtn)capBtn.onclick=captureMainMapFromCurrentView;
 }
 
 function mapFit(){
@@ -898,65 +951,182 @@ function mapFit(){
 function mapDraw(){
   const canvas=document.getElementById('proj-map');
   if(!canvas||!mapImgW)return;
-  const ctx=canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.save();ctx.translate(mapPanX,mapPanY);ctx.scale(mapZoom,mapZoom);
-  if(mapBgImg)ctx.drawImage(mapBgImg,0,0);
-  // Draw zones
-  (projectData.zones||[]).forEach(z=>{
-    if(!z.pts||z.pts.length<3)return;
-    ctx.beginPath();z.pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));ctx.closePath();
-    ctx.fillStyle=(z.color||'#d4a843')+'33';ctx.fill();
-    ctx.strokeStyle=z.color||'#d4a843';ctx.lineWidth=2/mapZoom;ctx.stroke();
-    // Label
-    const cx2=z.pts.reduce((s,p)=>s+p.x,0)/z.pts.length;
-    const cy2=z.pts.reduce((s,p)=>s+p.y,0)/z.pts.length;
-    const fs=Math.max(10,14/mapZoom);
-    ctx.font=`600 ${fs}px Syne,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
-    const tw=ctx.measureText(z.name).width;
-    ctx.fillStyle='rgba(0,0,0,.8)';ctx.fillRect(cx2-tw/2-6,cy2-fs/2-4,tw+12,fs+8);
-    ctx.fillStyle=z.color||'#d4a843';ctx.fillText(z.name,cx2,cy2);
-  });
-  // Draw markers
-  (projectData.markers||[]).forEach(m=>{
-    const col={stall:'#f5c842',ada:'#3b82f6',bollard:'#f97316',stopblock:'#ef4444',stencil:'#a855f7'}[m.type]||'#fff';
-    const r=Math.max(4,7/mapZoom);
-    ctx.beginPath();ctx.arc(m.x,m.y,r,0,Math.PI*2);ctx.fillStyle=col;ctx.fill();
-    ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=1/mapZoom;ctx.stroke();
-  });
-  ctx.restore();
+  const bgColor=getComputedStyle(document.body).getPropertyValue('--bg')?.trim()||'#0d0d0f';
+  mapDrawToCanvas(canvas,{zoom:mapZoom,panX:mapPanX,panY:mapPanY,bgColor:bgColor,fillBackground:true,uiScale:1});
 }
 
-// Same mapDraw used in reports - renders to a given canvas element
-function mapDrawToCanvas(canvas){
+// Shared renderer for on-screen map + report map snapshots.
+function mapDrawToCanvas(canvas,opts){
   if(!canvas||!mapImgW)return;
+  opts=opts||{};
   const ctx=canvas.getContext('2d');
   const pad=20;
-  const zoom=Math.min((canvas.width-pad*2)/mapImgW,(canvas.height-pad*2)/mapImgH);
-  const panX=(canvas.width-mapImgW*zoom)/2,panY=(canvas.height-mapImgH*zoom)/2;
+  const zoom=(typeof opts.zoom==='number')?opts.zoom:Math.min((canvas.width-pad*2)/mapImgW,(canvas.height-pad*2)/mapImgH);
+  const panX=(typeof opts.panX==='number')?opts.panX:(canvas.width-mapImgW*zoom)/2;
+  const panY=(typeof opts.panY==='number')?opts.panY:(canvas.height-mapImgH*zoom)/2;
+  const uiScale=(typeof opts.uiScale==='number')?opts.uiScale:1;
+  const fillBg=opts.fillBackground!==false;
+  const bgColor=opts.bgColor||'#0d0d0f';
+  ctx.imageSmoothingEnabled=true;
+  ctx.imageSmoothingQuality='high';
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle='#0d0d0f';ctx.fillRect(0,0,canvas.width,canvas.height);
+  if(fillBg){ctx.fillStyle=bgColor;ctx.fillRect(0,0,canvas.width,canvas.height);}
   ctx.save();ctx.translate(panX,panY);ctx.scale(zoom,zoom);
   if(mapBgImg)ctx.drawImage(mapBgImg,0,0);
   (projectData.zones||[]).forEach(z=>{
     if(!z.pts||z.pts.length<3)return;
     ctx.beginPath();z.pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));ctx.closePath();
     ctx.fillStyle=(z.color||'#d4a843')+'33';ctx.fill();
-    ctx.strokeStyle=z.color||'#d4a843';ctx.lineWidth=2/zoom;ctx.stroke();
+    ctx.strokeStyle=z.color||'#d4a843';ctx.lineWidth=(2/zoom)*uiScale;ctx.stroke();
     const cx2=z.pts.reduce((s,p)=>s+p.x,0)/z.pts.length;
     const cy2=z.pts.reduce((s,p)=>s+p.y,0)/z.pts.length;
-    const fs=Math.max(10,13/zoom);
+    const fs=Math.max(10,13/zoom)*uiScale;
     ctx.font=`600 ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
     const tw=ctx.measureText(z.name).width;
-    ctx.fillStyle='rgba(0,0,0,.8)';ctx.fillRect(cx2-tw/2-6,cy2-fs/2-4,tw+12,fs+8);
+    ctx.fillStyle='rgba(0,0,0,.8)';ctx.fillRect(cx2-tw/2-(6*uiScale),cy2-fs/2-(4*uiScale),tw+(12*uiScale),fs+(8*uiScale));
     ctx.fillStyle=z.color||'#d4a843';ctx.fillText(z.name,cx2,cy2);
   });
   (projectData.markers||[]).forEach(m=>{
     const col={stall:'#f5c842',ada:'#3b82f6',bollard:'#f97316',stopblock:'#ef4444',stencil:'#a855f7'}[m.type]||'#fff';
-    const r=Math.max(4,6/zoom);
+    const r=Math.max(4,6/zoom)*uiScale;
     ctx.beginPath();ctx.arc(m.x,m.y,r,0,Math.PI*2);ctx.fillStyle=col;ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=(1/zoom)*uiScale;ctx.stroke();
   });
   ctx.restore();
+}
+
+function captureMainMapFromCurrentView(opts){
+  opts=opts||{};
+  const source=document.getElementById('proj-map');
+  if(!source||!mapImgW){
+    if(!opts.silent)alert('Map is not ready yet.');
+    return '';
+  }
+  const scale=3;
+  const out=document.createElement('canvas');
+  out.width=Math.max(1,Math.round(source.width*scale));
+  out.height=Math.max(1,Math.round(source.height*scale));
+  mapDrawToCanvas(out,{
+    zoom:mapZoom*scale,
+    panX:mapPanX*scale,
+    panY:mapPanY*scale,
+    uiScale:scale,
+    bgColor:'#0d0d0f',
+    fillBackground:true
+  });
+  reportMapSnapshot=out.toDataURL('image/png');
+  if(!opts.silent){
+    showCaptureStatus('map-capture-status');
+    showCaptureStatus('main-map-capture-status');
+  }
+  if(opts.rerender!==false)rerenderCurrentReports();
+  if(opts.persist!==false)saveDetails();
+  return reportMapSnapshot;
+}
+function buildFittedMapSnapshot(){
+  if(!mapImgW)return'';
+  const out=document.createElement('canvas');
+  out.width=1200;out.height=520;
+  mapDrawToCanvas(out,{bgColor:'#0d0d0f',fillBackground:true,uiScale:1});
+  return out.toDataURL('image/png');
+}
+
+function siteShotCanvas(){return document.getElementById('site-shot-canvas');}
+function drawSiteShot(){
+  const c=siteShotCanvas();
+  if(!c)return;
+  if(!mapImgW){
+    const ctx=c.getContext('2d');
+    ctx.clearRect(0,0,c.width,c.height);
+    ctx.fillStyle='#0d0d0f';ctx.fillRect(0,0,c.width,c.height);
+    ctx.fillStyle='#888';ctx.font='12px "JetBrains Mono", monospace';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('Map unavailable',c.width/2,c.height/2);
+    return;
+  }
+  mapDrawToCanvas(c,{zoom:siteShotZoom,panX:siteShotPanX,panY:siteShotPanY,bgColor:'#0d0d0f',fillBackground:true,uiScale:1});
+}
+function fitSiteShot(){
+  const c=siteShotCanvas();
+  if(!c||!mapImgW)return;
+  const pad=20;
+  siteShotZoom=Math.min((c.width-pad*2)/mapImgW,(c.height-pad*2)/mapImgH);
+  siteShotPanX=(c.width-mapImgW*siteShotZoom)/2;
+  siteShotPanY=(c.height-mapImgH*siteShotZoom)/2;
+  drawSiteShot();
+}
+function zoomSiteShot(factor,cx,cy){
+  const c=siteShotCanvas();
+  if(!c||!mapImgW)return;
+  const zx=typeof cx==='number'?cx:c.width/2;
+  const zy=typeof cy==='number'?cy:c.height/2;
+  const nz=Math.max(0.05,Math.min(30,siteShotZoom*factor));
+  siteShotPanX=zx-(zx-siteShotPanX)*(nz/siteShotZoom);
+  siteShotPanY=zy-(zy-siteShotPanY)*(nz/siteShotZoom);
+  siteShotZoom=nz;
+  drawSiteShot();
+}
+function initSiteShotControls(){
+  if(siteShotBound)return;
+  const c=siteShotCanvas();
+  if(!c)return;
+  siteShotBound=true;
+  c.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const r=c.getBoundingClientRect();
+    zoomSiteShot(e.deltaY<0?1.12:1/1.12,e.clientX-r.left,e.clientY-r.top);
+  },{passive:false});
+  c.addEventListener('mousedown',e=>{
+    siteShotDragging=true;
+    siteShotLastX=e.clientX;siteShotLastY=e.clientY;
+    c.style.cursor='grabbing';
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!siteShotDragging)return;
+    siteShotPanX+=e.clientX-siteShotLastX;
+    siteShotPanY+=e.clientY-siteShotLastY;
+    siteShotLastX=e.clientX;siteShotLastY=e.clientY;
+    drawSiteShot();
+  });
+  window.addEventListener('mouseup',()=>{
+    if(!siteShotDragging)return;
+    siteShotDragging=false;
+    const c2=siteShotCanvas();
+    if(c2)c2.style.cursor='grab';
+  });
+}
+function openSiteMapCapture(){
+  if(!mapImgW&&projectData.planPath)loadMapImage(projectData.planPath);
+  document.getElementById('site-map-modal').style.display='block';
+  initSiteShotControls();
+  if(reportMapSnapshot){
+    // Preserve previous framing feel when reopening.
+    drawSiteShot();
+  }else{
+    fitSiteShot();
+  }
+}
+function captureSiteMapScreenshot(){
+  const c=siteShotCanvas();
+  if(!c||!mapImgW){alert('Map is not ready yet.');return;}
+  const scale=3;
+  const out=document.createElement('canvas');
+  out.width=Math.max(1,Math.round(c.width*scale));
+  out.height=Math.max(1,Math.round(c.height*scale));
+  mapDrawToCanvas(out,{
+    zoom:siteShotZoom*scale,
+    panX:siteShotPanX*scale,
+    panY:siteShotPanY*scale,
+    uiScale:scale,
+    bgColor:'#0d0d0f',
+    fillBackground:true
+  });
+  reportMapSnapshot=out.toDataURL('image/png');
+  showCaptureStatus('site-shot-status');
+  showCaptureStatus('map-capture-status');
+  showCaptureStatus('main-map-capture-status');
+  rerenderCurrentReports();
+  saveDetails();
 }
 
 // ── SAVE / LOAD ──
@@ -1097,6 +1267,138 @@ function switchReport(tab){
   sec.querySelectorAll('.rpanel').forEach(p=>p.classList.toggle('on',p.id==='rpanel-'+tab));
 }
 document.querySelectorAll('.rtab').forEach(t=>{t.onclick=()=>switchReport(t.dataset.tab);});
+
+// ── EXPORT / PRINT (WYSIWYG capture) ──
+let reportExportLibsPromise=null;
+function loadScriptOnce(src,readyCheck){
+  return new Promise((resolve,reject)=>{
+    if(readyCheck&&readyCheck())return resolve();
+    const existing=[...document.scripts].find(s=>s.src===src);
+    if(existing){
+      let tries=0;
+      const t=setInterval(()=>{
+        tries++;
+        if(readyCheck&&readyCheck()){clearInterval(t);resolve();}
+        else if(tries>150){clearInterval(t);reject(new Error('Timed out loading '+src));}
+      },100);
+      return;
+    }
+    const s=document.createElement('script');
+    s.src=src;
+    s.async=true;
+    s.onload=()=>resolve();
+    s.onerror=()=>reject(new Error('Failed loading '+src));
+    document.head.appendChild(s);
+  });
+}
+function ensureReportExportLibs(){
+  if(reportExportLibsPromise)return reportExportLibsPromise;
+  reportExportLibsPromise=Promise.all([
+    loadScriptOnce('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',()=>typeof window.html2canvas==='function'),
+    loadScriptOnce('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',()=>!!(window.jspdf&&window.jspdf.jsPDF))
+  ]).then(()=>({html2canvas:window.html2canvas,jsPDF:window.jspdf.jsPDF})).catch(err=>{
+    reportExportLibsPromise=null;
+    throw err;
+  });
+  return reportExportLibsPromise;
+}
+function getActiveReportPanel(){
+  const views=['view-estimating','view-active','view-complete']
+    .map(id=>document.getElementById(id))
+    .filter(v=>v&&getComputedStyle(v).display!=='none');
+  for(const view of views){
+    const panel=view.querySelector('.rpanel.on');
+    if(panel)return panel;
+  }
+  return null;
+}
+function getActiveReportPaper(){
+  const panel=getActiveReportPanel();
+  if(!panel)return null;
+  const paper=panel.querySelector('.report-paper');
+  if(!paper)return null;
+  if(getComputedStyle(paper).display==='none')return null;
+  return paper;
+}
+function activeReportLabel(){
+  const panel=getActiveReportPanel();
+  const lbl=(panel&&panel.querySelector('.print-bar-lbl')?.textContent)||'Report';
+  return lbl.trim()||'Report';
+}
+function safeFilePart(v){
+  return (v||'report').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60)||'report';
+}
+async function waitForElementAssets(el){
+  if(document.fonts&&document.fonts.ready){
+    try{await document.fonts.ready;}catch(e){}
+  }
+  const imgs=[...el.querySelectorAll('img')];
+  await Promise.all(imgs.map(img=>{
+    if(img.complete&&img.naturalWidth>0)return Promise.resolve();
+    return new Promise(resolve=>{
+      img.addEventListener('load',()=>resolve(),{once:true});
+      img.addEventListener('error',()=>resolve(),{once:true});
+      setTimeout(resolve,1200);
+    });
+  }));
+}
+function mapViewportReady(){
+  const wrap=document.getElementById('map-canvas-wrap');
+  return !!(wrap&&mapImgW&&wrap.clientWidth>20&&wrap.clientHeight>20&&getComputedStyle(wrap).display!=='none');
+}
+function buildPrintablePaperHtml(paper){
+  const clone=paper.cloneNode(true);
+  const srcCanv=[...paper.querySelectorAll('canvas')];
+  const dstCanv=[...clone.querySelectorAll('canvas')];
+  dstCanv.forEach((c,i)=>{
+    const src=srcCanv[i];
+    if(!src)return;
+    try{
+      const img=document.createElement('img');
+      img.src=src.toDataURL('image/png');
+      img.style.width='100%';
+      img.style.height='auto';
+      img.style.display='block';
+      c.replaceWith(img);
+    }catch(e){}
+  });
+  return clone.outerHTML;
+}
+function printCurrentReportNative(forPdf){
+  const paper=getActiveReportPaper();
+  if(!paper){alert('No active report is visible yet. Open a report tab first.');return;}
+  // Keep report map in sync if the live viewport is available.
+  if(!reportMapSnapshot&&mapViewportReady())captureMainMapFromCurrentView({silent:true,persist:false});
+  else if(!reportMapSnapshot&&mapImgW)reportMapSnapshot=buildFittedMapSnapshot();
+  rerenderCurrentReports();
+  renderAttachedPages();
+  const freshPaper=getActiveReportPaper()||paper;
+  const html=buildPrintablePaperHtml(freshPaper);
+  const styles=[...document.querySelectorAll('style,link[rel="stylesheet"]')].map(el=>el.outerHTML).join('');
+  const w=window.open('about:blank','_blank');
+  if(!w){
+    if(forPdf)alert('Popup blocked. Allow popups, then choose Save as PDF in print dialog.');
+    window.print();
+    return;
+  }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${activeReportLabel()}</title>${styles}<style>
+    @page{margin:12mm}
+    html,body{margin:0;padding:0;background:#fff}
+    body{zoom:1!important}
+    #export-root{background:#fff}
+    #export-root .print-bar,#export-root .rtab-bar,#export-root .btn{display:none!important}
+    .pdf-hint{font:12px "JetBrains Mono",monospace;color:#666;padding:8px 12px;border-bottom:1px solid #eee}
+  </style></head><body>${forPdf?'<div class="pdf-hint">Choose <strong>Save as PDF</strong> in the print dialog.</div>':''}<div id="export-root">${html}</div></body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(()=>{try{w.print();}catch(e){window.print();}},220);
+}
+function downloadCurrentReportPdf(){
+  printCurrentReportNative(true);
+}
+function printCurrentReport(){
+  printCurrentReportNative(false);
+}
 
 // ── ACTIVE JOB MANAGEMENT ──
 function updateActiveMgmt(){
@@ -1459,22 +1761,97 @@ function paintReportMap(canvasId){
 // ── ATTACH REPORT PAGES ──
 let attachedPages = []; // [{dataUrl, type, name}]
 
-function attachReportPages(e){
-  const files = Array.from(e.target.files);
-  files.forEach(file=>{
-    const reader = new FileReader();
-    reader.onload = ev=>{
-      attachedPages.push({dataUrl:ev.target.result, type:file.type, name:file.name});
-      renderAttachedPages();
+let pdfLibPromise=null;
+function ensurePdfLib(){
+  if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
+  if(pdfLibPromise)return pdfLibPromise;
+  pdfLibPromise=new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=()=>{
+      if(window.pdfjsLib&&window.pdfjsLib.GlobalWorkerOptions){
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+      resolve(window.pdfjsLib);
     };
+    s.onerror=()=>reject(new Error('Failed loading PDF library'));
+    document.head.appendChild(s);
+  });
+  return pdfLibPromise;
+}
+
+function readFileDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=ev=>resolve(ev.target.result);
+    reader.onerror=()=>reject(new Error('Read failed'));
     reader.readAsDataURL(file);
   });
+}
+
+async function pdfFileToImagePages(file){
+  const pdfjs=await ensurePdfLib();
+  const arr=await file.arrayBuffer();
+  const pdf=await pdfjs.getDocument({data:arr}).promise;
+  const pages=[];
+  for(let i=1;i<=pdf.numPages;i++){
+    const p=await pdf.getPage(i);
+    const vp=p.getViewport({scale:1.6});
+    const c=document.createElement('canvas');
+    c.width=Math.max(1,Math.round(vp.width));
+    c.height=Math.max(1,Math.round(vp.height));
+    const cx=c.getContext('2d');
+    await p.render({canvasContext:cx,viewport:vp}).promise;
+    pages.push({
+      dataUrl:c.toDataURL('image/png'),
+      type:'image/png',
+      name:`${file.name} · p${i}`
+    });
+  }
+  return pages;
+}
+
+function buildUnsupportedFilePage(file){
+  const c=document.createElement('canvas');
+  c.width=1400;c.height=900;
+  const cx=c.getContext('2d');
+  cx.fillStyle='#ffffff';cx.fillRect(0,0,c.width,c.height);
+  cx.fillStyle='#111111';cx.font='700 48px Syne, sans-serif';
+  cx.fillText('Attachment Included',90,130);
+  cx.fillStyle='#444';cx.font='400 30px "JetBrains Mono", monospace';
+  cx.fillText(file.name,90,210);
+  cx.fillStyle='#666';cx.font='400 24px "JetBrains Mono", monospace';
+  cx.fillText('File type preview is not supported in-browser.',90,280);
+  return {dataUrl:c.toDataURL('image/png'),type:'image/png',name:file.name};
+}
+
+async function attachReportPages(e){
+  const files = Array.from(e.target.files||[]);
+  if(!files.length)return;
+  for(const file of files){
+    try{
+      const name=(file.name||'').toLowerCase();
+      if(file.type.startsWith('image/')){
+        const dataUrl=await readFileDataUrl(file);
+        attachedPages.push({dataUrl,type:file.type,name:file.name});
+      }else if(file.type==='application/pdf'||name.endsWith('.pdf')){
+        const pages=await pdfFileToImagePages(file);
+        attachedPages.push(...pages);
+      }else{
+        attachedPages.push(buildUnsupportedFilePage(file));
+      }
+    }catch(err){
+      console.warn('Attachment conversion failed:',err);
+      attachedPages.push(buildUnsupportedFilePage(file));
+    }
+  }
+  renderAttachedPages();
   e.target.value=''; // reset so same file can be re-added
 }
 
 function renderAttachedPages(){
   // Show attached pages after the main report in all report containers
-  ['client','contractor','foreman'].forEach(type=>{
+  ['client','contractor','foreman','client-a','foreman-a','client-c','foreman-c'].forEach(type=>{
     const container = document.getElementById('report-'+type);
     if(!container) return;
     // Remove old attached page divs
@@ -1854,7 +2231,7 @@ function setActivePhase(idx){
   phasePreviewMode='phase';
   refreshPhasePreviewModeButtons();
   renderPhaseBuilderList();
-  drawPhasePreview(idx);
+  fitPhasePreview();
 }
 
 function phasePreviewCanvas(){return document.getElementById('phase-preview-canvas');}
@@ -1889,13 +2266,45 @@ function initPhasePreviewControls(){
   });
 }
 
+function getPhaseBounds(phaseIdx){
+  if(phaseIdx===null||phaseIdx===undefined||phaseIdx<0)return null;
+  const zoneIds=(reportPhases[phaseIdx]?.zoneIds)||[];
+  if(!zoneIds.length)return null;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity,hasPts=false;
+  (projectData.zones||[]).forEach(z=>{
+    if(!zoneIds.includes(z.id)||!Array.isArray(z.pts))return;
+    z.pts.forEach(pt=>{
+      if(typeof pt.x!=='number'||typeof pt.y!=='number')return;
+      hasPts=true;
+      if(pt.x<minX)minX=pt.x;
+      if(pt.y<minY)minY=pt.y;
+      if(pt.x>maxX)maxX=pt.x;
+      if(pt.y>maxY)maxY=pt.y;
+    });
+  });
+  if(!hasPts)return null;
+  return{minX,minY,maxX,maxY};
+}
 function fitPhasePreview(){
   const canvas=phasePreviewCanvas();
   if(!canvas||!mapImgW)return;
   const pad=20;
-  phasePreviewZoom=Math.min((canvas.width-pad*2)/mapImgW,(canvas.height-pad*2)/mapImgH);
-  phasePreviewPanX=(canvas.width-mapImgW*phasePreviewZoom)/2;
-  phasePreviewPanY=(canvas.height-mapImgH*phasePreviewZoom)/2;
+  let fitW=mapImgW,fitH=mapImgH,offX=0,offY=0;
+  const bounds=phasePreviewMode==='phase'?getPhaseBounds(activePhaseIdx):null;
+  if(bounds){
+    const bw=Math.max(1,bounds.maxX-bounds.minX);
+    const bh=Math.max(1,bounds.maxY-bounds.minY);
+    const extra=Math.max(24,Math.min(120,Math.max(bw,bh)*0.2));
+    offX=Math.max(0,bounds.minX-extra);
+    offY=Math.max(0,bounds.minY-extra);
+    const right=Math.min(mapImgW,bounds.maxX+extra);
+    const bottom=Math.min(mapImgH,bounds.maxY+extra);
+    fitW=Math.max(1,right-offX);
+    fitH=Math.max(1,bottom-offY);
+  }
+  phasePreviewZoom=Math.min((canvas.width-pad*2)/fitW,(canvas.height-pad*2)/fitH);
+  phasePreviewPanX=(canvas.width-fitW*phasePreviewZoom)/2-(offX*phasePreviewZoom);
+  phasePreviewPanY=(canvas.height-fitH*phasePreviewZoom)/2-(offY*phasePreviewZoom);
   drawPhasePreview(activePhaseIdx);
 }
 
@@ -1931,7 +2340,7 @@ function refreshPhasePreviewModeButtons(){
 function setPhasePreviewMode(mode){
   phasePreviewMode=(mode==='site')?'site':'phase';
   refreshPhasePreviewModeButtons();
-  drawPhasePreview(activePhaseIdx);
+  fitPhasePreview();
 }
 
 function drawPhasePreviewScene(ctx,W,H,opts){
@@ -2008,7 +2417,7 @@ function captureFromPhaseView(opts){
     panY:panY*scale,
     uiScale:scale
   });
-  return out.toDataURL('image/jpeg',0.95);
+  return out.toDataURL('image/png');
 }
 
 function showCaptureStatus(id){
@@ -2904,13 +3313,25 @@ async function deleteProject(){
 
 // Keep project page font size synced with account setting.
 (function(){
-  function applyFs(v){
-    const fs=parseInt(v)||14;
-    document.documentElement.style.setProperty('--fs',fs+'px');
+  const FS_KEY='paveview_fontsize';
+  const FS_PRESET_KEY='paveview_fontsize_preset';
+  const FS_PRESETS={regular:14,large:16,xlarge:18};
+  const ZOOM_PRESETS={regular:1,large:1.08,xlarge:1.16};
+  function nearestPreset(px){
+    const n=parseInt(px)||14;
+    if(n>=17)return'xlarge';
+    if(n>=15)return'large';
+    return'regular';
   }
-  applyFs(localStorage.getItem('paveview_fontsize')||'14');
+  function applyFs(){
+    const preset=localStorage.getItem(FS_PRESET_KEY)||nearestPreset(localStorage.getItem(FS_KEY));
+    const fs=FS_PRESETS[preset]||14;
+    document.documentElement.style.setProperty('--fs',fs+'px');
+    document.documentElement.style.setProperty('--ui-zoom',String(ZOOM_PRESETS[preset]||1));
+  }
+  applyFs();
   window.addEventListener('storage',function(ev){
-    if(ev.key==='paveview_fontsize')applyFs(ev.newValue||'14');
+    if(ev.key===FS_PRESET_KEY||ev.key===FS_KEY)applyFs();
   });
 })();
 </script>
