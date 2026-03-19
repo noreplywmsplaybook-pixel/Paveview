@@ -248,7 +248,7 @@ h1 { animation-delay:.2s; }
     <a href="#features" class="nav-link">Features</a>
     <a href="#pricing" class="nav-link">Pricing</a>
     <a href="/login.html" class="nav-link">Login</a>
-    <a href="#pricing" class="nav-cta">Get Access</a>
+    <a href="https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z" class="nav-cta js-buy-link">Get Access</a>
   </div>
 </nav>
 
@@ -262,9 +262,9 @@ h1 { animation-delay:.2s; }
       PaveView Takeoff lets asphalt contractors upload any job plan, <strong>measure lot areas precisely</strong>, count stalls and site features, and generate professional proposals — in minutes, not hours.
     </p>
     <div class="hero-cta-wrap">
-      <a href="#pricing" class="btn-primary">
+      <a href="https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z" class="btn-primary js-buy-link">
         Get PaveView Takeoff
-        <span class="price">$1,000 one-time · no subscription</span>
+        <span class="price">$5,000 one-time · no subscription</span>
       </a>
       <a href="#how" class="btn-secondary">See how it works →</a>
     </div>
@@ -278,7 +278,7 @@ h1 { animation-delay:.2s; }
         <div class="proof-label">measurement accuracy</div>
       </div>
       <div class="proof-item">
-        <div class="proof-num">$1,000</div>
+        <div class="proof-num">$5,000</div>
         <div class="proof-label">one time. yours forever.</div>
       </div>
     </div>
@@ -400,7 +400,7 @@ h1 { animation-delay:.2s; }
     <div class="pricing-wrap">
       <div class="price-card">
         <div class="price-label">PaveView Takeoff — Lifetime Access</div>
-        <div class="price-main"><span>$</span>1,000</div>
+        <div class="price-main"><span>$</span>5,000</div>
         <div class="price-sub">One-time payment · No subscription · No per-job fees</div>
         <ul class="price-features">
           <li>Upload PDF and image job plans</li>
@@ -413,7 +413,7 @@ h1 { animation-delay:.2s; }
           <li>Client view + contractor cost breakdown</li>
           <li>Access to all future updates</li>
         </ul>
-        <a href="#" class="price-cta" id="buy-btn">Get Access Now — $1,000</a>
+        <a href="https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z" class="price-cta js-buy-link" id="buy-btn">Get Access Now — $5,000</a>
         <p class="price-note">Secure payment via Stripe · Instant access after purchase<br>Questions? Email <a href="/cdn-cgi/l/email-protection#3f4c4a4f4f504d4b7f4f5e495a49565a48115650" style="color:var(--stripe)"><span class="__cf_email__" data-cfemail="72010702021d00063202130417041b17055c1b1d">[email&#160;protected]</span></a></p>
       </div>
     </div>
@@ -440,7 +440,7 @@ h1 { animation-delay:.2s; }
       </div>
       <div class="faq-item">
         <div class="faq-q">Is this a subscription?</div>
-        <div class="faq-a">No. $1,000 is a one-time payment and you have access forever. No monthly fees, no per-job charges, no renewals. We're building toward a full PaveView platform and early buyers will get preferential pricing when that launches.</div>
+        <div class="faq-a">No. $5,000 is a one-time payment and you have access forever. No monthly fees, no per-job charges, no renewals. We're building toward a full PaveView platform and early buyers will get preferential pricing when that launches.</div>
       </div>
       <div class="faq-item">
         <div class="faq-q">What if I need help getting started?</div>
@@ -464,10 +464,22 @@ h1 { animation-delay:.2s; }
 </footer>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
-const STRIPE_LINK = 'https://buy.stripe.com/5kQ5kE3OpgMk9a42zC6Vq0Y';
+const STRIPE_LINK = 'https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z';
 
 // FAQ accordion
-document.querySelectorAll('.faq-q').forEach(q => {
+document.querySelectorAll('.faq-q').forEach((q) => {
   q.addEventListener('click', () => {
     const item = q.parentElement;
-    const wasOpen = i
+    const wasOpen = item.classList.contains('open');
+    document.querySelectorAll('.faq-item').forEach((el) => el.classList.remove('open'));
+    if (!wasOpen) item.classList.add('open');
+  });
+});
+
+// Keep all buy CTAs synchronized to Stripe checkout
+document.querySelectorAll('.js-buy-link').forEach((el) => {
+  el.href = STRIPE_LINK;
+});
+</script>
+</body>
+</html>
