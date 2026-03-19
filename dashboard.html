@@ -26,6 +26,7 @@
   --orange:   #f97316;
   --border-hover: #3a3a3c;
   --fs:       14px;
+  --ui-zoom:  1;
 }
 body.light {
   --bg:       #f0ede8;
@@ -45,7 +46,7 @@ body.light {
   --border-hover:#c5c1ba;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-size:var(--fs);min-height:100vh;display:flex;flex-direction:column}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-size:var(--fs);min-height:100vh;display:flex;flex-direction:column;zoom:var(--ui-zoom)}
 
 /* HEADER */
 #hdr{background:var(--surface);border-bottom:1px solid var(--border);height:46px;display:flex;align-items:center;padding:0 24px;gap:0;flex-shrink:0}
@@ -1019,6 +1020,7 @@ async function renderAnalytics(allParsed){
   var FS_KEY='paveview_fontsize';
   var FS_PRESET_KEY='paveview_fontsize_preset';
   var FS_PRESETS={regular:14,large:16,xlarge:18};
+  var ZOOM_PRESETS={regular:1,large:1.08,xlarge:1.16};
   function nearestPreset(px){
     var n=parseInt(px)||14;
     if(n>=17)return'xlarge';
@@ -1029,6 +1031,7 @@ async function renderAnalytics(allParsed){
     var p=FS_PRESETS[preset]?preset:'regular';
     var px=FS_PRESETS[p];
     document.documentElement.style.setProperty('--fs',px+'px');
+    document.documentElement.style.setProperty('--ui-zoom',String(ZOOM_PRESETS[p]||1));
     if(persist!==false){
       localStorage.setItem(FS_PRESET_KEY,p);
       localStorage.setItem(FS_KEY,String(px));

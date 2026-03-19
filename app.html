@@ -33,6 +33,7 @@
   --green:     #22c55e;
   --bg2:       #1a1a1c;
   --fs:         14px;  /* base font size — adjustable in settings */
+  --ui-zoom:    1;
 }
 button{-webkit-appearance:none;appearance:none;}
 
@@ -64,7 +65,7 @@ body {
   background:var(--bg);color:var(--text);
   font-family:'Syne',sans-serif;font-size:var(--fs);
   height:100vh;display:flex;flex-direction:column;
-  overflow:hidden;user-select:none;
+  overflow:hidden;user-select:none;zoom:var(--ui-zoom);
 }
 
 /* ── HEADER ── */
@@ -3232,6 +3233,7 @@ document.getElementById('job-type').addEventListener('change',updateStats);
   var FS_KEY='paveview_fontsize';
   var FS_PRESET_KEY='paveview_fontsize_preset';
   var FS_PRESETS={regular:14,large:16,xlarge:18};
+  var ZOOM_PRESETS={regular:1,large:1.08,xlarge:1.16};
   function nearestPreset(px){
     var n=parseInt(px)||14;
     if(n>=17)return'xlarge';
@@ -3242,6 +3244,7 @@ document.getElementById('job-type').addEventListener('change',updateStats);
     var preset=localStorage.getItem(FS_PRESET_KEY)||nearestPreset(localStorage.getItem(FS_KEY));
     var px=FS_PRESETS[preset]||14;
     document.documentElement.style.setProperty('--fs',px+'px');
+    document.documentElement.style.setProperty('--ui-zoom',String(ZOOM_PRESETS[preset]||1));
     // Keep legacy numeric key in sync for older pages.
     localStorage.setItem(FS_KEY,String(px));
   }
