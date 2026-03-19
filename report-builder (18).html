@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Report Builder — PaveView</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#141416;--surf:#1c1c1e;--surf2:#222224;
+  --bdr:#2a2a2c;--txt:#f0eeea;--txt2:#aaa;--txt3:#666;
+  --acc:#d4a843;--acc-bg:rgba(212,168,67,.07);
+  --ok:#22c55e;--red:#ef4444;
+}
+body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--txt);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* TOP */
+#top{height:46px;background:var(--surf);border-bottom:1px solid var(--bdr);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0}
+.logo{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--acc);letter-spacing:.1em}
+.sep{width:1px;height:20px;background:var(--bdr)}
+.tabs{display:flex;gap:2px}
+.tab{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.08em;padding:6px 14px;cursor:pointer;color:var(--txt3);border-bottom:2px solid transparent;transition:all .15s}
+.tab.on{color:var(--acc);border-bottom-color:var(--acc)}
+.topright{margin-left:auto;display:flex;align-items:center;gap:8px}
+.btn{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;padding:5px 12px;border:1px solid var(--bdr);background:none;color:var(--txt);cursor:pointer;letter-spacing:.04em}
+.btn.acc{background:var(--acc);border-color:var(--acc);color:#000}
+#save-msg{font-family:'JetBrains Mono',monospace;font-size:9px;display:none}
+
+/* BODY */
+#body{display:flex;flex:1;overflow:hidden}
+
+/* LEFT */
+#left{width:280px;flex-shrink:0;background:var(--surf);border-right:1px solid var(--bdr);overflow-y:auto}
+#left::-webkit-scrollbar{width:4px}
+#left::-webkit-scrollbar-thumb{background:var(--bdr)}
+
+/* panels */
+.pnl{border-bottom:1px solid var(--bdr)}
+.pnl-hdr{display:flex;align-items:center;padding:10px 14px;cursor:pointer;user-select:none}
+.pnl-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--txt3);flex:1}
+.pnl-arr{font-size:10px;color:var(--txt3);transition:transform .2s}
+.pnl.open .pnl-arr{transform:rotate(90deg)}
+.pnl-body{display:none;padding:12px 14px}
+.pnl.open .pnl-body{display:block}
+
+/* controls */
+.lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--txt3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px;display:block;margin-top:8px}
+.inp{width:100%;background:var(--surf2);border:1px solid var(--bdr);color:var(--txt);font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px 9px;outline:none;margin-bottom:2px}
+.inp:focus{border-color:var(--acc)}
+select.inp{cursor:pointer}
+.clr-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.clr-item label{font-size:9px;color:var(--txt3);display:block;margin-bottom:3px}
+input[type=color]{width:100%;height:28px;border:1px solid var(--bdr);padding:2px;background:var(--surf2);cursor:pointer}
+
+/* theme rows */
+.t-row{display:flex;align-items:center;gap:6px;padding:7px 10px;cursor:pointer;border:1px solid transparent;margin-bottom:4px}
+.t-row:hover,.t-row.on{border-color:var(--acc);background:var(--acc-bg)}
+.t-dot{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+.t-name{font-size:10px;font-weight:600;flex:1}
+.t-del{background:none;border:none;color:var(--txt3);cursor:pointer;font-size:11px}
+.t-del:hover{color:var(--red)}
+
+/* section list */
+.s-item{display:flex;align-items:center;gap:7px;padding:7px 10px;margin-bottom:3px;background:var(--surf2);border:1px solid var(--bdr);user-select:none}
+.s-item.drag-over{border-color:var(--acc)}
+.s-item.dragging{opacity:.3}
+.s-grab{cursor:grab;color:var(--txt3);font-size:13px}
+.s-vis{cursor:pointer;font-size:11px;width:16px;text-align:center}
+.s-lbl{font-size:10px;flex:1}
+.s-edit{background:none;border:1px solid var(--bdr);color:var(--txt3);cursor:pointer;font-size:8px;font-family:'JetBrains Mono',monospace;padding:2px 6px}
+.s-edit:hover{border-color:var(--acc);color:var(--acc)}
+.s-del{background:none;border:none;color:var(--txt3);cursor:pointer;font-size:11px}
+.s-del:hover{color:var(--red)}
+
+/* add toolbar */
+#add-bar{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:500;background:var(--surf);border:1px solid var(--bdr);border-top:2px solid var(--acc);box-shadow:0 8px 32px rgba(0,0,0,.5);padding:12px 16px;min-width:620px;max-width:92vw}
+#add-bar-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+#add-bar-title{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.12em;color:var(--acc)}
+#tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px}
+.titem{background:var(--surf2);border:1px solid var(--bdr);padding:10px 6px;cursor:pointer;text-align:center}
+.titem:hover{border-color:var(--acc);background:var(--acc-bg)}
+.tico{font-size:18px;display:block;margin-bottom:4px}
+.tlbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--txt2)}
+
+/* divider */
+#div{width:4px;background:var(--bdr);cursor:col-resize;flex-shrink:0}
+#div:hover{background:var(--acc)}
+
+/* RIGHT */
+#right{flex:1;display:flex;flex-direction:column;background:#c8c8c8;overflow:hidden}
+#prev-bar{height:36px;background:#b8b8b8;display:flex;align-items:center;padding:0 14px;gap:8px;flex-shrink:0;border-bottom:1px solid #aaa;font-family:'JetBrains Mono',monospace;font-size:8px;color:#666}
+.zbtn{background:none;border:1px solid #aaa;width:22px;height:22px;cursor:pointer;font-size:12px}
+#prev-scroll{flex:1;overflow:auto;padding:20px;display:flex;justify-content:center}
+#prev-wrap{transform-origin:top center}
+
+/* PAGE */
+.rpage{width:816px;min-height:1056px;background:#fff;box-shadow:0 2px 20px rgba(0,0,0,.15);margin-bottom:20px;font-family:'Inter',sans-serif;overflow:hidden;position:relative}
+.sec-wrap{position:relative}
+.sec-wrap:hover .sec-ov{opacity:1}
+.sec-ov{position:absolute;top:0;right:0;display:flex;gap:4px;padding:4px;background:rgba(0,0,0,.75);opacity:0;transition:opacity .15s;z-index:10}
+.sec-ov button{background:var(--surf2);border:1px solid var(--bdr);color:var(--txt);font-family:'JetBrains Mono',monospace;font-size:8px;padding:3px 8px;cursor:pointer}
+.sec-ov button:hover{border-color:var(--acc);color:var(--acc)}
+
+/* DRAWER */
+#drawer{position:fixed;right:0;top:46px;bottom:0;width:320px;background:var(--surf);border-left:1px solid var(--bdr);z-index:100;transform:translateX(100%);transition:transform .25s;display:flex;flex-direction:column}
+#drawer.open{transform:translateX(0)}
+#drawer-hdr{padding:12px 14px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:8px;flex-shrink:0}
+#drawer-title{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--acc);flex:1}
+#drawer-body{flex:1;overflow-y:auto;padding:14px}
+#drawer-body textarea{font-family:'Inter',sans-serif;font-size:11px;line-height:1.6;resize:vertical}
+
+[contenteditable]{outline:none}
+[contenteditable]:hover{box-shadow:inset 0 0 0 1.5px rgba(212,168,67,.35)}
+[contenteditable]:focus{box-shadow:inset 0 0 0 2px #d4a843}
+</style>
+</head>
+<body>
+
+<div id="top">
+  <span class="logo">PAVEVIEW</span>
+  <div class="sep"></div>
+  <div class="tabs">
+    <div class="tab on" onclick="switchTab('client')">Client Proposal</div>
+    <div class="tab" onclick="switchTab('foreman')">Foreman</div>
+    <div class="tab" onclick="switchTab('contractor')">Contractor</div>
+  </div>
+  <div class="sep"></div>
+  <span id="save-msg"></span>
+  <div class="topright">
+    <button class="btn" onclick="dupTheme()">Duplicate</button>
+    <button class="btn acc" onclick="doSave()">💾 Save Themes</button>
+    <a href="dashboard.html" class="btn" style="text-decoration:none">← Dashboard</a>
+  </div>
+</div>
+
+<div id="body">
+  <div id="left">
+
+    <div class="pnl open" id="pnl-themes">
+      <div class="pnl-hdr" onclick="togglePnl('themes')"><span class="pnl-lbl">Themes</span><span class="pnl-arr">▶</span></div>
+      <div class="pnl-body">
+        <div id="theme-list"></div>
+        <button class="btn" style="width:100%;margin-top:6px;border-style:dashed" onclick="newTheme()">+ New Theme</button>
+        <div class="lbl" style="margin-top:10px">Theme Name</div>
+        <input class="inp" id="t-name" placeholder="Theme name…" oninput="renameTheme(this.value)">
+      </div>
+    </div>
+
+    <div class="pnl open" id="pnl-design">
+      <div class="pnl-hdr" onclick="togglePnl('design')"><span class="pnl-lbl">Design</span><span class="pnl-arr">▶</span></div>
+      <div class="pnl-body">
+        <div class="lbl">Brand Colors</div>
+        <div class="clr-row">
+          <div class="clr-item"><label>Primary</label><input type="color" id="c-primary" oninput="setColor('primary',this.value)"></div>
+          <div class="clr-item"><label>Accent</label><input type="color" id="c-accent" oninput="setColor('accent',this.value)"></div>
+          <div class="clr-item"><label>Page BG</label><input type="color" id="c-bg" oninput="setColor('bg',this.value)"></div>
+          <div class="clr-item"><label>Body Text</label><input type="color" id="c-text" oninput="setColor('textcol',this.value)"></div>
+        </div>
+        <div class="lbl">Heading Font</div>
+        <select class="inp" id="f-head" onchange="setFont('heading',this.value)">
+          <option value="Inter">Inter — Modern</option>
+          <option value="Playfair Display">Playfair Display — Elegant</option>
+          <option value="Outfit">Outfit — Clean</option>
+          <option value="DM Sans">DM Sans — Friendly</option>
+          <option value="Syne">Syne — Bold</option>
+          <option value="Georgia,serif">Georgia — Traditional</option>
+        </select>
+        <div class="lbl">Body Font</div>
+        <select class="inp" id="f-body" onchange="setFont('body',this.value)">
+          <option value="Inter">Inter</option>
+          <option value="DM Sans">DM Sans</option>
+          <option value="Outfit">Outfit</option>
+          <option value="Georgia,serif">Georgia</option>
+          <option value="system-ui,sans-serif">System UI</option>
+        </select>
+        <div class="lbl">Header Style</div>
+        <select class="inp" id="d-hdr" onchange="setOpt('headerStyle',this.value)">
+          <option value="split">Split — Logo left, badge right</option>
+          <option value="banner">Full Banner — Dark background</option>
+          <option value="centered">Centered — Logo centered</option>
+          <option value="minimal">Minimal — Name only</option>
+          <option value="sidebar">Left Sidebar Accent</option>
+        </select>
+        <div class="lbl">Accent Stripe</div>
+        <select class="inp" id="d-stripe" onchange="setOpt('stripe',this.value)">
+          <option value="gradient">Gradient</option>
+          <option value="solid">Solid</option>
+          <option value="double">Double line</option>
+          <option value="thick">Thick (7px)</option>
+          <option value="none">None</option>
+        </select>
+        <div class="lbl">Table Style</div>
+        <select class="inp" id="d-tbl" onchange="setOpt('tableStyle',this.value)">
+          <option value="clean">Clean</option>
+          <option value="striped">Striped</option>
+          <option value="bordered">Bordered</option>
+          <option value="dark-header">Dark Header</option>
+          <option value="minimal">Minimal</option>
+        </select>
+        <div class="lbl">Page Padding</div>
+        <select class="inp" id="d-pad" onchange="setOpt('pagePad',this.value)">
+          <option value="normal">Normal (48px)</option>
+          <option value="tight">Tight (28px)</option>
+          <option value="wide">Wide (64px)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="pnl open" id="pnl-secs">
+      <div class="pnl-hdr" onclick="togglePnl('secs')"><span class="pnl-lbl">Sections — drag to reorder</span><span class="pnl-arr">▶</span></div>
+      <div class="pnl-body">
+        <div id="sec-list"></div>
+      </div>
+    </div>
+
+    <div class="pnl" style="padding:12px 14px">
+      <button class="btn" style="width:100%" onclick="toggleAddBar()">+ Add Section / Page</button>
+    </div>
+
+  </div>
+
+  <div id="div"></div>
+
+  <div id="right">
+    <div id="prev-bar">
+      PREVIEW — 816×1056
+      <span id="zoom-lbl" style="min-width:36px;text-align:center">85%</span>
+      <button class="zbtn" onclick="doZoom(-1)">−</button>
+      <button class="zbtn" onclick="doZoom(1)">+</button>
+      <button class="zbtn" onclick="doZoom(0)" title="Fit">⊡</button>
+      <span style="margin-left:auto;color:#888;font-size:8px">Hover sections to edit inline</span>
+    </div>
+    <div id="prev-scroll">
+      <div id="prev-wrap"></div>
+    </div>
+  </div>
+</div>
+
+<!-- DRAWER -->
+<div id="drawer">
+  <div id="drawer-hdr">
+    <span id="drawer-title">Edit Section</span>
+    <button class="btn" onclick="closeDrawer()">✕ Close</button>
+  </div>
+  <div id="drawer-body"></div>
+</div>
+
+<!-- ADD BAR -->
+<div id="add-bar">
+  <div id="add-bar-hdr">
+    <span id="add-bar-title">ADD SECTION</span>
+    <button onclick="toggleAddBar()" style="background:none;border:none;color:var(--txt3);cursor:pointer;font-size:16px">✕</button>
+  </div>
+  <div id="tgrid"></div>
+</div>
+
+<script>
+var LS = 'paveview_report_themes';
+var LA = 'paveview_active_theme';
+
+var themes = [];
+var activeId = null;
+var activeTab = 'client';
+var zmVal = 0.85;
+var dragIdx = null;
+
+// ── DEFAULTS ──
+var DFLT_COLORS = {primary:'#111111', accent:'#d4a843', bg:'#ffffff', textcol:'#1a1a1a'};
+var DFLT_FONTS  = {heading:'Inter', body:'Inter'};
+
+function makeSections(type) {
+  if (type === 'client') return [
+    {id:'h1',  type:'header',    label:'Header',             vis:true,  locked:true,  content:{}},
+    {id:'st1', type:'stripe',    label:'Accent Stripe',      vis:true,  locked:false, content:{}},
+    {id:'ib1', type:'infoband',  label:'Client / Site Info', vis:true,  locked:false, content:{preparedFor:'Client Name',contact:'Contact Name',phone:'(555) 000-0000',email:'client@email.com',site:'Job Site Address',project:'Project Name'}},
+    {id:'kp1', type:'kpis',      label:'KPI Cards',          vis:true,  locked:false, content:{}},
+    {id:'mp1', type:'map',       label:'Site Map',           vis:true,  locked:false, content:{}},
+    {id:'sc1', type:'scope',     label:'Scope of Work',      vis:true,  locked:false, content:{rows:[{desc:'Zone 1 — Asphalt Paving (3" depth)',qty:'18,400',unit:'sq ft',cost:'$28,520'},{desc:'Zone 2 — Asphalt Paving (3" depth)',qty:'6,100',unit:'sq ft',cost:'$9,455'},{desc:'Parking Stall Striping — Standard',qty:'80',unit:'stalls',cost:'—'},{desc:'Parking Stall Striping — ADA',qty:'4',unit:'stalls',cost:'—'}],total:'$42,800'}},
+    {id:'nt1', type:'notes',     label:'Scope Notes',        vis:true,  locked:false, content:{text:'Includes removal of existing asphalt in Zone 1. Existing base to be inspected and repaired as needed. Sealcoating not included in this proposal.',style:'callout'}},
+    {id:'cd1', type:'conditions',label:'Special Conditions', vis:false, locked:false, content:{text:'No work before 7AM. Property manager must be on site for first day. Area to be cleared of vehicles by 6AM on scheduled start date.',style:'callout'}},
+    {id:'sg1', type:'sigs',      label:'Signatures',         vis:true,  locked:false, content:{lines:['Contractor / Date','Client Signature / Date','Project Start Date']}},
+    {id:'ft1', type:'footer',    label:'Footer',             vis:true,  locked:false, content:{text:'By signing, both parties agree to the scope and estimated costs outlined above. Final invoice may vary based on field conditions.'}},
+  ];
+  if (type === 'foreman') return [
+    {id:'fh1', type:'header',    label:'Header',             vis:true,  locked:true,  content:{}},
+    {id:'fs1', type:'stripe',    label:'Accent Stripe',      vis:true,  locked:false, content:{}},
+    {id:'fi1', type:'infoband',  label:'Job Info',           vis:true,  locked:false, content:{preparedFor:'Foreman Name',contact:'PM Contact',phone:'(555) 000-0000',email:'',site:'Job Site Address',project:'Project Name'}},
+    {id:'fk1', type:'kpis',      label:'Job Summary',        vis:true,  locked:false, content:{}},
+    {id:'fm1', type:'map',       label:'Site Map',           vis:true,  locked:false, content:{}},
+    {id:'fw1', type:'scope',     label:'Work Order Scope',   vis:true,  locked:false, content:{rows:[{desc:'Zone 1 — Asphalt Paving (3" depth)',qty:'18,400',unit:'sq ft',cost:'—'},{desc:'Parking Lot Striping — 80 stalls',qty:'80',unit:'stalls',cost:'—'}],total:'See Estimate'}},
+    {id:'fn1', type:'notes',     label:'Materials / Crew',   vis:true,  locked:false, content:{text:'Asphalt: 125 tons — Delivered by 6AM\nCrew: 4 paving + 2 striping\nEquipment: Paver, Tandem Roller, Plate Compactor',style:'plain'}},
+    {id:'fsa', type:'notes',     label:'Safety Notes',       vis:true,  locked:false, content:{text:'Hard hats and safety vests required. Area to be barricaded before work begins. Contact PM for any changes.',style:'callout'}},
+    {id:'fsg', type:'sigs',      label:'Sign-Off',           vis:true,  locked:false, content:{lines:['Foreman Signature / Date','Inspector / Date']}},
+    {id:'fft', type:'footer',    label:'Footer',             vis:true,  locked:false, content:{text:'Internal document — not for client distribution.'}},
+  ];
+  return [
+    {id:'ch1', type:'header',    label:'Header',             vis:true,  locked:true,  content:{}},
+    {id:'cs1', type:'stripe',    label:'Accent Stripe',      vis:true,  locked:false, content:{}},
+    {id:'ci1', type:'infoband',  label:'Project Info',       vis:true,  locked:false, content:{preparedFor:'Client Name',contact:'',phone:'',email:'',site:'Site Address',project:'Project Name'}},
+    {id:'ck1', type:'kpis',      label:'Cost Summary',       vis:true,  locked:false, content:{}},
+    {id:'cz1', type:'scope',     label:'Zone Breakdown',     vis:true,  locked:false, content:{rows:[{desc:'Zone 1 — Asphalt + Base Materials',qty:'18,400',unit:'sq ft',cost:'$28,520'},{desc:'Zone 2 — Asphalt + Base Materials',qty:'6,100',unit:'sq ft',cost:'$9,455'}],total:'$42,800'}},
+    {id:'ca1', type:'scope',     label:'Additional Scope',   vis:true,  locked:false, content:{rows:[{desc:'Striping — 80 stalls + 4 ADA',qty:'84',unit:'stalls',cost:'—'}],total:''}},
+    {id:'cn1', type:'notes',     label:'Internal Notes',     vis:true,  locked:false, content:{text:'Internal use only. Material markup 18%. Labor burden 35%.',style:'plain'}},
+    {id:'csg', type:'sigs',      label:'Approval',           vis:true,  locked:false, content:{lines:['Project Manager / Date','Owner Approval / Date','Start Date Confirmed']}},
+    {id:'cft', type:'footer',    label:'Footer',             vis:false, locked:false, content:{text:'Confidential — internal contractor copy.'}},
+  ];
+}
+
+// ── LOAD / SAVE ──
+function loadThemes() {
+  var raw = localStorage.getItem(LS);
+  if (!raw) { themes = []; return; }
+  try { themes = JSON.parse(raw); } catch(e) { themes = []; }
+  themes.forEach(function(t) {
+    if (!t.sections) t.sections = {};
+    ['client','foreman','contractor'].forEach(function(r) {
+      if (!t.sections[r]) t.sections[r] = makeSections(r);
+    });
+  });
+}
+
+function saveNow() {
+  localStorage.setItem(LS, JSON.stringify(themes));
+  localStorage.setItem(LA, activeId || '');
+  var t = getT();
+  if (t) {
+    localStorage.setItem('paveview_brand_primary', t.colors.primary);
+    localStorage.setItem('paveview_brand_accent', t.colors.accent);
+  }
+}
+
+function doSave() {
+  console.log('[PaveView] doSave called, themes:', themes.length);
+  saveNow();
+  var back = localStorage.getItem(LS);
+  var parsed = [];
+  try { parsed = JSON.parse(back || '[]'); } catch(e) {}
+  var ok = parsed.length === themes.length;
+  console.log('[PaveView] save verify ok:', ok, 'stored:', parsed.length, 'expected:', themes.length);
+  var msg = document.getElementById('save-msg');
+  if (msg) {
+    msg.textContent = ok ? ('✓ Saved ' + themes.length + ' theme' + (themes.length !== 1 ? 's' : '')) : '✗ Save failed';
+    msg.style.color = ok ? 'var(--ok)' : 'var(--red)';
+    msg.style.display = 'block';
+    setTimeout(function() { msg.style.display = 'none'; }, 3000);
+  }
+}
+
+// ── THEME OPS ──
+function getT() { return themes.find(function(t){return t.id===activeId;}) || null; }
+function getSecs() { var t=getT(); return t ? t.sections[activeTab] : null; }
+
+function newTheme() {
+  var id = 't' + Date.now();
+  themes.push({
+    id: id,
+    name: 'Theme ' + (themes.length + 1),
+    colors: {primary:'#111111', accent:'#d4a843', bg:'#ffffff', textcol:'#1a1a1a'},
+    fonts: {heading:'Inter', body:'Inter'},
+    headerStyle: 'split', stripe: 'gradient', tableStyle: 'clean', pagePad: 'normal',
+    sections: {
+      client: makeSections('client'),
+      foreman: makeSections('foreman'),
+      contractor: makeSections('contractor')
+    }
+  });
+  setActive(id);
+  saveNow();
+}
+
+function dupTheme() {
+  var t = getT(); if (!t) return;
+  var nt = JSON.parse(JSON.stringify(t));
+  nt.id = 't' + Date.now();
+  nt.name = t.name + ' Copy';
+  themes.push(nt);
+  setActive(nt.id);
+  saveNow();
+}
+
+function delTheme(id, e) {
+  e.stopPropagation();
+  if (themes.length <= 1) { alert('Need at least one theme.'); return; }
+  if (!confirm('Delete this theme?')) return;
+  themes = themes.filter(function(t){return t.id!==id;});
+  setActive(themes[0].id);
+  saveNow();
+}
+
+function renameTheme(val) {
+  var t = getT(); if (!t) return;
+  t.name = val;
+  renderThemeList();
+  saveNow();
+}
+
+function setActive(id) {
+  activeId = id;
+  renderThemeList();
+  loadControls();
+  renderSecList();
+  renderPreview();
+}
+
+function renderThemeList() {
+  var t = getT();
+  var el = document.getElementById('theme-list');
+  el.innerHTML = themes.map(function(th) {
+    return '<div class="t-row' + (th.id===activeId?' on':'') + '" onclick="setActive(\'' + th.id + '\')">' +
+      '<div class="t-dot" style="background:' + th.colors.primary + '"></div>' +
+      '<div class="t-dot" style="background:' + th.colors.accent + '"></div>' +
+      '<span class="t-name">' + th.name + '</span>' +
+      '<button class="t-del" onclick="delTheme(\'' + th.id + '\',event)">✕</button>' +
+      '</div>';
+  }).join('');
+  var ni = document.getElementById('t-name');
+  if (ni && t) ni.value = t.name;
+}
+
+function loadControls() {
+  var t = getT(); if (!t) return;
+  document.getElementById('c-primary').value = t.colors.primary;
+  document.getElementById('c-accent').value  = t.colors.accent;
+  document.getElementById('c-bg').value      = t.colors.bg || '#ffffff';
+  document.getElementById('c-text').value    = t.colors.textcol || '#1a1a1a';
+  document.getElementById('f-head').value    = t.fonts.heading || 'Inter';
+  document.getElementById('f-body').value    = t.fonts.body || 'Inter';
+  document.getElementById('d-hdr').value     = t.headerStyle || 'split';
+  document.getElementById('d-stripe').value  = t.stripe || 'gradient';
+  document.getElementById('d-tbl').value     = t.tableStyle || 'clean';
+  document.getElementById('d-pad').value     = t.pagePad || 'normal';
+}
+
+function setColor(k,v){ var t=getT();if(t){t.colors[k]=v;renderPreview();saveNow();} }
+function setFont(k,v){  var t=getT();if(t){t.fonts[k]=v;renderPreview();saveNow();} }
+function setOpt(k,v){   var t=getT();if(t){t[k]=v;renderPreview();saveNow();} }
+
+// ── SECTION LIST ──
+function renderSecList() {
+  var secs = getSecs(); if (!secs) return;
+  var el = document.getElementById('sec-list');
+  el.innerHTML = secs.map(function(s,i) {
+    return '<div class="s-item" draggable="true" data-i="' + i + '"' +
+      ' ondragstart="sdStart(event,' + i + ')" ondragover="sdOver(event,' + i + ')" ondragleave="sdLeave(event)" ondrop="sdDrop(event,' + i + ')">' +
+      '<span class="s-grab">⠿</span>' +
+      '<span class="s-vis" onclick="toggleVis(' + i + ')">' + (s.vis?'👁':'○') + '</span>' +
+      '<span class="s-lbl" style="color:' + (s.vis?'var(--txt)':'var(--txt3)') + '">' + s.label + '</span>' +
+      '<button class="s-edit" onclick="openDrawer(' + i + ')">Edit</button>' +
+      (!s.locked ? '<button class="s-del" onclick="delSec(' + i + ')">✕</button>' : '<span style="width:18px"></span>') +
+      '</div>';
+  }).join('');
+}
+
+function toggleVis(i){ var s=getSecs();if(s){s[i].vis=!s[i].vis;renderSecList();renderPreview();saveNow();} }
+function delSec(i){ if(!confirm('Remove?'))return; var t=getT();if(!t)return; t.sections[activeTab].splice(i,1);renderSecList();renderPreview();saveNow(); }
+
+function sdStart(e,i){ dragIdx=i; e.target.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; }
+function sdOver(e,i){ e.preventDefault(); document.querySelectorAll('.s-item').forEach(function(el,idx){el.classList.toggle('drag-over',idx===i&&i!==dragIdx);}); }
+function sdLeave(e){ e.target.classList.remove('drag-over'); }
+function sdDrop(e,i){ e.preventDefault(); var t=getT();if(!t||dragIdx===null||dragIdx===i)return; var secs=t.sections[activeTab]; var m=secs.splice(dragIdx,1)[0]; secs.splice(i,0,m); dragIdx=null; renderSecList();renderPreview();saveNow(); }
+document.addEventListener('dragend',function(){document.querySelectorAll('.s-item').forEach(function(el){el.classList.remove('dragging','drag-over');});});
+
+// ── DRAWER ──
+function openDrawer(i) {
+  var secs = getSecs(); if (!secs) return;
+  var s = secs[i];
+  document.getElementById('drawer-title').textContent = 'Edit: ' + s.label;
+  document.getElementById('drawer-body').innerHTML = buildForm(s, i);
+  document.getElementById('drawer').classList.add('open');
+}
+function closeDrawer(){ document.getElementById('drawer').classList.remove('open'); }
+
+function buildForm(s, i) {
+  var c = s.content || {};
+  function inp(lbl,key,val,type) {
+    type = type || 'text';
+    val = (val || '').toString().replace(/"/g,'&quot;');
+    return '<div style="margin-bottom:10px"><span class="lbl">' + lbl + '</span>' +
+      '<input type="' + type + '" class="inp" value="' + val + '" style="margin-bottom:0" oninput="updSec(' + i + ',\'' + key + '\',this.value)"></div>';
+  }
+  function ta(lbl,key,val,rows) {
+    rows = rows || 4;
+    return '<div style="margin-bottom:10px"><span class="lbl">' + lbl + '</span>' +
+      '<textarea class="inp" rows="' + rows + '" style="margin-bottom:0;resize:vertical" oninput="updSec(' + i + ',\'' + key + '\',this.value)">' + (val||'') + '</textarea></div>';
+  }
+
+  if (s.type === 'infoband') return '<p style="font-size:9px;color:var(--txt3);margin-bottom:10px">Sample data shown in preview. Real data comes from each project.</p>' +
+    inp('Prepared For','preparedFor',c.preparedFor) + inp('Contact','contact',c.contact) + inp('Phone','phone',c.phone) + inp('Email','email',c.email) + inp('Site','site',c.site) + inp('Project','project',c.project);
+
+  if (s.type === 'scope') return buildScopeForm(s, i);
+
+  if (s.type === 'notes' || s.type === 'conditions') return ta('Content','text',c.text,6) + inp('Font Size','fontSize',c.fontSize||'13','number') +
+    '<div style="margin-bottom:10px"><span class="lbl">Style</span><select class="inp" style="margin-bottom:0" onchange="updSec(' + i + ',\'style\',this.value)">' +
+    ['callout','box','plain'].map(function(v){return '<option'+(c.style===v?' selected':'')+' value="'+v+'">'+v+'</option>';}).join('') + '</select></div>';
+
+  if (s.type === 'sigs') return '<p style="font-size:9px;color:var(--txt3);margin-bottom:8px">One line per signature</p>' +
+    '<textarea class="inp" rows="5" style="resize:vertical" oninput="updSigLines(' + i + ',this.value)">' + (c.lines||[]).join('\n') + '</textarea>';
+
+  if (s.type === 'footer') return ta('Footer Text','text',c.text,3);
+
+  if (s.type === 'custom-text') return inp('Title','title',c.title) + ta('Body Text','text',c.text,8) + inp('Font Size','fontSize',c.fontSize||'13','number');
+
+  if (s.type === 'photo') return inp('Caption','caption',c.caption) + ta('Description','description',c.description,3) +
+    '<div style="margin-bottom:10px"><span class="lbl" id="w-lbl-'+i+'">Width (' + (c.width||100) + '%)</span>' +
+    '<input type="range" min="20" max="100" step="5" value="' + (c.width||100) + '" style="width:100%;accent-color:var(--acc)" oninput="updSec(' + i + ',\'width\',parseInt(this.value));document.getElementById(\'w-lbl-'+i+'\').textContent=\'Width (\'+this.value+\'%)\'"></div>' +
+    '<div style="margin-bottom:10px"><span class="lbl">Alignment</span><select class="inp" onchange="updSec(' + i + ',\'align\',this.value)">' +
+    ['left','center','right'].map(function(v){return '<option'+(c.align===v?' selected':'')+' value="'+v+'">'+v+'</option>';}).join('') + '</select></div>' +
+    '<div style="margin-bottom:10px"><span class="lbl">Image</span>' +
+    (c.image ? '<img src="'+c.image+'" style="width:100%;max-height:80px;object-fit:cover;margin-bottom:6px"><button class="btn" onclick="clrImg('+i+')" style="width:100%;margin-bottom:4px">✕ Remove</button>' : '') +
+    '<label class="btn" style="width:100%;display:block;text-align:center;cursor:pointer">' + (c.image?'Replace':'Upload') + ' Image<input type="file" accept="image/*" style="display:none" onchange="attImg(event,'+i+')"></label></div>';
+
+  if (s.type === 'two-col') return inp('Title','title',c.title) + ta('Left','left',c.left,5) + ta('Right','right',c.right,5);
+
+  if (s.type === 'phase') return inp('Phase Label','phaseLabel',c.phaseLabel||'Phase Map') + inp('Phase Name','phaseName',c.phaseName||'Phase 1') + inp('Zones','zoneNames',c.zoneNames) + ta('Description','description',c.description,3) +
+    '<div style="margin-bottom:10px"><span class="lbl">Screenshot</span>' +
+    (c.screenshot ? '<img src="'+c.screenshot+'" style="width:100%;max-height:80px;object-fit:cover;margin-bottom:4px"><button class="btn" onclick="clrImg('+i+')" style="width:100%">✕ Remove</button>' : '') +
+    '<label class="btn" style="width:100%;display:block;text-align:center;cursor:pointer;margin-top:4px">Upload Screenshot<input type="file" accept="image/*" style="display:none" onchange="attImg(event,'+i+')"></label></div>';
+
+  if (s.type === 'divider') return '<div style="margin-bottom:10px"><span class="lbl">Style</span><select class="inp" onchange="updSec('+i+',\'style\',this.value)">' +
+    ['line','thick','dots','space'].map(function(v){return '<option'+(c.style===v?' selected':'')+' value="'+v+'">'+v+'</option>';}).join('') + '</select></div>';
+
+  return '<p style="font-size:11px;color:var(--txt3);padding:12px">No options for this section type.</p>';
+}
+
+function buildScopeForm(s, i) {
+  var c = s.content || {}; var rows = c.rows || [];
+  var html = '<p style="font-size:9px;color:var(--txt3);margin-bottom:8px">Description / Qty / Unit / Cost</p>';
+  rows.forEach(function(r,ri) {
+    html += '<div style="display:grid;grid-template-columns:3fr 1fr 1fr 1fr auto;gap:4px;margin-bottom:4px">' +
+      '<input class="inp" style="margin-bottom:0;font-size:9px" value="' + (r.desc||'').replace(/"/g,'&quot;') + '" oninput="updRow(' + i + ',' + ri + ',\'desc\',this.value)">' +
+      '<input class="inp" style="margin-bottom:0;font-size:9px;text-align:right" value="' + (r.qty||'') + '" oninput="updRow(' + i + ',' + ri + ',\'qty\',this.value)">' +
+      '<input class="inp" style="margin-bottom:0;font-size:9px" value="' + (r.unit||'') + '" oninput="updRow(' + i + ',' + ri + ',\'unit\',this.value)">' +
+      '<input class="inp" style="margin-bottom:0;font-size:9px;text-align:right" value="' + (r.cost||'') + '" oninput="updRow(' + i + ',' + ri + ',\'cost\',this.value)">' +
+      '<button onclick="delRow(' + i + ',' + ri + ')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px">✕</button></div>';
+  });
+  html += '<button class="btn" onclick="addRow(' + i + ')" style="width:100%;border-style:dashed;margin-bottom:10px">+ Add Row</button>';
+  html += '<div style="display:flex;align-items:center;gap:8px"><span class="lbl" style="margin:0;flex:1">Total</span>' +
+    '<input class="inp" style="margin-bottom:0;text-align:right;width:120px" value="' + (c.total||'') + '" oninput="updSec(' + i + ',\'total\',this.value)"></div>';
+  return html;
+}
+
+function updSec(i,k,v){ var s=getSecs();if(!s)return; s[i].content=s[i].content||{}; s[i].content[k]=v; renderPreview();saveNow(); }
+function updSigLines(i,v){ var s=getSecs();if(!s)return; s[i].content.lines=v.split('\n').filter(function(l){return l.trim();}); renderPreview();saveNow(); }
+function updRow(i,ri,k,v){ var s=getSecs();if(!s)return; s[i].content.rows[ri][k]=v; renderPreview();saveNow(); }
+function addRow(i){ var s=getSecs();if(!s)return; s[i].content.rows=s[i].content.rows||[]; s[i].content.rows.push({desc:'New item',qty:'',unit:'',cost:''}); openDrawer(i);renderPreview();saveNow(); }
+function delRow(i,ri){ var s=getSecs();if(!s)return; s[i].content.rows.splice(ri,1); openDrawer(i);renderPreview();saveNow(); }
+function attImg(e,i){ var file=e.target.files[0];if(!file)return; var r=new FileReader(); r.onload=function(ev){var s=getSecs();if(!s)return;s[i].content.image=ev.target.result;openDrawer(i);renderPreview();saveNow();}; r.readAsDataURL(file); }
+function clrImg(i){ var s=getSecs();if(!s)return; s[i].content.image=''; s[i].content.screenshot=''; openDrawer(i);renderPreview();saveNow(); }
+
+// ── TEMPLATES ──
+var TMPLS = [
+  {type:'custom-text',label:'Text Block',    icon:'📝',content:{title:'Section Title',text:'Add your content here.'}},
+  {type:'photo',      label:'Photo',         icon:'🖼', content:{caption:'',image:'',width:100,align:'center'}},
+  {type:'notes',      label:'Callout Box',   icon:'💬',content:{text:'Important callout text.',style:'callout'}},
+  {type:'two-col',    label:'Two Columns',   icon:'⊟', content:{title:'',left:'Left column.',right:'Right column.'}},
+  {type:'divider',    label:'Divider',       icon:'─', content:{style:'line'}},
+  {type:'custom-text',label:'Thank You',     icon:'🤝',content:{title:'Thank You For Your Business',text:'We appreciate the opportunity to serve you. Our team is committed to delivering exceptional quality on time and within budget.\n\nIf you have any questions, please don\'t hesitate to reach out.'}},
+  {type:'custom-text',label:'Warranty',      icon:'✓', content:{title:'Warranty & Guarantee',text:'All asphalt paving work is warranted against defects in materials and workmanship for one year from completion.\n\nSealcoating carries a two-year warranty under normal traffic conditions.'}},
+  {type:'custom-text',label:'Terms',         icon:'📄',content:{title:'Terms & Conditions',text:'PAYMENT: 50% deposit required prior to mobilization. Balance due upon completion.\n\nCHANGE ORDERS: Any work outside original scope requires written authorization.\n\nWEATHER: We reserve the right to reschedule due to conditions compromising quality.'}},
+  {type:'custom-text',label:'Testimonials',  icon:'⭐',content:{title:'What Our Clients Say',text:'"Exceptional work quality and professionalism throughout the entire project." — Property Manager\n\n"Completed ahead of schedule with zero disruption." — Facility Director'}},
+  {type:'custom-text',label:'About Us',      icon:'ℹ', content:{title:'About Our Company',text:'[Your company story, years in business, service area, specialties, certifications and insurance information]'}},
+  {type:'custom-text',label:'Prev. Work',    icon:'🏗',content:{title:'Our Previous Work',text:'[Add photos and descriptions of previous projects here]'}},
+  {type:'scope',      label:'Custom Table',  icon:'⊞',content:{rows:[{desc:'Custom item',qty:'',unit:'ea',cost:''}],total:''}},
+  {type:'sigs',       label:'Signatures',    icon:'✍',content:{lines:['Authorized Signature / Date','Client Acceptance / Date']}},
+  {type:'phase',      label:'Phase Map',     icon:'📸',content:{phaseLabel:'Phase Map',phaseName:'Phase 1',zoneNames:'',screenshot:'',description:''}},
+];
+
+function toggleAddBar(){ var b=document.getElementById('add-bar'); b.style.display=b.style.display==='none'?'block':'none'; }
+function renderAddBar(){
+  var el=document.getElementById('tgrid');
+  el.innerHTML=TMPLS.map(function(t,i){
+    return '<div class="titem" onclick="addSec('+i+')">' +
+      '<span class="tico">'+t.icon+'</span>' +
+      '<span class="tlbl">'+t.label+'</span></div>';
+  }).join('');
+}
+
+function addSec(ti) {
+  var tpl=TMPLS[ti]; var t=getT(); if(!t)return;
+  var secs=t.sections[activeTab];
+  var si=secs.findIndex(function(s){return s.type==='sigs';});
+  var ns={id:'s'+Date.now(),type:tpl.type,label:tpl.label,vis:true,locked:false,content:JSON.parse(JSON.stringify(tpl.content))};
+  if(si>-1)secs.splice(si,0,ns); else secs.push(ns);
+  renderSecList();renderPreview();saveNow();
+  var ni=secs.findIndex(function(s){return s.id===ns.id;});
+  if(ni>-1)openDrawer(ni);
+  document.getElementById('add-bar').style.display='none';
+}
+
+// ── RENDER PREVIEW ──
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach(function(el,i){
+    el.classList.toggle('on',['client','foreman','contractor'][i]===tab);
+  });
+  renderSecList();
+  renderPreview();
+}
+
+function renderPreview() {
+  var t = getT();
+  if (!t) return;
+  var secs = getSecs();
+  if (!secs) return;
+
+  var P = t.colors.primary || '#111';
+  var A = t.colors.accent  || '#d4a843';
+  var BG= t.colors.bg      || '#fff';
+  var TX= t.colors.textcol || '#1a1a1a';
+  var HF= t.fonts.heading  || 'Inter';
+  var BF= t.fonts.body     || 'Inter';
+  var PAD= {normal:'48px',tight:'28px',wide:'64px'}[t.pagePad||'normal'];
+
+  var logo    = localStorage.getItem('paveview_logo')     || '';
+  var co      = localStorage.getItem('paveview_company')  || 'Your Company Name';
+  var uname   = localStorage.getItem('paveview_user_name')|| '';
+  var logoEl  = logo ? '<img src="'+logo+'" style="height:52px;max-width:160px;object-fit:contain;display:block;margin-bottom:10px">' : '';
+  var docLbl  = {client:'CLIENT PROPOSAL',foreman:'FOREMAN WORK ORDER',contractor:'CONTRACTOR COPY'}[activeTab];
+
+  // stripe
+  function stripe() {
+    if(t.stripe==='none')return'';
+    if(t.stripe==='solid')return'<div style="height:4px;background:'+A+'"></div>';
+    if(t.stripe==='double')return'<div style="height:2px;background:'+A+'"></div><div style="height:1px;background:'+P+'33;margin-top:2px"></div>';
+    if(t.stripe==='thick')return'<div style="height:7px;background:'+A+'"></div>';
+    return'<div style="height:4px;background:linear-gradient(90deg,'+P+' 0%,'+A+' 40%,'+P+' 100%)"></div>';
+  }
+
+  // header
+  function mkHeader(c) {
+    c = c || {};
+    var sub = c.subName || uname || 'Professional Paving Services';
+    var badge = '<div style="display:inline-block;background:'+P+';color:'+A+';font-family:\'JetBrains Mono\',monospace;font-size:8px;font-weight:700;letter-spacing:.2em;padding:6px 16px">'+docLbl+'</div>';
+    if (t.headerStyle==='banner') return '<div style="background:'+P+';padding:36px '+PAD+';display:flex;justify-content:space-between;align-items:center">'+
+      (logoEl?'<div>'+logoEl+'</div>':'<div style="font-size:28px;font-weight:800;color:#fff;font-family:\''+HF+'\'">'+co+'</div>')+
+      '<div style="text-align:right">'+badge+'<div style="font-size:11px;color:#ffffff66;margin-top:6px">Today\'s Date</div></div></div>';
+    if (t.headerStyle==='centered') return '<div style="padding:36px '+PAD+' 24px;text-align:center;border-bottom:1px solid #e5e7eb">'+
+      (logoEl?'<div style="display:flex;justify-content:center;margin-bottom:10px">'+logoEl+'</div>':'')+
+      '<div style="font-size:28px;font-weight:800;font-family:\''+HF+'\';color:'+TX+'">'+co+'</div>'+
+      (uname?'<div style="font-size:11px;color:#9ca3af;margin-top:4px">'+uname+'</div>':'')+
+      '<div style="margin-top:14px">'+badge+'</div></div>';
+    if (t.headerStyle==='minimal') return '<div style="padding:24px '+PAD+';display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid '+A+'">'+
+      '<div style="font-size:22px;font-weight:700;font-family:\''+HF+'\';color:'+TX+';border-left:4px solid '+A+';padding-left:12px">'+co+'</div>'+
+      '<div style="font-size:9px;color:#9ca3af;letter-spacing:.2em;text-transform:uppercase">'+docLbl+'</div></div>';
+    if (t.headerStyle==='sidebar') return '<div style="display:grid;grid-template-columns:8px 1fr">'+
+      '<div style="background:'+A+'"></div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:28px '+PAD+';border-bottom:1px solid #e5e7eb">'+
+      '<div>'+logoEl+'<div style="font-size:26px;font-weight:800;font-family:\''+HF+'\';color:'+TX+'">'+co+'</div>'+
+      '<div style="font-size:11px;color:#9ca3af;margin-top:3px">'+sub+'</div></div>'+
+      '<div style="text-align:right">'+badge+'<div style="font-size:11px;color:#9ca3af;margin-top:6px">Today\'s Date</div></div></div></div>';
+    // default: split
+    return '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:36px '+PAD+' 28px;border-bottom:1px solid #e5e7eb">'+
+      '<div>'+logoEl+'<div style="font-size:26px;font-weight:800;font-family:\''+HF+'\';color:'+TX+';letter-spacing:-.03em">'+co+'</div>'+
+      '<div style="font-size:11px;color:#9ca3af;margin-top:3px">'+sub+'</div></div>'+
+      '<div style="text-align:right">'+badge+
+      '<div style="font-size:11px;color:#9ca3af;line-height:2;margin-top:8px">Today\'s Date<br>Job #: 2024-001'+(uname?'<br>Est: '+uname:'')+'</div></div></div>';
+  }
+
+  // table CSS
+  function tblCSS() {
+    var base = '<style>.rptbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:18px;font-family:\''+BF+'\'}' +
+      '.rptbl th{font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6b7280;padding:9px 12px;text-align:left}' +
+      '.rptbl td{padding:10px 12px;color:#374151}.rptbl td.n{font-family:\'JetBrains Mono\',monospace;font-size:11px;text-align:right}' +
+      '.rptbl tr.tot td{font-family:\'JetBrains Mono\',monospace;font-weight:700;font-size:11px;padding:12px}</style>';
+    var v = {
+      clean:'<style>.rptbl thead tr{background:#f8f8f8;border-top:2px solid '+P+';border-bottom:1px solid #e5e7eb}.rptbl tbody tr{border-bottom:1px solid #f5f5f5}.rptbl tr.tot td{background:'+P+';color:'+A+'}</style>',
+      striped:'<style>.rptbl thead tr{background:'+P+'}.rptbl th{color:'+A+'!important}.rptbl tbody tr:nth-child(even){background:#f8f8f8}.rptbl tr.tot td{background:'+P+';color:'+A+'}</style>',
+      bordered:'<style>.rptbl,.rptbl th,.rptbl td{border:1px solid #e5e7eb!important}.rptbl tr.tot td{background:'+P+';color:'+A+'}</style>',
+      'dark-header':'<style>.rptbl thead tr{background:'+P+'}.rptbl th{color:'+A+'!important}.rptbl tbody tr{border-bottom:1px solid #f0f0f0}.rptbl tr.tot td{background:'+P+';color:'+A+'}</style>',
+      minimal:'<style>.rptbl thead tr{border-bottom:2px solid '+P+'}.rptbl th{color:'+P+'!important}.rptbl tbody tr{border-bottom:1px solid #e5e7eb}.rptbl tr.tot td{color:'+P+'}</style>'
+    };
+    return base + (v[t.tableStyle||'clean']||v.clean);
+  }
+
+  // section label
+  function secLbl(text, sid, f) {
+    var attr = sid ? ' data-sid="'+sid+'" data-f="'+(f||'label')+'"' : '';
+    return '<div contenteditable="true"'+attr+' style="font-size:8px;font-weight:700;color:'+A+';letter-spacing:.22em;text-transform:uppercase;margin:24px 0 10px;padding-bottom:6px;border-bottom:1.5px solid #f0f0f0;font-family:\'JetBrains Mono\',monospace;outline:none">'+text+'</div>';
+  }
+
+  // render section
+  function secHtml(s) {
+    if (!s.vis) return '';
+    var c = s.content || {};
+    switch (s.type) {
+      case 'header': return mkHeader(c);
+      case 'stripe': return stripe();
+      case 'infoband':
+        return '<div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;border-bottom:1px solid #f0f0f0;font-family:\''+BF+'\'">' +
+          '<div style="padding:20px '+PAD+';border-right:1px solid #f0f0f0">' +
+            '<div contenteditable="true" data-sid="'+s.id+'" data-f="labelPrepared" style="font-size:8px;font-weight:700;color:'+A+';letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px;outline:none">'+(c.labelPrepared||'Prepared For')+'</div>' +
+            '<div contenteditable="true" data-sid="'+s.id+'" data-f="preparedFor" style="font-size:17px;font-weight:700;color:'+TX+';font-family:\''+HF+'\';margin-bottom:3px;outline:none">'+(c.preparedFor||'Client Name')+'</div>' +
+            '<div contenteditable="true" data-sid="'+s.id+'" data-f="contact" style="font-size:11px;color:#6b7280;line-height:1.6;outline:none">'+([c.contact,c.phone,c.email].filter(Boolean).join('<br>')||'Contact info')+'</div>' +
+          '</div>' +
+          '<div style="padding:20px '+PAD+';border-right:1px solid #f0f0f0">' +
+            '<div contenteditable="true" data-sid="'+s.id+'" data-f="labelSite" style="font-size:8px;font-weight:700;color:'+A+';letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px;outline:none">'+(c.labelSite||'Job Site')+'</div>' +
+            '<div contenteditable="true" data-sid="'+s.id+'" data-f="site" style="font-size:15px;font-weight:600;color:'+TX+';font-family:\''+HF+'\';outline:none">'+(c.site||'Site Address')+'</div>' +
+          '</div>' +
+          '<div style="padding:20px '+PAD+'">' +
+            '<div contenteditable="true" data-sid="'+s.id+'" data-f="labelProject" style="font-size:8px;font-weight:700;color:'+A+';letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px;outline:none">'+(c.labelProject||'Project')+'</div>' +
+            '<div contenteditable="true" data-sid="'+s.id+'" data-f="project" style="font-size:15px;font-weight:600;color:'+TX+';font-family:\''+HF+'\';outline:none">'+(c.project||'Project Name')+'</div>' +
+          '</div></div>';
+      case 'kpis': {
+        var kd = c.cards || [{l:'Total Area',v:'24,500 sf',col:A},{l:'Acreage',v:'0.562',col:'#e5e7eb'},{l:'Stalls',v:'84',col:'#3b82f6'},{l:'Est. Total',v:'$42,800',col:A}];
+        return '<div style="display:grid;grid-template-columns:repeat('+kd.length+',1fr);border-bottom:1px solid #f0f0f0">' +
+          kd.map(function(k,ki){
+            return '<div style="padding:18px 16px;border-right:1px solid #f0f0f0;position:relative">' +
+              '<div style="position:absolute;top:0;left:0;right:0;height:3px;background:'+(k.col||A)+'"></div>' +
+              '<div contenteditable="true" data-sid="'+s.id+'" data-f="card_lbl_'+ki+'" style="font-size:8px;font-weight:600;color:#9ca3af;letter-spacing:.15em;text-transform:uppercase;margin-bottom:4px;font-family:\'JetBrains Mono\',monospace;outline:none">'+k.l+'</div>' +
+              '<div contenteditable="true" data-sid="'+s.id+'" data-f="card_val_'+ki+'" style="font-size:22px;font-weight:800;color:'+TX+';letter-spacing:-.02em;font-family:\''+HF+'\';outline:none">'+k.v+'</div></div>';
+          }).join('') + '</div>';
+      }
+      case 'map':
+        return '<div style="padding:0 '+PAD+'">'+secLbl('Site Plan',s.id,'label')+
+          '<div style="background:#1a1a1a;height:280px;display:flex;align-items:center;justify-content:center;border-radius:3px;margin-bottom:18px">'+
+          '<span style="font-size:11px;color:#444;font-family:\'JetBrains Mono\',monospace">[ SITE MAP — renders from takeoff data ]</span></div></div>';
+      case 'scope':
+        return '<div style="padding:0 '+PAD+'">'+secLbl(s.label||'Scope of Work',s.id,'label')+
+          '<table class="rptbl"><thead><tr><th>Description</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Est. Cost</th></tr></thead><tbody>' +
+          (c.rows||[]).map(function(r){return '<tr>'+
+            '<td contenteditable="true">'+r.desc+'</td>'+
+            '<td class="n" contenteditable="true">'+r.qty+'</td>'+
+            '<td class="n" contenteditable="true">'+r.unit+'</td>'+
+            '<td class="n" contenteditable="true">'+r.cost+'</td></tr>';}).join('') +
+          (c.total?'<tr class="tot"><td colspan="3">ESTIMATED TOTAL</td><td style="text-align:right" contenteditable="true">'+c.total+'</td></tr>':'')+
+          '</tbody></table></div>';
+      case 'notes': case 'conditions': {
+        var ns=c.style||'callout';
+        var nst=ns==='callout'?'border-left:3px solid '+A+';padding:14px 18px;background:'+A+'08':ns==='box'?'border:1px solid '+A+'44;padding:14px 18px':'padding:4px 0';
+        return '<div style="padding:0 '+PAD+'">'+secLbl(s.label,s.id,'label')+
+          '<div style="'+nst+';font-size:'+(c.fontSize||13)+'px;color:#4b5563;line-height:1.8;font-family:\''+BF+'\';margin-bottom:16px;white-space:pre-wrap" contenteditable="true" data-sid="'+s.id+'" data-f="text">'+(c.text||'')+'</div></div>';
+      }
+      case 'sigs':
+        return '<div style="padding:0 '+PAD+'">'+secLbl('Authorization',s.id,'authLabel')+
+          '<div style="display:grid;grid-template-columns:'+((c.lines||[]).map(function(){return'1fr';}).join(' '))+';gap:24px;margin:0 0 24px">' +
+          (c.lines||['Contractor / Date','Client / Date']).map(function(l){return '<div>'+
+            '<div style="height:1px;background:'+P+';margin-bottom:7px"></div>'+
+            '<div style="font-size:9px;color:#9ca3af;letter-spacing:.12em;text-transform:uppercase;font-family:\'JetBrains Mono\',monospace" contenteditable="true">'+l+'</div></div>';}).join('')+
+          '</div></div>';
+      case 'footer':
+        return '<div style="font-size:9px;color:#9ca3af;line-height:1.6;border-top:1px solid #f0f0f0;padding:12px '+PAD+';display:flex;justify-content:space-between;font-family:\''+BF+'\'">'+
+          '<span contenteditable="true" data-sid="'+s.id+'" data-f="footerCo" style="font-weight:600;color:'+P+';outline:none">'+(c.footerCo||co)+'</span>'+
+          '<span contenteditable="true" data-sid="'+s.id+'" data-f="text">'+(c.text||'Footer text')+'</span></div>';
+      case 'custom-text':
+        return '<div style="padding:40px '+PAD+'"><div style="height:3px;background:'+A+';margin-bottom:32px"></div>'+
+          '<h2 contenteditable="true" data-sid="'+s.id+'" data-f="title" style="font-size:24px;font-weight:800;font-family:\''+HF+'\';color:'+TX+';letter-spacing:-.02em;margin-bottom:18px;outline:none">'+(c.title||'Section Title')+'</h2>'+
+          '<div contenteditable="true" data-sid="'+s.id+'" data-f="text" style="font-size:'+(c.fontSize||13)+'px;color:#374151;line-height:1.9;font-family:\''+BF+'\';white-space:pre-wrap;outline:none;min-height:40px">'+(c.text||'Start typing here…')+'</div></div>';
+      case 'photo': {
+        var pw=c.width||100; var pa=c.align||'center'; var ph=c.maxHeight||480;
+        return '<div style="padding:28px '+PAD+'">'+
+          '<div contenteditable="true" data-sid="'+s.id+'" data-f="caption" style="font-size:8px;font-weight:700;color:'+A+';letter-spacing:.2em;text-transform:uppercase;margin-bottom:10px;font-family:\'JetBrains Mono\',monospace;outline:none">'+(c.caption||'')+'</div>'+
+          '<div style="text-align:'+pa+'">'+
+          (c.image?'<img src="'+c.image+'" style="width:'+pw+'%;max-height:'+ph+'px;object-fit:contain;border-radius:3px;display:inline-block">':
+            '<div style="background:#f5f5f5;border:2px dashed #ddd;height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border-radius:3px"><span style="font-size:32px">🖼</span><span style="font-size:11px;color:#aaa;font-family:\'JetBrains Mono\',monospace">Click Edit → Upload Image</span></div>')+
+          '</div>'+(c.description?'<div contenteditable="true" data-sid="'+s.id+'" data-f="description" style="font-size:11px;color:#6b7280;line-height:1.7;margin-top:10px;font-style:italic;font-family:\''+BF+'\';outline:none">'+c.description+'</div>':'')+
+          '</div>';
+      }
+      case 'two-col':
+        return '<div style="padding:0 '+PAD+'">'+secLbl(c.title||'',s.id,'title')+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:18px">'+
+          '<div contenteditable="true" data-sid="'+s.id+'" data-f="left" style="font-size:12px;color:#374151;line-height:1.8;font-family:\''+BF+'\';outline:none">'+(c.left||'Left column')+'</div>'+
+          '<div contenteditable="true" data-sid="'+s.id+'" data-f="right" style="font-size:12px;color:#374151;line-height:1.8;font-family:\''+BF+'\';outline:none">'+(c.right||'Right column')+'</div>'+
+          '</div></div>';
+      case 'divider': {
+        var ds={line:'height:1px;background:#e5e7eb',thick:'height:5px;background:'+A,dots:'height:1px;border-top:2px dotted #ddd',space:'height:24px'};
+        return '<div style="padding:0 '+PAD+'"><div style="'+(ds[c.style||'line']||ds.line)+';margin:12px 0"></div></div>';
+      }
+      case 'phase':
+        return '<div style="padding:0"><div style="height:4px;background:'+A+'"></div>'+
+          '<div style="padding:28px '+PAD+' 16px">'+
+          '<div contenteditable="true" data-sid="'+s.id+'" data-f="phaseLabel" style="font-size:8px;font-weight:700;color:'+A+';letter-spacing:.2em;text-transform:uppercase;margin-bottom:8px;font-family:\'JetBrains Mono\',monospace;outline:none">'+(c.phaseLabel||'Phase Map')+'</div>'+
+          '<div contenteditable="true" data-sid="'+s.id+'" data-f="phaseName" style="font-size:22px;font-weight:800;font-family:\''+HF+'\';color:'+TX+';letter-spacing:-.02em;margin-bottom:6px;outline:none">'+(c.phaseName||'Phase 1')+'</div>'+
+          (c.zoneNames?'<div style="font-size:11px;color:#6b7280">Zones: '+c.zoneNames+'</div>':'')+
+          '</div>'+
+          (c.screenshot?'<div style="padding:0 '+PAD+' 28px"><img src="'+c.screenshot+'" style="width:100%;border-radius:4px;border:1px solid #e5e7eb"></div>':
+            '<div style="margin:0 '+PAD+' 28px;background:#f5f5f5;border:2px dashed #ddd;height:200px;display:flex;align-items:center;justify-content:center;border-radius:3px"><span style="font-size:11px;color:#aaa;font-family:\'JetBrains Mono\',monospace">Phase screenshot — click Edit to upload</span></div>')+
+          (c.description?'<div style="padding:0 '+PAD+' 24px"><div contenteditable="true" data-sid="'+s.id+'" data-f="description" style="font-size:12px;color:#6b7280;line-height:1.7;font-family:\''+BF+'\';outline:none">'+c.description+'</div></div>':'')+
+          '</div>';
+      default: return '<div style="padding:20px '+PAD+';font-size:11px;color:#aaa">'+s.type+'</div>';
+    }
+  }
+
+  // build page HTML using string concat (no template literals = no parse risk)
+  var pageStyle = 'background:'+BG+';font-family:\''+BF+'\';color:'+TX;
+  var html = '<div class="rpage" style="'+pageStyle+'">' + tblCSS();
+
+  secs.forEach(function(s, i) {
+    if (!s.vis) return;
+    html += '<div class="sec-wrap" data-si="'+secs.indexOf(s)+'">';
+    html += secHtml(s);
+    html += '<div class="sec-ov"><button onclick="openDrawerByEl(this)">✎ Edit</button><button onclick="hideSecByEl(this)">Hide</button></div>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  var wrap = document.getElementById('prev-wrap');
+  wrap.innerHTML = html;
+  wrap.style.transform = 'scale('+zmVal+')';
+  wrap.style.transformOrigin = 'top center';
+
+  // wire contenteditable save-back
+  wrap.querySelectorAll('[data-sid][data-f]').forEach(function(el) {
+    el.addEventListener('input', function() {
+      var sid = el.dataset.sid, f = el.dataset.f;
+      var s2 = getSecs(); if (!s2) return;
+      var sec = s2.find(function(x){return x.id===sid;});
+      if (sec) { sec.content = sec.content || {}; sec.content[f] = el.innerHTML; }
+      saveNow();
+    });
+  });
+}
+
+function openDrawerByEl(btn){ var w=btn.closest('.sec-wrap');if(w)openDrawer(parseInt(w.dataset.si)); }
+function hideSecByEl(btn){ var w=btn.closest('.sec-wrap');if(w)toggleVis(parseInt(w.dataset.si)); }
+
+// ── ZOOM ──
+function doZoom(d) {
+  if(d===0) zmVal=0.85;
+  else zmVal=Math.max(0.3,Math.min(1.5,zmVal+d*0.1));
+  var w=document.getElementById('prev-wrap');
+  if(w){w.style.transform='scale('+zmVal+')';w.style.transformOrigin='top center';}
+  var l=document.getElementById('zoom-lbl');
+  if(l)l.textContent=Math.round(zmVal*100)+'%';
+}
+
+// ── PANELS ──
+function togglePnl(name){ document.getElementById('pnl-'+name).classList.toggle('open'); }
+
+// ── DIVIDER ──
+function initDivider(){
+  var dv=document.getElementById('div'), left=document.getElementById('left');
+  var drag=false,sx=0,sw=0;
+  dv.addEventListener('mousedown',function(e){drag=true;sx=e.clientX;sw=left.offsetWidth;});
+  window.addEventListener('mousemove',function(e){if(!drag)return;left.style.width=Math.max(220,Math.min(500,sw+(e.clientX-sx)))+'px';});
+  window.addEventListener('mouseup',function(){drag=false;});
+}
+
+// ── INIT ──
+function init() {
+  console.log('[PaveView] Report Builder init start');
+  loadThemes();
+  console.log('[PaveView] Themes loaded:', themes.length);
+  if (!themes.length) {
+    newTheme();
+  } else {
+    var saved = localStorage.getItem(LA);
+    var found = themes.find(function(t){return t.id===saved;}) || themes[0];
+    activeId = found.id;
+    renderThemeList();
+    loadControls();
+    renderSecList();
+  }
+  renderAddBar();
+  initDivider();
+  zmVal = 0.85;
+  window.addEventListener('beforeunload', saveNow);
+  console.log('[PaveView] Starting renderPreview, activeId:', activeId);
+  setTimeout(function(){
+    renderPreview();
+    console.log('[PaveView] renderPreview complete');
+  }, 150);
+}
+
+init();
+</script>
+</body>
+</html>
