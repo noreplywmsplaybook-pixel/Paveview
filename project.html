@@ -131,6 +131,10 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
 .phase-card,.eq-card{background:var(--surface2);border:1px solid var(--border);padding:10px 12px;margin-bottom:8px}
 .phase-card-hdr,.eq-card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .phase-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.phase-card.done{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.06)}
+.phase-pill{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border:1px solid var(--border);color:var(--text3)}
+.phase-pill.done{border-color:rgba(34,197,94,.45);color:#22c55e;background:rgba(34,197,94,.08)}
+.phase-pill.active{border-color:rgba(212,168,67,.45);color:var(--accent);background:rgba(212,168,67,.08)}
 .sub-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .sub-field{display:flex;flex-direction:column;gap:3px}
 .sub-lbl{font-family:'JetBrains Mono',monospace;font-size:7px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)}
@@ -833,6 +837,8 @@ async function loadMapImage(planPath){
       mapBgImg=img;mapImgW=img.naturalWidth;mapImgH=img.naturalHeight;
       URL.revokeObjectURL(url);
       initMap();
+      if(document.getElementById('view-active')?.style.display!=='none') renderPhasesMgmt();
+      if(document.getElementById('phase-modal')?.style.display==='block') drawPhasePreview(activePhaseIdx);
     };
     img.src=url;
   }catch(e){console.warn('Map load failed:',e);}
@@ -979,7 +985,10 @@ function loadSavedDetails(){
     'f-invoice':'invoice','f-change-order':'changeOrder','f-comp-notes':'compNotes'
   };
   Object.entries(fieldMap).forEach(([id,k])=>{if(d[k])sv2(id,d[k]);});
-  if(d.phases){phases=d.phases;renderPhases();renderPhasesMgmt();}
+  if(d.phases){phases=d.phases;}
+  normalizePhases();
+  renderPhases();
+  renderPhasesMgmt();
   if(d.equipment){equipment=d.equipment;renderEquipment();}
   if(d.dailyLogs){dailyLogs=d.dailyLogs;renderDailyLogs();}
   if(d.confirmed){confirmed=true;showConfirmedState();}
@@ -1116,17 +1125,160 @@ function updateCompleteKpis(){
 }
 
 // ── PHASES ──
-document.getElementById('btn-add-phase').onclick=()=>{phases.push({name:'',time:'',area:'',hours:'',crew:'',traffic:'',notes:''});renderPhases();renderPhasesMgmt();saveDetails();};
-document.getElementById('btn-add-phase-mgmt').onclick=()=>{phases.push({name:'',time:'',area:'',hours:'',crew:'',traffic:'',notes:''});renderPhases();renderPhasesMgmt();saveDetails();};
+function allZoneIds(){return (projectData.zones||[]).map(z=>z.id);}
+
+function normalizePhase(ph,idx){
+  const zids=allZoneIds();
+  const out=ph&&typeof ph==='object'?ph:{};
+  const zoneIds=Array.isArray(out.zoneIds)&&out.zoneIds.length?out.zoneIds.filter(Boolean):zids;
+  return{
+    id:out.id||('ph_'+Date.now()+'_'+idx+'_'+Math.floor(Math.random()*1000)),
+    name:out.name||'',
+    time:out.time||'',
+    area:out.area||'',
+    hours:out.hours||'',
+    crew:out.crew||'',
+    traffic:out.traffic||'',
+    notes:out.notes||'',
+    done:!!out.done,
+    zoneIds:[...new Set(zoneIds)]
+  };
+}
+
+function syncReportPhasesFromPhases(){
+  const byId=new Map((reportPhases||[]).map(r=>[r.id,r]));
+  reportPhases=phases.map((ph,i)=>{
+    const prev=byId.get(ph.id)||{};
+    return{
+      id:ph.id,
+      name:ph.name||('Phase '+(i+1)),
+      zoneIds:Array.isArray(ph.zoneIds)&&ph.zoneIds.length?ph.zoneIds.slice():allZoneIds(),
+      screenshot:prev.screenshot||null,
+      done:!!ph.done
+    };
+  });
+  phases=phases.map((ph,i)=>{
+    const rp=reportPhases[i];
+    return{
+      ...ph,
+      name:ph.name||rp.name,
+      zoneIds:rp.zoneIds.slice(),
+      done:!!ph.done
+    };
+  });
+}
+
+function normalizePhases(){
+  phases=(phases||[]).map((ph,i)=>normalizePhase(ph,i));
+  syncReportPhasesFromPhases();
+}
+
+function addPhase(){
+  phases.push(normalizePhase({name:'',time:'',area:'',hours:'',crew:'',traffic:'',notes:'',done:false},phases.length));
+  syncReportPhasesFromPhases();
+  renderPhases();
+  renderPhasesMgmt();
+  saveDetails();
+}
+
+function removePhaseAt(idx){
+  if(idx<0||idx>=phases.length)return;
+  phases.splice(idx,1);
+  syncReportPhasesFromPhases();
+  if(activePhaseIdx!==null){
+    if(activePhaseIdx===idx)activePhaseIdx=null;
+    else if(activePhaseIdx>idx)activePhaseIdx--;
+  }
+  renderPhases();
+  renderPhasesMgmt();
+  renderPhaseBuilderList();
+  if(activePhaseIdx!==null)drawPhasePreview(activePhaseIdx);
+  saveDetails();
+}
+
+function renamePhase(idx,val){
+  if(!phases[idx])return;
+  phases[idx].name=val;
+  syncReportPhasesFromPhases();
+  renderPhases();
+  renderPhasesMgmt();
+  renderPhaseBuilderList();
+  saveDetails();
+}
+
+function setPhaseDone(idx,isDone){
+  if(!phases[idx])return;
+  phases[idx].done=!!isDone;
+  syncReportPhasesFromPhases();
+  renderPhases();
+  renderPhasesMgmt();
+  renderPhaseBuilderList();
+  refreshReport('foreman');
+  saveDetails();
+}
+
+function drawPhaseMiniMap(canvas,ph){
+  if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0d0d0f';ctx.fillRect(0,0,W,H);
+  if(!mapImgW){
+    ctx.fillStyle='#888';
+    ctx.font='11px "JetBrains Mono", monospace';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('Map unavailable',W/2,H/2);
+    return;
+  }
+  const pad=12;
+  const zoom=Math.min((W-pad*2)/mapImgW,(H-pad*2)/mapImgH);
+  const panX=(W-mapImgW*zoom)/2,panY=(H-mapImgH*zoom)/2;
+  const activeZoneIds=Array.isArray(ph.zoneIds)?ph.zoneIds:[];
+  ctx.save();ctx.translate(panX,panY);ctx.scale(zoom,zoom);
+  if(mapBgImg)ctx.drawImage(mapBgImg,0,0);
+  (projectData.zones||[]).forEach(z=>{
+    if(!z.pts||z.pts.length<3)return;
+    const isActive=!activeZoneIds.length||activeZoneIds.includes(z.id);
+    ctx.globalAlpha=isActive?1:0.14;
+    ctx.beginPath();z.pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));ctx.closePath();
+    ctx.fillStyle=(z.color||'#d4a843')+'44';ctx.fill();
+    ctx.strokeStyle=z.color||'#d4a843';ctx.lineWidth=(isActive?2.5:1)/zoom;ctx.stroke();
+    if(isActive){
+      const cx2=z.pts.reduce((s,p)=>s+p.x,0)/z.pts.length;
+      const cy2=z.pts.reduce((s,p)=>s+p.y,0)/z.pts.length;
+      const fs=Math.max(9,11/zoom);
+      ctx.font=`700 ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+      const tw=ctx.measureText(z.name).width;
+      ctx.globalAlpha=1;
+      ctx.fillStyle='rgba(0,0,0,.78)';ctx.fillRect(cx2-tw/2-6,cy2-fs/2-4,tw+12,fs+8);
+      ctx.fillStyle=z.color||'#d4a843';ctx.fillText(z.name,cx2,cy2);
+    }
+    ctx.globalAlpha=1;
+  });
+  ctx.restore();
+}
+
+document.getElementById('btn-add-phase').onclick=addPhase;
+document.getElementById('btn-add-phase-mgmt').onclick=addPhase;
 
 function renderPhases(){
   const list=document.getElementById('phases-list');if(!list)return;
+  normalizePhases();
   list.innerHTML='';
   phases.forEach((ph,i)=>{
-    const el=document.createElement('div');el.className='phase-card';
-    el.innerHTML=`<div class="phase-card-hdr"><span class="phase-lbl">Phase ${i+1}</span><button onclick="phases.splice(${i},1);renderPhases();renderPhasesMgmt();saveDetails()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px">✕</button></div>
+    const rp=reportPhases.find(r=>r.id===ph.id);
+    const shot=rp&&rp.screenshot;
+    const el=document.createElement('div');el.className='phase-card'+(ph.done?' done':'');
+    el.innerHTML=`<div class="phase-card-hdr"><span class="phase-lbl">Phase ${i+1}${ph.name?' — '+ph.name:''}</span><div style="display:flex;gap:6px;align-items:center"><span class="phase-pill ${ph.done?'done':'active'}">${ph.done?'Complete':'Pending'}</span><button onclick="removePhaseAt(${i})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px">✕</button></div></div>
     <div class="sub-grid">
-      ${['name:Name','time:Time/Day','area:Area','hours:Bid Hrs','crew:Crew','traffic:Traffic Control','notes:Notes'].map(([k,l])=>l?`<div class="sub-field"><div class="sub-lbl">${l}</div><input class="sub-inp" value="${ph[k]||''}" placeholder="${l}…" oninput="phases[${i}]['${k}']=this.value;renderPhasesMgmt();saveDetails()"></div>`:'').join('')}
+      <div class="sub-field"><div class="sub-lbl">Name</div><input class="sub-inp" value="${ph.name||''}" placeholder="Name…" oninput="renamePhase(${i},this.value)"></div>
+      <div class="sub-field"><div class="sub-lbl">Time/Day</div><input class="sub-inp" value="${ph.time||''}" placeholder="Time/Day…" oninput="phases[${i}].time=this.value;renderPhasesMgmt();saveDetails()"></div>
+      <div class="sub-field"><div class="sub-lbl">Area</div><input class="sub-inp" value="${ph.area||''}" placeholder="Area…" oninput="phases[${i}].area=this.value;renderPhasesMgmt();saveDetails()"></div>
+      <div class="sub-field"><div class="sub-lbl">Bid Hrs</div><input class="sub-inp" value="${ph.hours||''}" placeholder="Bid Hrs…" oninput="phases[${i}].hours=this.value;renderPhasesMgmt();saveDetails()"></div>
+      <div class="sub-field"><div class="sub-lbl">Crew</div><input class="sub-inp" value="${ph.crew||''}" placeholder="Crew…" oninput="phases[${i}].crew=this.value;renderPhasesMgmt();saveDetails()"></div>
+      <div class="sub-field"><div class="sub-lbl">Traffic Control</div><input class="sub-inp" value="${ph.traffic||''}" placeholder="Traffic Control…" oninput="phases[${i}].traffic=this.value;renderPhasesMgmt();saveDetails()"></div>
+      <div class="sub-field"><div class="sub-lbl">Notes</div><input class="sub-inp" value="${ph.notes||''}" placeholder="Notes…" oninput="phases[${i}].notes=this.value;renderPhasesMgmt();saveDetails()"></div>
+      <div class="sub-field"><div class="sub-lbl">Mark Complete</div><label style="display:flex;align-items:center;gap:6px;color:var(--text2);font-size:10px"><input type="checkbox" ${ph.done?'checked':''} onchange="setPhaseDone(${i},this.checked)" style="accent-color:#22c55e"><span>${ph.done?'Done':'Open'}</span></label></div>
     </div>`;
     list.appendChild(el);
   });
@@ -1134,17 +1286,29 @@ function renderPhases(){
 
 function renderPhasesMgmt(){
   const list=document.getElementById('phases-list-mgmt');if(!list)return;
-  if(!phases.length){list.innerHTML='<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--text3);padding:8px">No phases added. Click + Add Phase to begin.</div>';return;}
+  normalizePhases();
+  if(!phases.length){list.innerHTML="<div style=\"font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);padding:8px\">No phases added. Click + Add Phase to begin.</div>";return;}
   list.innerHTML='';
   phases.forEach((ph,i)=>{
-    const el=document.createElement('div');el.className='phase-card';
-    el.innerHTML=`<div class="phase-card-hdr"><span class="phase-lbl">Phase ${i+1}${ph.name?' — '+ph.name:''}</span><div style="display:flex;gap:4px">
+    const rp=reportPhases.find(r=>r.id===ph.id);
+    const shot=rp&&rp.screenshot;
+    const el=document.createElement('div');el.className='phase-card'+(ph.done?' done':'');
+    const doneBtn=ph.done?'<button class="btn" onclick="setPhaseDone('+i+',false)" style="padding:2px 8px;font-size:8px">↺ Reopen</button>':'<button class="btn ok" onclick="setPhaseDone('+i+',true)" style="padding:2px 8px;font-size:8px">✓ Mark Done</button>';
+    el.innerHTML=`<div class="phase-card-hdr"><span class="phase-lbl">Phase ${i+1}${ph.name?' — '+ph.name:''}</span><div style="display:flex;gap:6px;align-items:center">
+      <span class="phase-pill ${ph.done?'done':'active'}">${ph.done?'Complete':'In Progress'}</span>
       ${ph.time?`<span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3)">${ph.time}</span>`:''}
-      <button onclick="phases.splice(${i},1);renderPhases();renderPhasesMgmt();saveDetails()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px">✕</button></div></div>
+      ${doneBtn}
+      <button onclick="removePhaseAt(${i})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px">✕</button></div></div>
     <div class="sub-grid">
       ${['area:Area','hours:Bid Hrs','crew:Crew','traffic:Traffic','notes:Notes'].map(([k,l])=>l?`<div class="sub-field"><div class="sub-lbl">${l}</div><input class="sub-inp" value="${ph[k]||''}" placeholder="${l}…" oninput="phases[${i}]['${k}']=this.value;renderPhases();saveDetails()"></div>`:'').join('')}
+    </div>
+    <div style="margin-top:8px;border:1px solid var(--border);background:#0d0d0f;padding:6px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);letter-spacing:.08em;margin-bottom:4px;text-transform:uppercase">Phase Map ${Array.isArray(ph.zoneIds)&&ph.zoneIds.length?`(${ph.zoneIds.length} zones)`:''}</div>
+      ${shot?`<img src="${shot}" style="width:100%;display:block;border:1px solid #1a1a1a">`:`<canvas width="640" height="220" data-phase-mini="${i}" style="width:100%;height:auto;display:block;border:1px solid #1a1a1a;background:#0d0d0f"></canvas>`}
     </div>`;
     list.appendChild(el);
+    const c=el.querySelector('canvas[data-phase-mini]');
+    if(c)drawPhaseMiniMap(c,ph);
   });
 }
 
@@ -1593,37 +1757,38 @@ function setBrandColor(type,val){
 let activePhaseIdx=null;
 
 function openPhaseBuilder(){
+  normalizePhases();
   document.getElementById('phase-modal').style.display='block';
+  if(activePhaseIdx===null&&reportPhases.length)activePhaseIdx=0;
   renderPhaseBuilderList();
-  drawPhasePreview(null);
+  drawPhasePreview(activePhaseIdx);
 }
 
 function addReportPhase(){
-  const allZones=projectData.zones||[];
-  reportPhases.push({
-    id:'ph'+Date.now(),
-    name:'Phase '+(reportPhases.length+1),
-    zoneIds:allZones.map(z=>z.id), // default all zones
-    screenshot:null
-  });
+  addPhase();
+  activePhaseIdx=Math.max(0,reportPhases.length-1);
   renderPhaseBuilderList();
+  drawPhasePreview(activePhaseIdx);
 }
 
 function renderPhaseBuilderList(){
   const list=document.getElementById('phase-builder-list');
   if(!list)return;
+  normalizePhases();
   const allZones=projectData.zones||[];
   list.innerHTML=reportPhases.map((ph,i)=>`
-    <div style="background:var(--surface,#1c1c1e);border:1px solid var(--border,#2a2a2c);border-radius:3px;padding:12px;margin-bottom:8px">
+    <div style="background:var(--surface,#1c1c1e);border:1px solid ${ph.done?'rgba(34,197,94,.4)':'var(--border,#2a2a2c)'};border-radius:3px;padding:12px;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
         <div style="width:10px;height:10px;border-radius:50%;background:${ph.screenshot?'#22c55e':'#444'}"></div>
         <input type="text" value="${ph.name}" placeholder="Phase name"
           style="flex:1;background:var(--bg,#141416);border:1px solid var(--border,#2a2a2c);color:var(--text,#f0eeea);font-family:'JetBrains Mono',monospace;font-size:10px;padding:4px 8px;outline:none"
-          oninput="reportPhases[${i}].name=this.value">
+          oninput="renamePhase(${i},this.value)">
+        <span class="phase-pill ${ph.done?'done':'active'}">${ph.done?'Complete':'Open'}</span>
+        <button onclick="setPhaseDone(${i},${ph.done?'false':'true'})" class="btn" style="font-size:8px;padding:2px 6px">${ph.done?'Reopen':'Done'}</button>
         <button onclick="setActivePhase(${i})" class="btn${activePhaseIdx===i?' accent':''}" style="font-size:9px;padding:3px 8px">
           ${activePhaseIdx===i?'▶ Active':'Preview'}
         </button>
-        <button onclick="reportPhases.splice(${i},1);activePhaseIdx=null;renderPhaseBuilderList()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px">✕</button>
+        <button onclick="removePhaseAt(${i})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px">✕</button>
       </div>
       <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3,#666);margin-bottom:6px;letter-spacing:.08em">INCLUDE ZONES:</div>
       <div style="display:flex;flex-wrap:wrap;gap:4px">
@@ -1638,11 +1803,17 @@ function renderPhaseBuilderList(){
 }
 
 function togglePhaseZone(phIdx,zoneId,checked){
+  if(!reportPhases[phIdx])return;
   if(checked){
     if(!reportPhases[phIdx].zoneIds.includes(zoneId)) reportPhases[phIdx].zoneIds.push(zoneId);
   } else {
     reportPhases[phIdx].zoneIds=reportPhases[phIdx].zoneIds.filter(id=>id!==zoneId);
   }
+  const pidx=phases.findIndex(p=>p.id===reportPhases[phIdx].id);
+  if(pidx>-1) phases[pidx].zoneIds=reportPhases[phIdx].zoneIds.slice();
+  renderPhasesMgmt();
+  renderPhases();
+  saveDetails();
   if(activePhaseIdx===phIdx) drawPhasePreview(phIdx);
 }
 
@@ -1701,14 +1872,18 @@ function capturePhaseScreenshot(){
   reportPhases[activePhaseIdx].screenshot=canvas.toDataURL('image/jpeg',0.9);
   const status=document.getElementById('phase-capture-status');
   if(status){status.style.display='block';setTimeout(()=>status.style.display='none',2500);}
+  renderPhasesMgmt();
   renderPhaseBuilderList();
+  saveDetails();
 }
 
 function applyPhasesToReport(){
+  syncReportPhasesFromPhases();
   document.getElementById('phase-modal').style.display='none';
   refreshReport('client');
   refreshReport('foreman');
   refreshReport('contractor');
+  saveDetails();
 }
 
 // ── PAGE TEMPLATES ──
@@ -2445,7 +2620,7 @@ function buildForemanHtml(rMapId){
     html+='<div class="rsec">Phasing Plan</div>';
     html+=`<div style="display:grid;grid-template-columns:${phases.length===1?'1fr':'1fr 1fr'};gap:10px;margin-bottom:14px">`;
     phases.forEach((ph,i)=>{
-      html+=`<div style="border:1px solid #e5e7eb;overflow:hidden"><div style="background:#111;padding:7px 10px;display:flex;justify-content:space-between"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#f5c842">Phase ${i+1}${ph.name?' — '+ph.name:''}</span><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#888">${ph.time||''}</span></div><div style="padding:8px 10px;background:#fafafa">`;
+      html+=`<div style="border:1px solid #e5e7eb;overflow:hidden"><div style="background:#111;padding:7px 10px;display:flex;justify-content:space-between;gap:8px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#f5c842">Phase ${i+1}${ph.name?' — '+ph.name:''}</span><span style="display:flex;align-items:center;gap:8px"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:${ph.done?'#22c55e':'#888'};border:1px solid ${ph.done?'rgba(34,197,94,.35)':'rgba(255,255,255,.15)'};padding:1px 6px;text-transform:uppercase;letter-spacing:.08em">${ph.done?'Complete':'Open'}</span><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#888">${ph.time||''}</span></span></div><div style="padding:8px 10px;background:#fafafa">`;
       if(ph.area)html+=`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #f0f0f0"><span style="color:#888">Area</span><span style="font-family:monospace;font-size:10px;font-weight:600">${ph.area}</span></div>`;
       if(ph.hours)html+=`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #f0f0f0"><span style="color:#888">Bid hours</span><span style="font-family:monospace;font-size:10px;font-weight:600;color:#16a34a">${ph.hours} MH</span></div>`;
       if(ph.crew)html+=`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #f0f0f0"><span style="color:#888">Crew</span><span style="font-family:monospace;font-size:10px;font-weight:600">${ph.crew}</span></div>`;
