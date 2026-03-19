@@ -713,11 +713,15 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
       </div>
       <div style="position:relative;background:#0d0d0f;border:1px solid var(--border,#2a2a2c)">
         <canvas id="phase-preview-canvas" width="700" height="380" style="display:block;width:100%;cursor:grab"></canvas>
+        <div style="position:absolute;top:8px;left:8px;display:flex;gap:6px">
+          <button id="btn-phase-mode-phase" onclick="setPhasePreviewMode('phase')" class="btn" style="font-size:9px;padding:4px 10px;background:var(--accent);border-color:var(--accent);color:#000">Phase View</button>
+          <button id="btn-phase-mode-site" onclick="setPhasePreviewMode('site')" class="btn" style="font-size:9px;padding:4px 10px;background:var(--surface,#1c1c1e);border-color:var(--border,#2a2a2c);color:var(--text,#f0eeea)">Site Map View</button>
+        </div>
         <div style="position:absolute;top:8px;right:8px;display:flex;gap:6px">
-          <button onclick="zoomPhasePreview(1.2)" class="btn" style="font-size:9px;padding:4px 8px">＋</button>
-          <button onclick="zoomPhasePreview(1/1.2)" class="btn" style="font-size:9px;padding:4px 8px">－</button>
-          <button onclick="fitPhasePreview()" class="btn" style="font-size:9px;padding:4px 8px">Fit</button>
-          <button onclick="captureMainMapScreenshot()" class="btn" style="font-size:9px;padding:4px 10px">🗺 Main Map</button>
+          <button onclick="zoomPhasePreview(1.2)" class="btn" style="font-size:9px;padding:4px 8px;background:var(--accent);border-color:var(--accent);color:#000">＋</button>
+          <button onclick="zoomPhasePreview(1/1.2)" class="btn" style="font-size:9px;padding:4px 8px;background:var(--accent);border-color:var(--accent);color:#000">－</button>
+          <button onclick="fitPhasePreview()" class="btn" style="font-size:9px;padding:4px 8px;background:var(--accent);border-color:var(--accent);color:#000">Fit</button>
+          <button onclick="captureMainMapScreenshot()" class="btn" style="font-size:9px;padding:4px 10px;background:var(--accent);border-color:var(--accent);color:#000">🗺 Main Map</button>
           <button onclick="capturePhaseScreenshot()" class="btn accent" style="font-size:9px;padding:4px 10px">📷 Capture</button>
         </div>
       </div>
@@ -758,6 +762,7 @@ let reportMapSnapshot='';
 
 let mapZoom=1,mapPanX=0,mapPanY=0,mapDragging=false,mapLastX=0,mapLastY=0,mapImgW=0,mapImgH=0,mapBgImg=null;
 let phasePreviewZoom=1,phasePreviewPanX=0,phasePreviewPanY=0,phasePreviewDragging=false,phasePreviewLastX=0,phasePreviewLastY=0,phasePreviewBound=false;
+let phasePreviewMode='phase';
 
 // ── THEME ──
 function toggleThemeProj(){
@@ -1322,7 +1327,9 @@ function renderPhasesMgmt(){
     </div>
     <div style="margin-top:8px;border:1px solid var(--border);background:#0d0d0f;padding:6px">
       <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);letter-spacing:.08em;margin-bottom:4px;text-transform:uppercase">Phase Map ${Array.isArray(ph.zoneIds)&&ph.zoneIds.length?`(${ph.zoneIds.length} zones)`:''}</div>
-      ${shot?`<img src="${shot}" style="width:100%;display:block;border:1px solid #1a1a1a">`:`<canvas width="640" height="220" data-phase-mini="${i}" style="width:100%;height:auto;display:block;border:1px solid #1a1a1a;background:#0d0d0f"></canvas>`}
+      <div style="width:180px;height:180px;border:1px solid #1a1a1a;background:#0d0d0f;display:flex;align-items:center;justify-content:center;overflow:hidden">
+        ${shot?`<img src="${shot}" style="width:100%;height:100%;object-fit:contain">`:`<canvas width="180" height="180" data-phase-mini="${i}" style="width:180px;height:180px;display:block;background:#0d0d0f"></canvas>`}
+      </div>
     </div>`;
     list.appendChild(el);
     const c=el.querySelector('canvas[data-phase-mini]');
@@ -1779,10 +1786,12 @@ let activePhaseIdx=null;
 
 function openPhaseBuilder(){
   normalizePhases();
+  phasePreviewMode='phase';
   document.getElementById('phase-modal').style.display='block';
   initPhasePreviewControls();
   if(activePhaseIdx===null&&reportPhases.length)activePhaseIdx=0;
   renderPhaseBuilderList();
+  refreshPhasePreviewModeButtons();
   fitPhasePreview();
 }
 
@@ -1820,7 +1829,7 @@ function renderPhaseBuilderList(){
             <span style="color:${z.color||'#d4a843'}">${z.name}</span>
           </label>`).join('')}
       </div>
-      ${ph.screenshot?`<div style="margin-top:8px"><img src="${ph.screenshot}" style="width:100%;max-height:100px;object-fit:cover;border-radius:2px;border:1px solid var(--border,#2a2a2c)"></div>`:''}
+      ${ph.screenshot?`<div style="margin-top:8px;display:flex;justify-content:flex-start"><div style="width:120px;height:120px;border:1px solid var(--border,#2a2a2c);border-radius:2px;background:#0d0d0f;display:flex;align-items:center;justify-content:center;overflow:hidden"><img src="${ph.screenshot}" style="width:100%;height:100%;object-fit:contain"></div></div>`:''}
     </div>`).join('')||`<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3,#666);padding:12px;text-align:center">No phases yet. Click + Add Phase.</div>`;
 }
 
@@ -1841,6 +1850,8 @@ function togglePhaseZone(phIdx,zoneId,checked){
 
 function setActivePhase(idx){
   activePhaseIdx=idx;
+  phasePreviewMode='phase';
+  refreshPhasePreviewModeButtons();
   renderPhaseBuilderList();
   drawPhasePreview(idx);
 }
@@ -1899,9 +1910,33 @@ function zoomPhasePreview(factor,cx,cy){
   drawPhasePreview(activePhaseIdx);
 }
 
+function refreshPhasePreviewModeButtons(){
+  const bp=document.getElementById('btn-phase-mode-phase');
+  const bs=document.getElementById('btn-phase-mode-site');
+  if(bp){
+    const on=phasePreviewMode==='phase';
+    bp.style.background=on?'var(--accent)':'var(--surface,#1c1c1e)';
+    bp.style.borderColor=on?'var(--accent)':'var(--border,#2a2a2c)';
+    bp.style.color=on?'#000':'var(--text,#f0eeea)';
+  }
+  if(bs){
+    const on=phasePreviewMode==='site';
+    bs.style.background=on?'var(--accent)':'var(--surface,#1c1c1e)';
+    bs.style.borderColor=on?'var(--accent)':'var(--border,#2a2a2c)';
+    bs.style.color=on?'#000':'var(--text,#f0eeea)';
+  }
+}
+
+function setPhasePreviewMode(mode){
+  phasePreviewMode=(mode==='site')?'site':'phase';
+  refreshPhasePreviewModeButtons();
+  drawPhasePreview(activePhaseIdx);
+}
+
 function drawPhasePreviewScene(ctx,W,H,opts){
   opts=opts||{};
   const phIdx=opts.phaseIdx!==undefined?opts.phaseIdx:activePhaseIdx;
+  const mode=opts.mode||phasePreviewMode;
   const zoom=opts.zoom||phasePreviewZoom;
   const panX=opts.panX!==undefined?opts.panX:phasePreviewPanX;
   const panY=opts.panY!==undefined?opts.panY:phasePreviewPanY;
@@ -1917,7 +1952,7 @@ function drawPhasePreviewScene(ctx,W,H,opts){
   }
   ctx.save();ctx.translate(panX,panY);ctx.scale(zoom,zoom);
   if(mapBgImg)ctx.drawImage(mapBgImg,0,0);
-  const activeZoneIds=opts.activeZoneIds!==undefined?opts.activeZoneIds:(phIdx!==null?(reportPhases[phIdx]?.zoneIds||[]):null);
+  const activeZoneIds=opts.activeZoneIds!==undefined?opts.activeZoneIds:(mode==='site'?null:(phIdx!==null?(reportPhases[phIdx]?.zoneIds||[]):null));
   (projectData.zones||[]).forEach(z=>{
     if(!z.pts||z.pts.length<3)return;
     const isActive=activeZoneIds===null||activeZoneIds.includes(z.id);
@@ -1938,7 +1973,7 @@ function drawPhasePreviewScene(ctx,W,H,opts){
     ctx.globalAlpha=1;
   });
   ctx.restore();
-  if(opts.showPhaseLabel!==false&&phIdx!==null&&reportPhases[phIdx]){
+  if(opts.showPhaseLabel!==false&&mode==='phase'&&phIdx!==null&&reportPhases[phIdx]){
     const label=reportPhases[phIdx].name||`Phase ${phIdx+1}`;
     ctx.font=`bold ${14*uiScale}px sans-serif`;ctx.textAlign='left';ctx.textBaseline='top';
     ctx.fillStyle='rgba(0,0,0,.72)';ctx.fillRect(10*uiScale,8*uiScale,Math.max(220,Math.min(420,label.length*10))*uiScale,26*uiScale);
@@ -1966,6 +2001,7 @@ function captureFromPhaseView(opts){
     phaseIdx:opts&&opts.phaseIdx!==undefined?opts.phaseIdx:activePhaseIdx,
     activeZoneIds:opts&&opts.activeZoneIds,
     showPhaseLabel:opts&&opts.showPhaseLabel,
+    mode:opts&&opts.mode,
     zoom:zoom*scale,
     panX:panX*scale,
     panY:panY*scale,
@@ -1985,13 +2021,17 @@ function capturePhaseScreenshot(){
   if(!shot)return;
   reportPhases[activePhaseIdx].screenshot=shot;
   showCaptureStatus('phase-capture-status');
+  rerenderCurrentReports();
   renderPhasesMgmt();
   renderPhaseBuilderList();
   saveDetails();
 }
 
 function captureMainMapScreenshot(){
-  const shot=captureFromPhaseView({phaseIdx:null,activeZoneIds:null,showPhaseLabel:false});
+  phasePreviewMode='site';
+  refreshPhasePreviewModeButtons();
+  drawPhasePreview(activePhaseIdx);
+  const shot=captureFromPhaseView({phaseIdx:null,activeZoneIds:null,showPhaseLabel:false,mode:'site'});
   if(!shot)return;
   reportMapSnapshot=shot;
   showCaptureStatus('main-map-capture-status');
@@ -2179,22 +2219,35 @@ function buildCustomPages(type){
 }
 
 function buildPhasePages(){
-  if(!reportPhases.length)return'';
-  return reportPhases.map(ph=>{
-    if(!ph.screenshot)return'';
-    const zoneNames=(projectData.zones||[]).filter(z=>ph.zoneIds.includes(z.id)).map(z=>z.name).join(', ');
-    return `<div class="rpage" style="padding:0">
+  const captured=(reportPhases||[]).filter(ph=>ph&&ph.screenshot);
+  if(!captured.length)return'';
+  const perPage=9;
+  let out='';
+  for(let i=0;i<captured.length;i+=perPage){
+    const slice=captured.slice(i,i+perPage);
+    out+=`<div class="rpage" style="padding:0">
       <div style="height:4px;background:${brandAccent}"></div>
-      <div style="padding:32px 48px 20px;border-bottom:1px solid #f0f0f0">
-        <div style="font-size:8px;font-weight:700;color:${brandAccent};letter-spacing:.2em;text-transform:uppercase;margin-bottom:8px">Phase Map</div>
-        <div style="font-size:22px;font-weight:800;color:${brandPrimary};letter-spacing:-.02em">${ph.name}</div>
-        ${zoneNames?`<div style="font-size:11px;color:#6b7280;margin-top:4px">Zones: ${zoneNames}</div>`:''}
+      <div style="padding:22px 26px 10px;border-bottom:1px solid #f0f0f0">
+        <div style="font-size:8px;font-weight:700;color:${brandAccent};letter-spacing:.2em;text-transform:uppercase;margin-bottom:8px">Phase Maps</div>
+        <div style="font-size:20px;font-weight:800;color:${brandPrimary};letter-spacing:-.02em">Phasing Overview</div>
       </div>
-      <div style="padding:20px 48px">
-        <img src="${ph.screenshot}" style="width:100%;border-radius:4px;border:1px solid #e5e7eb">
+      <div style="padding:16px 20px 24px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+        ${slice.map((ph,idx)=>{
+          const zoneNames=(projectData.zones||[]).filter(z=>(ph.zoneIds||[]).includes(z.id)).map(z=>z.name).join(', ');
+          return `<div style="border:1px solid #e5e7eb;border-radius:4px;overflow:hidden;background:#fff;display:flex;flex-direction:column">
+            <div style="padding:8px 10px;border-bottom:1px solid #f0f0f0">
+              <div style="font-size:10px;font-weight:700;color:${brandPrimary};line-height:1.3">${ph.name||('Phase '+(i+idx+1))}</div>
+              ${zoneNames?`<div style="font-size:9px;color:#6b7280;line-height:1.4;margin-top:3px">${zoneNames}</div>`:''}
+            </div>
+            <div style="aspect-ratio:1 / 1;background:#0d0d0f;display:flex;align-items:center;justify-content:center;padding:4px">
+              <img src="${ph.screenshot}" style="max-width:100%;max-height:100%;object-fit:contain;display:block">
+            </div>
+          </div>`;
+        }).join('')}
       </div>
     </div>`;
-  }).join('');
+  }
+  return out;
 }
 
 function refreshReport(type){
