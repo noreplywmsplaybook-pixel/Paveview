@@ -1276,40 +1276,66 @@ function removeAttachedPage(idx){
 }
 
 // ── THEME FROM REPORT BUILDER ──
+const REPORT_THEME_KEYS=['paveview_report_templates','paveview_report_themes']; // new + legacy
+
+function getSavedReportThemes(){
+  for(const key of REPORT_THEME_KEYS){
+    try{
+      const parsed=JSON.parse(localStorage.getItem(key)||'[]');
+      if(Array.isArray(parsed)&&parsed.length)return parsed;
+    }catch(e){}
+  }
+  return [];
+}
+
 function loadThemesIntoProject(){
   try{
-    const themes=JSON.parse(localStorage.getItem('paveview_report_themes')||'[]');
+    const themes=getSavedReportThemes().filter(t=>t&&t.id);
     const picker=document.getElementById('theme-picker');
     if(!picker)return;
+    const priorValue=picker.value||localStorage.getItem('paveview_active_theme')||'';
     picker.innerHTML='<option value="">Default</option>'+
-      themes.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
-    // Auto-select last active
-    const active=localStorage.getItem('paveview_active_theme');
-    if(active)picker.value=active;
-    if(picker.value)applyTheme(picker.value);
-  }catch(e){}
+      themes.map(t=>`<option value="${t.id}">${t.name||'Untitled Report'}</option>`).join('');
+    const hasPrior=priorValue&&themes.some(t=>t.id===priorValue);
+    picker.value=hasPrior?priorValue:'';
+    applyTheme(picker.value||'');
+  }catch(e){
+    applyTheme('');
+  }
 }
 
 function applyTheme(themeId){
-  if(!themeId){
+  const selected=themeId||'';
+  if(!selected){
     brandPrimary=localStorage.getItem('paveview_brand_primary')||'#111111';
     brandAccent=localStorage.getItem('paveview_brand_accent')||'#d4a843';
     activeReportTheme=null;
   } else {
-    try{
-      const themes=JSON.parse(localStorage.getItem('paveview_report_themes')||'[]');
-      const t=themes.find(x=>x.id===themeId);
-      if(t){
-        brandPrimary=t.colors.primary||'#111111';
-        brandAccent=t.colors.accent||'#d4a843';
-        activeReportTheme=t;
-      }
-    }catch(e){}
+    const themes=getSavedReportThemes();
+    const t=themes.find(x=>x.id===selected);
+    if(t){
+      brandPrimary=(t.colors&&t.colors.primary)||'#111111';
+      brandAccent=(t.colors&&t.colors.accent)||'#d4a843';
+      activeReportTheme=t;
+      localStorage.setItem('paveview_active_theme',selected);
+    } else {
+      brandPrimary=localStorage.getItem('paveview_brand_primary')||'#111111';
+      brandAccent=localStorage.getItem('paveview_brand_accent')||'#d4a843';
+      activeReportTheme=null;
+    }
   }
   refreshReport('client');
   refreshReport('foreman');
   refreshReport('contractor');
 }
+
+window.addEventListener('focus',loadThemesIntoProject);
+window.addEventListener('storage',function(ev){
+  if(!ev||!ev.key)return;
+  if(REPORT_THEME_KEYS.includes(ev.key)||ev.key==='paveview_active_theme'||ev.key==='paveview_report_templates_updated_at'){
+    loadThemesIntoProject();
+  }
+});
 
 let activeReportTheme=null;
 
