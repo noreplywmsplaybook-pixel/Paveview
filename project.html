@@ -748,6 +748,7 @@ function toggleThemeProj(){
   document.getElementById('btn-delete').onclick=deleteProject;
   // Pre-fill pricing from projectData
   ['pa','pb','pl','depth','base','comp'].forEach(k=>{if(projectData[k])sv2('f-'+k,projectData[k]);});
+  await syncThemesFromIndexedDb();
   loadSavedDetails();
   // Auto-load account defaults if no pricing has been set yet
   if(!gv('f-pa')&&!projectData.pa){
@@ -1280,8 +1281,70 @@ function removeAttachedPage(idx){
 
 // ── THEME FROM REPORT BUILDER ──
 const REPORT_THEME_KEYS=['paveview_report_templates','paveview_report_themes']; // new + legacy
+const REPORT_THEME_UPDATED_KEY='paveview_report_templates_updated_at';
+const REPORT_IDB_DB='paveview_report_store';
+const REPORT_IDB_STORE='kv';
+const REPORT_IDB_KEY='report_templates_v1';
 const PROJECT_THEME_KEY_PREFIX='paveview_project_report_theme_';
 let projectReportThemeId='';
+let reportDbPromise=null;
+let reportThemeSyncPromise=null;
+
+function asTs(v){
+  const n=parseInt(v||'0',10);
+  return Number.isNaN(n)?0:n;
+}
+
+function openReportDb(){
+  if(!window.indexedDB)return Promise.resolve(null);
+  if(reportDbPromise)return reportDbPromise;
+  reportDbPromise=new Promise(resolve=>{
+    try{
+      const req=indexedDB.open(REPORT_IDB_DB,1);
+      req.onupgradeneeded=ev=>{
+        const db=ev.target.result;
+        if(!db.objectStoreNames.contains(REPORT_IDB_STORE))db.createObjectStore(REPORT_IDB_STORE);
+      };
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>resolve(null);
+    }catch(e){resolve(null);}
+  });
+  return reportDbPromise;
+}
+
+function idbGetReportTemplates(){
+  return openReportDb().then(db=>{
+    if(!db)return null;
+    return new Promise(resolve=>{
+      try{
+        const tx=db.transaction(REPORT_IDB_STORE,'readonly');
+        const req=tx.objectStore(REPORT_IDB_STORE).get(REPORT_IDB_KEY);
+        req.onsuccess=()=>resolve(req.result||null);
+        req.onerror=()=>resolve(null);
+      }catch(e){resolve(null);}
+    });
+  });
+}
+
+function syncThemesFromIndexedDb(){
+  if(reportThemeSyncPromise)return reportThemeSyncPromise;
+  reportThemeSyncPromise=(async()=>{
+    const snap=await idbGetReportTemplates();
+    if(!snap||!Array.isArray(snap.themes)||!snap.themes.length)return false;
+    const idbTs=asTs(snap.updatedAt);
+    const localTs=asTs(localStorage.getItem(REPORT_THEME_UPDATED_KEY));
+    const localThemesRaw=localStorage.getItem('paveview_report_templates');
+    const shouldReplace=idbTs>=localTs||!localThemesRaw;
+    if(!shouldReplace)return false;
+    const payload=JSON.stringify(snap.themes);
+    localStorage.setItem('paveview_report_templates',payload);
+    localStorage.setItem(REPORT_THEME_UPDATED_KEY,String(idbTs||Date.now()));
+    try{localStorage.setItem('paveview_report_themes',payload);}catch(e){}
+    if(snap.activeId&&!localStorage.getItem('paveview_active_theme')) localStorage.setItem('paveview_active_theme',snap.activeId);
+    return true;
+  })().catch(()=>false).finally(()=>{reportThemeSyncPromise=null;});
+  return reportThemeSyncPromise;
+}
 
 function getProjectThemeKey(){
   return projectId?`${PROJECT_THEME_KEY_PREFIX}${projectId}`:'';
@@ -1309,7 +1372,8 @@ function getSavedReportThemes(){
   return [];
 }
 
-function loadThemesIntoProject(){
+async function loadThemesIntoProject(){
+  await syncThemesFromIndexedDb();
   try{
     const themes=getSavedReportThemes().filter(t=>t&&t.id);
     const picker=document.getElementById('theme-picker');
@@ -1357,11 +1421,11 @@ function applyTheme(themeId){
   refreshReport('contractor');
 }
 
-window.addEventListener('focus',loadThemesIntoProject);
+window.addEventListener('focus',function(){ syncThemesFromIndexedDb().then(loadThemesIntoProject); });
 window.addEventListener('storage',function(ev){
   if(!ev||!ev.key)return;
   if(REPORT_THEME_KEYS.includes(ev.key)||ev.key==='paveview_active_theme'||ev.key==='paveview_report_templates_updated_at'||ev.key===getProjectThemeKey()){
-    loadThemesIntoProject();
+    syncThemesFromIndexedDb().then(loadThemesIntoProject);
   }
 });
 

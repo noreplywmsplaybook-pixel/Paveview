@@ -260,12 +260,17 @@ var LS = 'paveview_report_themes'; // legacy
 var LS_REPORTS = 'paveview_report_templates';
 var LS_REPORTS_UPDATED = 'paveview_report_templates_updated_at';
 var LA = 'paveview_active_theme';
+var IDB_DB = 'paveview_report_store';
+var IDB_STORE = 'kv';
+var IDB_KEY = 'report_templates_v1';
 
 var themes = [];
 var activeId = null;
 var activeTab = 'client';
 var zmVal = 0.85;
 var dragIdx = null;
+var idbOpenPromise = null;
+var pendingIdbSave = Promise.resolve(false);
 
 // ── DEFAULTS ──
 var DFLT_COLORS = {primary:'#111111', accent:'#d4a843', bg:'#ffffff', textcol:'#1a1a1a'};
@@ -309,7 +314,77 @@ function makeSections(type) {
   ];
 }
 
-function readSavedThemes() {
+function parseTs(v) {
+  var n = parseInt(v || '0', 10);
+  return isNaN(n) ? 0 : n;
+}
+
+function openReportDb() {
+  if (!window.indexedDB) return Promise.resolve(null);
+  if (idbOpenPromise) return idbOpenPromise;
+  idbOpenPromise = new Promise(function(resolve) {
+    try {
+      var req = indexedDB.open(IDB_DB, 1);
+      req.onupgradeneeded = function(ev) {
+        var db = ev.target.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+      };
+      req.onsuccess = function() { resolve(req.result); };
+      req.onerror = function() { resolve(null); };
+    } catch (e) {
+      resolve(null);
+    }
+  });
+  return idbOpenPromise;
+}
+
+function idbGet(key) {
+  return openReportDb().then(function(db) {
+    if (!db) return null;
+    return new Promise(function(resolve) {
+      try {
+        var tx = db.transaction(IDB_STORE, 'readonly');
+        var store = tx.objectStore(IDB_STORE);
+        var req = store.get(key);
+        req.onsuccess = function() { resolve(req.result || null); };
+        req.onerror = function() { resolve(null); };
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  });
+}
+
+function idbSet(key, val) {
+  return openReportDb().then(function(db) {
+    if (!db) return false;
+    return new Promise(function(resolve) {
+      try {
+        var tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.oncomplete = function() { resolve(true); };
+        tx.onerror = function() { resolve(false); };
+        tx.objectStore(IDB_STORE).put(val, key);
+      } catch (e) {
+        resolve(false);
+      }
+    });
+  });
+}
+
+function buildThemeSnapshot() {
+  return {
+    themes: JSON.parse(JSON.stringify(themes)),
+    activeId: activeId || '',
+    updatedAt: Date.now()
+  };
+}
+
+function queueIdbThemeSave(snapshot) {
+  pendingIdbSave = idbSet(IDB_KEY, snapshot).catch(function() { return false; });
+  return pendingIdbSave;
+}
+
+function readLocalThemes() {
   var raw = localStorage.getItem(LS_REPORTS) || localStorage.getItem(LS);
   if (!raw) return [];
   try {
@@ -320,9 +395,28 @@ function readSavedThemes() {
   }
 }
 
+function readSavedThemes() {
+  return readLocalThemes();
+}
+
 // ── LOAD / SAVE ──
-function loadThemes() {
-  themes = readSavedThemes();
+async function loadThemes() {
+  var localThemes = readLocalThemes();
+  var localUpdated = parseTs(localStorage.getItem(LS_REPORTS_UPDATED));
+  var snap = await idbGet(IDB_KEY);
+  var idbThemes = snap && Array.isArray(snap.themes) ? snap.themes : [];
+  var idbUpdated = snap ? parseTs(snap.updatedAt) : 0;
+  var useIdb = idbThemes.length && (idbUpdated >= localUpdated || !localThemes.length);
+  themes = useIdb ? idbThemes : localThemes;
+  if (useIdb) {
+    try {
+      var payload = JSON.stringify(themes);
+      localStorage.setItem(LS_REPORTS, payload);
+      localStorage.setItem(LS_REPORTS_UPDATED, String(idbUpdated || Date.now()));
+      localStorage.setItem(LA, (snap && snap.activeId) || '');
+      try { localStorage.setItem(LS, payload); } catch (e) {}
+    } catch (e) {}
+  }
   themes.forEach(function(t) {
     if (!t.id) t.id = 't' + Date.now() + '-' + Math.floor(Math.random() * 1000);
     if (!t.name) t.name = 'Untitled Report';
@@ -346,12 +440,14 @@ function loadThemes() {
 }
 
 function saveNow() {
+  var snapshot = buildThemeSnapshot();
+  queueIdbThemeSave(snapshot);
   try {
-    var payload = JSON.stringify(themes);
-    localStorage.setItem(LS, payload);
+    var payload = JSON.stringify(snapshot.themes);
     localStorage.setItem(LS_REPORTS, payload);
-    localStorage.setItem(LS_REPORTS_UPDATED, String(Date.now()));
-    localStorage.setItem(LA, activeId || '');
+    localStorage.setItem(LS_REPORTS_UPDATED, String(snapshot.updatedAt));
+    localStorage.setItem(LA, snapshot.activeId);
+    try { localStorage.setItem(LS, payload); } catch (e) {}
     var t = getT();
     if (t) {
       localStorage.setItem('paveview_brand_primary', t.colors.primary);
@@ -364,13 +460,15 @@ function saveNow() {
   }
 }
 
-function doSave() {
+async function doSave() {
   console.log('[PaveView] doSave called, themes:', themes.length);
-  var wrote = saveNow();
+  var localOk = saveNow();
+  var idbOk = await pendingIdbSave.catch(function() { return false; });
   var back = localStorage.getItem(LS_REPORTS) || localStorage.getItem(LS);
   var parsed = [];
   try { parsed = JSON.parse(back || '[]'); } catch(e) {}
-  var ok = wrote && Array.isArray(parsed) && parsed.length === themes.length;
+  var lenOk = Array.isArray(parsed) && parsed.length === themes.length;
+  var ok = (localOk && lenOk) || idbOk;
   console.log('[PaveView] save verify ok:', ok, 'stored:', parsed.length, 'expected:', themes.length);
   var msg = document.getElementById('save-msg');
   if (msg) {
@@ -871,9 +969,9 @@ function initDivider(){
 }
 
 // ── INIT ──
-function init() {
+async function init() {
   console.log('[PaveView] Report Builder init start');
-  loadThemes();
+  await loadThemes();
   console.log('[PaveView] Themes loaded:', themes.length);
   if (!themes.length) {
     newTheme();
