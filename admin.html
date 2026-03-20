@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PaveView Admin</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -27,6 +28,11 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
 
 /* LAYOUT */
 #wrap{max-width:1200px;margin:0 auto;padding:28px 24px}
+.admin-tabs{display:flex;gap:8px;margin:0 0 16px}
+.admin-tab-btn{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:6px 12px;border:1px solid #2a2a2a;background:#111;color:#6e6a63;cursor:pointer}
+.admin-tab-btn.active{border-color:#f5c842;color:#f5c842}
+.admin-section{display:none}
+.admin-section.active{display:block}
 
 /* STATS */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
@@ -34,6 +40,29 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
 .stat-l{font-family:'IBM Plex Mono',monospace;font-size:8px;color:#6e6a63;letter-spacing:.18em;text-transform:uppercase;margin-bottom:4px}
 .stat-v{font-family:'Bebas Neue',sans-serif;font-size:32px;color:#f5c842;line-height:1}
 .stat-sub{font-size:11px;color:#6e6a63;margin-top:2px}
+
+/* PLATFORM ANALYTICS */
+.analytics-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;padding:16px 18px;border-bottom:1px solid #1e1e1e}
+.a-stat{background:#0d0d0d;border:1px solid #1e1e1e;padding:14px}
+.a-stat-l{font-family:'IBM Plex Mono',monospace;font-size:8px;color:#6e6a63;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px}
+.a-stat-v{font-family:'Bebas Neue',sans-serif;font-size:30px;color:#f5c842;line-height:1}
+.a-stat-sub{font-size:10px;color:#555;margin-top:4px}
+.charts{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:12px 18px 18px}
+.chart-card{background:#0d0d0d;border:1px solid #1e1e1e;padding:12px}
+.chart-title{font-family:'IBM Plex Mono',monospace;font-size:9px;color:#888;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px}
+.chart-wrap{position:relative;height:240px}
+.analytics-note{padding:0 18px 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#4b4b4b}
+.small-note{font-family:'IBM Plex Mono',monospace;font-size:9px;color:#4b4b4b}
+
+/* SECURITY */
+.security-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 18px 18px}
+.security-card{background:#0d0d0d;border:1px solid #1e1e1e;padding:14px}
+.security-card h4{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#f5c842;margin-bottom:10px}
+.security-row{display:grid;grid-template-columns:1fr;gap:8px}
+
+/* TESTERS */
+.tester-online{color:#22c55e}
+.tester-idle{color:#f5c842}
 
 /* SECTION */
 .section{background:#111;border:1px solid #1e1e1e;margin-bottom:20px}
@@ -88,6 +117,14 @@ tr:hover td{background:#141414}
 .spinner{width:20px;height:20px;border:2px solid #1e1e1e;border-top-color:#f5c842;border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty{padding:40px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#444}
+
+@media (max-width: 1024px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .analytics-stats{grid-template-columns:repeat(2,1fr)}
+  .charts{grid-template-columns:1fr}
+  .security-grid{grid-template-columns:1fr}
+  .admin-tabs{flex-wrap:wrap}
+}
 </style>
 </head>
 <body>
@@ -119,17 +156,87 @@ tr:hover td{background:#141414}
 
 <!-- MAIN -->
 <div id="wrap" style="display:none">
+  <div class="admin-tabs">
+    <button class="admin-tab-btn active" id="tab-btn-overview" onclick="showAdminTab('overview')">Overview</button>
+    <button class="admin-tab-btn" id="tab-btn-customers" onclick="showAdminTab('customers')">Customers</button>
+    <button class="admin-tab-btn" id="tab-btn-settings" onclick="showAdminTab('settings')">Settings</button>
+  </div>
+  <div id="data-mode-banner" class="msg err" style="display:none;margin-bottom:12px"></div>
 
   <!-- STATS -->
-  <div class="stats">
+  <div class="stats admin-section active" data-admin-tab="overview">
     <div class="stat"><div class="stat-l">Total Customers</div><div class="stat-v" id="s-total">—</div><div class="stat-sub">All time</div></div>
     <div class="stat"><div class="stat-l">Active Licenses</div><div class="stat-v" id="s-active">—</div><div class="stat-sub">Paid & active</div></div>
     <div class="stat"><div class="stat-l">Revenue</div><div class="stat-v" id="s-revenue">—</div><div class="stat-sub">Total collected</div></div>
     <div class="stat"><div class="stat-l">This Month</div><div class="stat-v" id="s-month">—</div><div class="stat-sub">New customers</div></div>
   </div>
 
+  <!-- ADMIN SECURITY -->
+  <div class="section admin-section" data-admin-tab="settings">
+    <div class="section-hdr">
+      <span class="section-title">Admin Security</span>
+      <span class="small-note">PIN required for password changes</span>
+    </div>
+    <div class="security-grid">
+      <div class="security-card">
+        <h4>Set / Rotate PIN</h4>
+        <div class="security-row">
+          <input type="password" id="pin-new" class="search-inp" style="width:100%" placeholder="Enter 4-8 digit PIN">
+          <input type="password" id="pin-confirm" class="search-inp" style="width:100%" placeholder="Confirm PIN">
+          <button class="btn y" onclick="saveAdminPin()">Save PIN</button>
+          <div id="pin-state" class="small-note">PIN not set</div>
+          <div class="msg" id="pin-msg"></div>
+        </div>
+      </div>
+      <div class="security-card">
+        <h4>Change Admin Password</h4>
+        <div class="security-row">
+          <input type="password" id="pw-new" class="search-inp" style="width:100%" placeholder="New password (min 6 chars)">
+          <input type="password" id="pw-confirm" class="search-inp" style="width:100%" placeholder="Confirm new password">
+          <input type="password" id="pw-pin" class="search-inp" style="width:100%" placeholder="PIN code required">
+          <button class="btn" id="pw-btn" onclick="changeAdminPassword()">Update Password</button>
+          <div class="msg" id="pw-msg"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PLATFORM ANALYTICS -->
+  <div class="section admin-section active" data-admin-tab="overview">
+    <div class="section-hdr">
+      <span class="section-title">Platform Analytics</span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#444" id="analytics-updated">Waiting for data…</span>
+    </div>
+    <div class="analytics-stats">
+      <div class="a-stat"><div class="a-stat-l">Daily Users</div><div class="a-stat-v" id="an-dau">—</div><div class="a-stat-sub">Distinct users active today</div></div>
+      <div class="a-stat"><div class="a-stat-l">MRR Estimate</div><div class="a-stat-v" id="an-mrr">—</div><div class="a-stat-sub">Active licenses monthly</div></div>
+      <div class="a-stat"><div class="a-stat-l">Monthly Revenue</div><div class="a-stat-v" id="an-month-rev">—</div><div class="a-stat-sub" id="an-month-rev-sub">Current month</div></div>
+      <div class="a-stat"><div class="a-stat-l">Churn Rate</div><div class="a-stat-v" id="an-churn">—</div><div class="a-stat-sub">Current month</div></div>
+      <div class="a-stat"><div class="a-stat-l">ARR Run-Rate</div><div class="a-stat-v" id="an-arr">—</div><div class="a-stat-sub">MRR x 12</div></div>
+    </div>
+    <div class="charts">
+      <div class="chart-card">
+        <div class="chart-title">Daily Users (Last 30 Days)</div>
+        <div class="chart-wrap"><canvas id="chart-dau"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Monthly Revenue (Last 12 Months)</div>
+        <div class="chart-wrap"><canvas id="chart-revenue"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Churn Rate Trend (Last 6 Months)</div>
+        <div class="chart-wrap"><canvas id="chart-churn"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Subscriber Status</div>
+        <div class="chart-wrap"><canvas id="chart-status"></canvas></div>
+      </div>
+    </div>
+    <div class="analytics-note">Churn is calculated from revocations over active subscriptions at month start. DAU uses profile, project, and purchase activity timestamps.</div>
+  </div>
+
   <!-- CUSTOMERS TABLE -->
-  <div class="section">
+  <div class="section admin-section" data-admin-tab="customers">
     <div class="section-hdr">
       <span class="section-title">Customers</span>
       <div class="section-hdr-right">
@@ -146,20 +253,46 @@ tr:hover td{background:#141414}
             <th>Email</th>
             <th>Status</th>
             <th>Product</th>
+            <th>Projects</th>
+            <th>Last Active</th>
             <th>Joined</th>
             <th>Purchase Date</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody id="tbl-body">
-          <tr><td colspan="7" class="empty">Loading…</td></tr>
+          <tr><td colspan="9" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ACTIVE TESTERS -->
+  <div class="section admin-section active" data-admin-tab="overview">
+    <div class="section-hdr">
+      <span class="section-title">Active Testers (Last 24h)</span>
+      <span class="small-note" id="tester-summary">Waiting for data…</span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Last Activity</th>
+            <th>Projects</th>
+            <th>Access</th>
+          </tr>
+        </thead>
+        <tbody id="testers-body">
+          <tr><td colspan="5" class="empty">Loading…</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 
   <!-- RECENT PURCHASES -->
-  <div class="section">
+  <div class="section admin-section" data-admin-tab="customers">
     <div class="section-hdr">
       <span class="section-title">Recent Purchases</span>
     </div>
@@ -198,9 +331,17 @@ tr:hover td{background:#141414}
       </select>
     </div>
     <div class="field">
+      <label>Access Type</label>
+      <select id="add-plan" onchange="onPlanChange()">
+        <option value="paid">Paid License</option>
+        <option value="trial_24h">24-Hour Free Trial</option>
+      </select>
+    </div>
+    <div class="field">
       <label>Payment Amount</label>
       <input type="number" id="add-amount" placeholder="5000" value="5000">
     </div>
+    <div class="small-note" id="add-plan-note" style="margin-top:-6px;margin-bottom:8px">Paid license creates permanent active access.</div>
     <div class="msg" id="add-msg"></div>
     <div class="mfooter">
       <button class="btn" onclick="closeModal('add-modal')">Cancel</button>
@@ -238,6 +379,11 @@ const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const DEFAULT_TAKEOFF_PRICE_CENTS = 500000; // $5,000
+const TRIAL_PRODUCT_KEY = 'takeoff_trial_24h';
+const TRIAL_DURATION_MS = 24 * 60 * 60 * 1000;
+const ADMIN_PIN_KEY = 'paveview_admin_pin_v1';
+const ADMIN_USERS_KEY = 'paveview_admin_user_ids_v1';
+const ADMIN_API_URL = '/api/admin-users';
 
 let allCustomers = [];
 let revokeTarget = null;
@@ -246,6 +392,124 @@ let profilesById = {};
 let liveChannel = null;
 let refreshTimer = null;
 let loadingData = false;
+const chartRefs = {};
+let adminUserIdSet = new Set();
+let supplementalUsersCache = [];
+
+function toDateOrNull(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function isTrialPurchase(purchase) {
+  if (!purchase) return false;
+  const product = String(purchase.product || '').toLowerCase();
+  const hasExplicitFreeAmount = purchase.amount_paid !== null && purchase.amount_paid !== undefined && Number(purchase.amount_paid) === 0;
+  return product.includes('trial') || hasExplicitFreeAmount;
+}
+
+function getTrialExpiry(purchase) {
+  const createdAt = toDateOrNull(purchase?.created_at);
+  if (!createdAt) return null;
+  return new Date(createdAt.getTime() + TRIAL_DURATION_MS);
+}
+
+function isPurchaseAccessActive(purchase) {
+  if (!purchase || purchase.status !== 'active') return false;
+  if (!isTrialPurchase(purchase)) return true;
+  const expiry = getTrialExpiry(purchase);
+  return !!expiry && expiry.getTime() > Date.now();
+}
+
+function getPurchaseAmountCents(purchase) {
+  if (purchase?.amount_paid === null || purchase?.amount_paid === undefined) return DEFAULT_TAKEOFF_PRICE_CENTS;
+  return Number(purchase.amount_paid || 0);
+}
+
+function loadAdminUserSet() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ADMIN_USERS_KEY) || '[]');
+    adminUserIdSet = new Set(Array.isArray(parsed) ? parsed.filter(Boolean) : []);
+  } catch (e) {
+    adminUserIdSet = new Set();
+  }
+}
+
+function persistAdminUserSet() {
+  localStorage.setItem(ADMIN_USERS_KEY, JSON.stringify(Array.from(adminUserIdSet)));
+}
+
+function isAdminAccountId(userId) {
+  if (!userId) return false;
+  return adminUserIdSet.has(userId);
+}
+
+function setAdminAccount(userId) {
+  if (!userId) return;
+  adminUserIdSet.add(userId);
+  persistAdminUserSet();
+  loadData();
+}
+
+function unsetAdminAccount(userId) {
+  if (!userId) return;
+  adminUserIdSet.delete(userId);
+  persistAdminUserSet();
+  loadData();
+}
+
+function getEffectivePurchaseAmountCents(purchase) {
+  if (isAdminAccountId(purchase?.user_id)) return 0;
+  return getPurchaseAmountCents(purchase);
+}
+
+function formatDateTime(value) {
+  const d = toDateOrNull(value);
+  if (!d) return '—';
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function formatRelative(value) {
+  const d = toDateOrNull(value);
+  if (!d) return 'Never';
+  const delta = Date.now() - d.getTime();
+  if (delta < 60 * 1000) return 'just now';
+  if (delta < 60 * 60 * 1000) return `${Math.floor(delta / (60 * 1000))}m ago`;
+  if (delta < 24 * 60 * 60 * 1000) return `${Math.floor(delta / (60 * 60 * 1000))}h ago`;
+  return `${Math.floor(delta / (24 * 60 * 60 * 1000))}d ago`;
+}
+
+async function fetchSupplementalUsers() {
+  // Some projects expose account data via a custom users table/view.
+  // Query optional public candidates so admin can still see accounts
+  // when profile rows are missing.
+  const candidates = ['users', 'auth_users', 'user_profiles', 'members', 'accounts'];
+  const settled = await Promise.allSettled([
+    ...candidates.map(table => sb.from(table).select('*').limit(500)),
+    sb.schema('auth').from('users').select('id,email,created_at,last_sign_in_at,raw_user_meta_data').limit(500)
+  ]);
+  const seen = {};
+  settled.forEach(result => {
+    if (result.status !== 'fulfilled') return;
+    const { data, error } = result.value || {};
+    if (error || !Array.isArray(data)) return;
+    data.forEach(row => {
+      const id = row.id || row.user_id || row.uid;
+      const email = row.email || row.user_email || row.email_address;
+      if (!id || !email) return;
+      if (!seen[id]) seen[id] = {
+        id,
+        email,
+        full_name: row.full_name || row.name || row.display_name || row.raw_user_meta_data?.full_name || '',
+        created_at: row.created_at || row.inserted_at || null,
+        updated_at: row.updated_at || row.last_sign_in_at || row.last_seen_at || null
+      };
+    });
+  });
+  supplementalUsersCache = Object.values(seen);
+  return supplementalUsersCache;
+}
 
 // ── AUTH ──
 async function googleLogin() {
@@ -285,7 +549,32 @@ function showApp(email) {
   document.getElementById('nav').style.display = 'flex';
   document.getElementById('wrap').style.display = 'block';
   document.getElementById('nav-user').textContent = email;
+  loadAdminUserSet();
+  refreshPinState();
+  showAdminTab('overview');
   startLiveUpdates();
+}
+
+function showAdminTab(tab) {
+  document.querySelectorAll('.admin-tab-btn').forEach(btn => btn.classList.remove('active'));
+  const btn = document.getElementById(`tab-btn-${tab}`);
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.admin-section').forEach(section => {
+    const shouldShow = section.dataset.adminTab === tab;
+    section.classList.toggle('active', shouldShow);
+  });
+}
+
+function showDataModeBanner(text) {
+  const el = document.getElementById('data-mode-banner');
+  if (!el) return;
+  if (!text) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+  el.textContent = text;
+  el.style.display = 'block';
 }
 
 async function signOut() {
@@ -308,46 +597,148 @@ document.addEventListener('keydown', e => {
 async function loadData() {
   if (loadingData) return;
   loadingData = true;
-  document.getElementById('tbl-body').innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
+  document.getElementById('tbl-body').innerHTML = '<tr><td colspan="9" class="empty">Loading…</td></tr>';
+  document.getElementById('testers-body').innerHTML = '<tr><td colspan="5" class="empty">Loading…</td></tr>';
   try {
-    const [{ data: profiles, error: profilesErr }, { data: purchases, error: purchasesErr }] = await Promise.all([
-      sb.from('profiles').select('*').order('created_at', { ascending: false }),
-      sb.from('purchases').select('*').order('created_at', { ascending: false })
-    ]);
-    if (profilesErr) throw profilesErr;
-    if (purchasesErr) throw purchasesErr;
+    let profileRows = [];
+    let purchaseRows = [];
+    let projectRows = [];
+    let supplemental = [];
+    let usingServerApi = false;
 
-    const profileRows = profiles || [];
-    const purchaseRows = purchases || [];
+    try {
+      const apiResp = await fetch(`${ADMIN_API_URL}?t=${Date.now()}`, { headers: { Accept: 'application/json' } });
+      if (!apiResp.ok) {
+        const apiErr = await apiResp.json().catch(() => null);
+        throw new Error(apiErr?.error || `Admin API request failed (${apiResp.status})`);
+      }
+      const payload = await apiResp.json();
+      profileRows = Array.isArray(payload.profiles) ? payload.profiles : [];
+      purchaseRows = Array.isArray(payload.purchases) ? payload.purchases : [];
+      projectRows = Array.isArray(payload.projects) ? payload.projects : [];
+      supplemental = Array.isArray(payload.authUsers) ? payload.authUsers.map(u => ({
+        id: u.id,
+        email: u.email || '',
+        full_name: u.full_name || u.user_metadata?.full_name || '',
+        created_at: u.created_at || null,
+        updated_at: u.last_sign_in_at || null
+      })) : [];
+      usingServerApi = true;
+    } catch (apiError) {
+      // Fallback to client-side queries if API is not configured yet.
+      const [[{ data: profiles, error: profilesErr }, { data: purchases, error: purchasesErr }, { data: projects, error: projectsErr }], supplementalRows] = await Promise.all([
+        Promise.all([
+          sb.from('profiles').select('*').order('created_at', { ascending: false }),
+          sb.from('purchases').select('*').order('created_at', { ascending: false }),
+          sb.from('projects').select('user_id,created_at,updated_at').order('created_at', { ascending: false })
+        ]),
+        fetchSupplementalUsers()
+      ]);
+      if (profilesErr) throw profilesErr;
+      if (purchasesErr) throw purchasesErr;
+      if (projectsErr) throw projectsErr;
+      profileRows = profiles || [];
+      purchaseRows = purchases || [];
+      projectRows = projects || [];
+      supplemental = supplementalRows || [];
+    }
+
+    if (usingServerApi) {
+      showDataModeBanner('');
+    } else {
+      showDataModeBanner('Limited mode: browser access only. Set SUPABASE_SERVICE_ROLE_KEY for full Supabase user visibility.');
+    }
+
+    const supplementalById = Object.fromEntries(supplemental.map(r => [r.id, r]));
     profilesById = Object.fromEntries(profileRows.map(p => [p.id, p]));
 
-    // Map most-recent purchase to each user
-    const purchaseMap = {};
+    const purchasesByUser = {};
     purchaseRows.forEach(p => {
-      if (!purchaseMap[p.user_id]) purchaseMap[p.user_id] = p;
+      if (!p.user_id) return;
+      if (!purchasesByUser[p.user_id]) purchasesByUser[p.user_id] = [];
+      purchasesByUser[p.user_id].push(p);
+    });
+    Object.keys(purchasesByUser).forEach(uid => {
+      purchasesByUser[uid].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     });
 
-    allCustomers = profileRows.map(p => ({
-      ...p,
-      purchase: purchaseMap[p.id] || null
-    }));
+    const projectStatsByUser = {};
+    projectRows.forEach(pr => {
+      if (!pr.user_id) return;
+      const current = projectStatsByUser[pr.user_id] || { count: 0, last: null };
+      current.count += 1;
+      const candidate = toDateOrNull(pr.updated_at) || toDateOrNull(pr.created_at);
+      if (candidate && (!current.last || candidate > current.last)) current.last = candidate;
+      projectStatsByUser[pr.user_id] = current;
+    });
+
+    const allUserIds = new Set([
+      ...profileRows.map(p => p.id).filter(Boolean),
+      ...Object.keys(purchasesByUser),
+      ...Object.keys(projectStatsByUser),
+      ...supplemental.map(r => r.id).filter(Boolean)
+    ]);
+
+    allCustomers = Array.from(allUserIds).map(uid => {
+      const profile = profilesById[uid] || {};
+      const sup = supplementalById[uid] || {};
+      const userPurchases = purchasesByUser[uid] || [];
+      const purchase = userPurchases[0] || null;
+      const mostRecentPurchase = userPurchases
+        .map(p => toDateOrNull(p.updated_at) || toDateOrNull(p.created_at))
+        .filter(Boolean)
+        .sort((a, b) => b - a)[0] || null;
+      const profileActivity = toDateOrNull(profile.updated_at) || toDateOrNull(profile.created_at);
+      const supplementalActivity = toDateOrNull(sup.updated_at) || toDateOrNull(sup.created_at);
+      const projectActivity = projectStatsByUser[uid]?.last || null;
+      const lastActivity = [profileActivity, supplementalActivity, mostRecentPurchase, projectActivity].filter(Boolean).sort((a, b) => b - a)[0] || null;
+      const fallbackEmail = purchase?.email || purchase?.customer_email || purchase?.billing_email || sup.email || (uid ? `${uid.substring(0, 8)}…` : '—');
+
+      return {
+        ...profile,
+        id: uid,
+        email: profile.email || sup.email || fallbackEmail,
+        full_name: profile.full_name || sup.full_name || purchase?.customer_name || purchase?.full_name || '',
+        created_at: profile.created_at || sup.created_at || purchase?.created_at || null,
+        purchase,
+        purchases: userPurchases,
+        project_count: projectStatsByUser[uid]?.count || 0,
+        last_active_at: lastActivity ? lastActivity.toISOString() : null,
+        is_active_tester: !!lastActivity && (Date.now() - lastActivity.getTime()) <= TRIAL_DURATION_MS,
+        missing_profile: !profilesById[uid] && !supplementalById[uid],
+        is_admin: isAdminAccountId(uid)
+      };
+    }).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
     renderTable(allCustomers);
+    renderActiveTesters(allCustomers);
     renderPurchases(purchaseRows);
     updateStats(allCustomers, purchaseRows);
+    updatePlatformAnalytics(profileRows, purchaseRows, projectRows);
   } catch (err) {
-    document.getElementById('tbl-body').innerHTML = `<tr><td colspan="7" class="empty">Failed to load data: ${err.message || err}</td></tr>`;
+    document.getElementById('tbl-body').innerHTML = `<tr><td colspan="9" class="empty">Failed to load data: ${err.message || err}</td></tr>`;
+    document.getElementById('testers-body').innerHTML = '<tr><td colspan="5" class="empty">Failed to load tester activity.</td></tr>';
     document.getElementById('purchases-body').innerHTML = '<tr><td colspan="6" class="empty">Failed to load purchases.</td></tr>';
+    resetAnalytics(err.message || String(err));
   } finally {
     loadingData = false;
   }
 }
 
 function updateStats(customers, purchases) {
-  const active = purchases.filter(p => p.status === 'active').length;
-  const revenue = purchases.filter(p => p.status === 'active').reduce((s, p) => s + (p.amount_paid || DEFAULT_TAKEOFF_PRICE_CENTS), 0);
+  const latestActiveByUser = {};
+  purchases.forEach(p => {
+    if (!p.user_id || !isPurchaseAccessActive(p)) return;
+    if (isAdminAccountId(p.user_id)) return;
+    if (!latestActiveByUser[p.user_id]) latestActiveByUser[p.user_id] = p;
+  });
+  const active = Object.keys(latestActiveByUser).length;
+  const revenue = Object.values(latestActiveByUser).reduce((sum, p) => {
+    return sum + getEffectivePurchaseAmountCents(p);
+  }, 0);
   const thisMonth = customers.filter(c => {
-    const d = new Date(c.created_at);
+    const d = toDateOrNull(c.created_at);
+    if (!d) return false;
     const now = new Date();
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }).length;
@@ -358,30 +749,385 @@ function updateStats(customers, purchases) {
   document.getElementById('s-month').textContent = thisMonth;
 }
 
+function dayKey(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function monthKey(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthBuckets(count) {
+  const now = new Date();
+  now.setDate(1);
+  now.setHours(0, 0, 0, 0);
+  return Array.from({ length: count }).map((_, i) => {
+    const start = new Date(now.getFullYear(), now.getMonth() - (count - 1 - i), 1);
+    const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+    return {
+      key: monthKey(start),
+      start,
+      end,
+      label: start.toLocaleDateString('en-US', { month: 'short' })
+    };
+  });
+}
+
+function dayBuckets(count) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Array.from({ length: count }).map((_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() - (count - 1 - i));
+    return {
+      key: dayKey(d),
+      date: d,
+      label: d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })
+    };
+  });
+}
+
+function centsToMoney(cents) {
+  return '$' + Math.round((cents || 0) / 100).toLocaleString('en-US');
+}
+
+function renderMetric(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function upsertChart(id, config) {
+  const canvas = document.getElementById(id);
+  if (!canvas || !window.Chart) return;
+  if (chartRefs[id]) chartRefs[id].destroy();
+  chartRefs[id] = new Chart(canvas.getContext('2d'), config);
+}
+
+function resetAnalytics(reason) {
+  ['an-dau', 'an-mrr', 'an-month-rev', 'an-churn', 'an-arr'].forEach(id => renderMetric(id, '—'));
+  renderMetric('an-month-rev-sub', 'Unavailable');
+  const upd = document.getElementById('analytics-updated');
+  if (upd) upd.textContent = `Analytics unavailable (${reason || 'error'})`;
+  Object.keys(chartRefs).forEach(k => {
+    chartRefs[k].destroy();
+    delete chartRefs[k];
+  });
+}
+
+function updatePlatformAnalytics(profiles, purchases, projects) {
+  if (!profiles || !purchases) {
+    resetAnalytics('no data');
+    return;
+  }
+  const now = new Date();
+  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const previousMonthEnd = currentMonthStart;
+
+  const latestActiveByUser = {};
+  purchases.forEach(p => {
+    if (!p.user_id || !isPurchaseAccessActive(p)) return;
+    if (isAdminAccountId(p.user_id)) return;
+    if (!latestActiveByUser[p.user_id]) latestActiveByUser[p.user_id] = p;
+  });
+  const activePurchases = Object.values(latestActiveByUser);
+  const mrrCents = activePurchases.reduce((sum, p) => {
+    return sum + getEffectivePurchaseAmountCents(p);
+  }, 0);
+  const arrCents = mrrCents * 12;
+  const monthRevenueCents = purchases.reduce((sum, p) => {
+    if (isAdminAccountId(p.user_id)) return sum;
+    const d = toDateOrNull(p.created_at);
+    if (!d) return sum;
+    return (d >= currentMonthStart && d < new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() + 1, 1))
+      ? sum + getEffectivePurchaseAmountCents(p)
+      : sum;
+  }, 0);
+  const previousMonthRevenueCents = purchases.reduce((sum, p) => {
+    if (isAdminAccountId(p.user_id)) return sum;
+    const d = toDateOrNull(p.created_at);
+    if (!d) return sum;
+    return (d >= previousMonthStart && d < previousMonthEnd) ? sum + getEffectivePurchaseAmountCents(p) : sum;
+  }, 0);
+  const monthDelta = previousMonthRevenueCents > 0
+    ? ((monthRevenueCents - previousMonthRevenueCents) / previousMonthRevenueCents) * 100
+    : null;
+
+  // Build daily activity map from profile/purchase/project create and update events.
+  const activityByDay = {};
+  const addActivity = (userId, dateValue) => {
+    if (!userId) return;
+    const d = toDateOrNull(dateValue);
+    if (!d) return;
+    const key = dayKey(d);
+    if (!activityByDay[key]) activityByDay[key] = new Set();
+    activityByDay[key].add(userId);
+  };
+
+  profiles.forEach(p => {
+    addActivity(p.id, p.created_at);
+    addActivity(p.id, p.updated_at);
+  });
+  purchases.forEach(p => {
+    addActivity(p.user_id, p.created_at);
+    addActivity(p.user_id, p.updated_at);
+  });
+  (projects || []).forEach(p => {
+    addActivity(p.user_id, p.created_at);
+    addActivity(p.user_id, p.updated_at);
+  });
+
+  const dailyWindow = dayBuckets(30);
+  const dailyUsersSeries = dailyWindow.map(d => (activityByDay[d.key] ? activityByDay[d.key].size : 0));
+  const todayUsers = dailyUsersSeries[dailyUsersSeries.length - 1] || 0;
+
+  const revenueWindow = monthBuckets(12);
+  const revenueByMonth = {};
+  purchases.forEach(p => {
+    if (isAdminAccountId(p.user_id)) return;
+    const d = toDateOrNull(p.created_at);
+    if (!d) return;
+    const key = monthKey(d);
+    revenueByMonth[key] = (revenueByMonth[key] || 0) + getEffectivePurchaseAmountCents(p);
+  });
+  const monthlyRevenueSeries = revenueWindow.map(m => Math.round((revenueByMonth[m.key] || 0) / 100));
+
+  // Churn = revoked in month / active at start of month.
+  const churnWindow = monthBuckets(6);
+  const churnSeries = churnWindow.map(bucket => {
+    const startActive = purchases.filter(p => {
+      const createdAt = toDateOrNull(p.created_at);
+      if (!createdAt || createdAt >= bucket.start) return false;
+      const isTrial = isTrialPurchase(p);
+      const trialExpiry = getTrialExpiry(p);
+      if (isTrial && trialExpiry && trialExpiry < bucket.start) return false;
+      if (p.status !== 'revoked') return true;
+      const revokedAt = toDateOrNull(p.updated_at) || createdAt;
+      return revokedAt >= bucket.start;
+    }).length;
+
+    const churned = purchases.filter(p => {
+      if (p.status !== 'revoked') return false;
+      const revokedAt = toDateOrNull(p.updated_at) || toDateOrNull(p.created_at);
+      if (!revokedAt) return false;
+      if (!(revokedAt >= bucket.start && revokedAt < bucket.end)) return false;
+      return !isTrialPurchase(p) || !!getTrialExpiry(p);
+    }).length;
+
+    return startActive > 0 ? Number(((churned / startActive) * 100).toFixed(2)) : 0;
+  });
+  const currentChurn = churnSeries[churnSeries.length - 1] || 0;
+
+  // Subscriber status distribution.
+  const purchasedUsers = new Set(purchases.map(p => p.user_id).filter(Boolean));
+  const activeUsers = new Set(activePurchases.map(p => p.user_id).filter(Boolean));
+  const adminUsers = new Set(purchases.filter(p => isAdminAccountId(p.user_id)).map(p => p.user_id).filter(Boolean));
+  const revokedUsers = new Set(
+    purchases
+      .filter(p => p.status === 'revoked' || (isTrialPurchase(p) && !isPurchaseAccessActive(p)))
+      .map(p => p.user_id)
+      .filter(Boolean)
+  );
+  const noPurchase = profiles.filter(p => !purchasedUsers.has(p.id)).length;
+
+  renderMetric('an-dau', String(todayUsers));
+  renderMetric('an-mrr', centsToMoney(mrrCents));
+  renderMetric('an-month-rev', centsToMoney(monthRevenueCents));
+  renderMetric('an-churn', `${currentChurn.toFixed(2)}%`);
+  renderMetric('an-arr', centsToMoney(arrCents));
+  renderMetric('an-month-rev-sub', monthDelta === null ? 'No previous month baseline' : `${monthDelta >= 0 ? '+' : ''}${monthDelta.toFixed(1)}% vs last month`);
+  const updatedEl = document.getElementById('analytics-updated');
+  if (updatedEl) {
+    updatedEl.textContent = `Updated ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+  }
+
+  if (!window.Chart) return;
+  const textColor = '#9a958d';
+  const gridColor = '#1f1f1f';
+  const accent = '#f5c842';
+
+  upsertChart('chart-dau', {
+    type: 'bar',
+    data: {
+      labels: dailyWindow.map(d => d.label),
+      datasets: [{
+        label: 'Daily Users',
+        data: dailyUsersSeries,
+        backgroundColor: 'rgba(245,200,66,0.45)',
+        borderColor: accent,
+        borderWidth: 1
+      }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: textColor, maxRotation: 0, autoSkip: true }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor, precision: 0 }, grid: { color: gridColor }, beginAtZero: true }
+      }
+    }
+  });
+
+  upsertChart('chart-revenue', {
+    type: 'line',
+    data: {
+      labels: revenueWindow.map(m => m.label),
+      datasets: [{
+        label: 'Revenue',
+        data: monthlyRevenueSeries,
+        borderColor: '#22c55e',
+        backgroundColor: 'rgba(34,197,94,0.2)',
+        fill: true,
+        tension: 0.25
+      }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: {
+          ticks: {
+            color: textColor,
+            callback: value => '$' + Number(value).toLocaleString('en-US')
+          },
+          grid: { color: gridColor },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+
+  upsertChart('chart-churn', {
+    type: 'line',
+    data: {
+      labels: churnWindow.map(m => m.label),
+      datasets: [{
+        label: 'Churn %',
+        data: churnSeries,
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239,68,68,0.2)',
+        fill: true,
+        tension: 0.25
+      }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: {
+          ticks: {
+            color: textColor,
+            callback: value => `${value}%`
+          },
+          grid: { color: gridColor },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+
+  upsertChart('chart-status', {
+    type: 'doughnut',
+    data: {
+      labels: ['Active', 'Revoked', 'No Purchase', 'Admin'],
+      datasets: [{
+        data: [activeUsers.size, revokedUsers.size, noPurchase, adminUsers.size],
+        backgroundColor: ['#22c55e', '#ef4444', '#4b5563', '#9ca3af'],
+        borderColor: '#0d0d0d',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: { color: textColor, font: { family: "'IBM Plex Mono', monospace", size: 10 } }
+        }
+      }
+    }
+  });
+}
+
 function renderTable(customers) {
   const tbody = document.getElementById('tbl-body');
-  if (!customers.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">No customers yet.</td></tr>'; return; }
+  if (!customers.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty">No customers yet.</td></tr>'; return; }
 
   tbody.innerHTML = customers.map(c => {
     const p = c.purchase;
-    const status = p ? (p.status === 'active' ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Revoked</span>') : '<span class="badge badge-gray">No Purchase</span>';
-    const product = p ? `<span class="badge badge-yellow">${p.product || 'takeoff'}</span>` : '—';
+    const isAdmin = isAdminAccountId(c.id);
+    const trial = isTrialPurchase(p);
+    const trialActive = trial && isPurchaseAccessActive(p);
+    const trialExpired = trial && !trialActive;
+    const status = isAdmin
+      ? '<span class="badge badge-gray">Admin</span>'
+      : p
+      ? (isPurchaseAccessActive(p)
+          ? (trial ? '<span class="badge badge-yellow">Trial (24h)</span>' : '<span class="badge badge-green">Active</span>')
+          : (trialExpired ? '<span class="badge badge-red">Expired Trial</span>' : '<span class="badge badge-red">Revoked</span>'))
+      : '<span class="badge badge-gray">No Purchase</span>';
+    const product = isAdmin
+      ? '<span class="badge badge-gray">admin</span>'
+      : (p ? `<span class="badge badge-yellow">${p.product || 'takeoff'}</span>` : '—');
     const joined = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
     const purchaseDate = p ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-    const actions = p && p.status === 'active'
+    const lastActiveCell = c.last_active_at
+      ? `<span class="mono">${formatRelative(c.last_active_at)}</span><div style="font-size:10px;color:#555">${formatDateTime(c.last_active_at)}</div>`
+      : '<span style="color:#555">No activity</span>';
+    const profileFlag = c.missing_profile ? '<div style="font-size:10px;color:#f5c842">profile missing</div>' : '';
+    const adminBtn = isAdmin
+      ? `<button class="btn" style="padding:3px 8px;font-size:9px" onclick="unsetAdminAccount('${c.id}')">Unset Admin</button>`
+      : `<button class="btn" style="padding:3px 8px;font-size:9px" onclick="setAdminAccount('${c.id}')">Set Admin</button>`;
+    const accessBtn = p && isPurchaseAccessActive(p)
       ? `<button class="btn red" style="padding:3px 8px;font-size:9px" onclick="revokeAccess('${c.id}','${(c.email||'').replace(/'/g,"\\'")}','${(c.full_name||c.email||'').replace(/'/g,"\\'")}')">Revoke</button>`
       : p
-        ? `<button class="btn green" style="padding:3px 8px;font-size:9px" onclick="restoreAccess('${p.id}','${(c.full_name||c.email||'').replace(/'/g,"\\'")}')">Restore</button>`
+        ? (trial
+            ? `<button class="btn y" style="padding:3px 8px;font-size:9px" onclick="grantTrialAccess('${c.id}','${(c.email||'').replace(/'/g,"\\'")}')">Renew 24h</button>`
+            : `<button class="btn green" style="padding:3px 8px;font-size:9px" onclick="restoreAccess('${p.id}','${(c.full_name||c.email||'').replace(/'/g,"\\'")}')">Restore</button>`)
         : `<button class="btn y" style="padding:3px 8px;font-size:9px" onclick="grantAccess('${c.id}','${(c.email||'').replace(/'/g,"\\'")}')">Grant</button>`;
+    const actions = `${adminBtn}${accessBtn}`;
 
     return `<tr>
-      <td>${c.full_name || '—'}</td>
+      <td>${c.full_name || '—'}${profileFlag}</td>
       <td class="mono">${c.email || '—'}</td>
       <td>${status}</td>
       <td>${product}</td>
+      <td class="mono">${c.project_count || 0}</td>
+      <td>${lastActiveCell}</td>
       <td class="mono" style="font-size:11px">${joined}</td>
       <td class="mono" style="font-size:11px">${purchaseDate}</td>
       <td><div class="td-actions">${actions}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderActiveTesters(customers) {
+  const tbody = document.getElementById('testers-body');
+  const summary = document.getElementById('tester-summary');
+  const testers = (customers || [])
+    .filter(c => c.is_active_tester)
+    .sort((a, b) => new Date(b.last_active_at || 0) - new Date(a.last_active_at || 0))
+    .slice(0, 30);
+
+  if (summary) summary.textContent = `${testers.length} user${testers.length === 1 ? '' : 's'} active in last 24h`;
+  if (!testers.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">No recent tester activity in the last 24 hours.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = testers.map(c => {
+    const isAdmin = isAdminAccountId(c.id);
+    const access = c.purchase
+      ? (isAdmin ? '<span class="badge badge-gray">Admin</span>' : (isPurchaseAccessActive(c.purchase) ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>'))
+      : '<span class="badge badge-gray">No Purchase</span>';
+    return `<tr>
+      <td>${c.full_name || '—'}</td>
+      <td class="mono">${c.email || '—'}</td>
+      <td><span class="tester-online mono">${formatRelative(c.last_active_at)}</span><div style="font-size:10px;color:#555">${formatDateTime(c.last_active_at)}</div></td>
+      <td class="mono">${c.project_count || 0}</td>
+      <td>${access}</td>
     </tr>`;
   }).join('');
 }
@@ -391,14 +1137,22 @@ function renderPurchases(purchases) {
   if (!purchases.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">No purchases yet.</td></tr>'; return; }
 
   tbody.innerHTML = purchases.slice(0, 50).map(p => {
-    const status = p.status === 'active' ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Revoked</span>';
-    const amount = p.amount_paid ? '$' + (p.amount_paid / 100).toLocaleString() : '$5,000';
+    const isAdmin = isAdminAccountId(p.user_id);
+    const trial = isTrialPurchase(p);
+    const trialExpiry = trial ? getTrialExpiry(p) : null;
+    const status = isAdmin
+      ? '<span class="badge badge-gray">Admin</span>'
+      : isPurchaseAccessActive(p)
+      ? (trial ? '<span class="badge badge-yellow">Trial (24h)</span>' : '<span class="badge badge-green">Active</span>')
+      : '<span class="badge badge-red">Inactive</span>';
+    const amountCents = isAdmin ? 0 : getPurchaseAmountCents(p);
+    const amount = amountCents > 0 ? '$' + (amountCents / 100).toLocaleString() : '$0';
     const date = new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const stripeId = p.stripe_payment_intent ? `<span class="mono" style="font-size:10px;color:#444">${p.stripe_payment_intent.substring(0, 20)}…</span>` : '—';
-    const email = profilesById[p.user_id]?.email || `${(p.user_id || '').substring(0, 8)}…`;
+    const email = profilesById[p.user_id]?.email || p.email || p.customer_email || p.billing_email || `${(p.user_id || '').substring(0, 8)}…`;
     return `<tr>
       <td class="mono">${email}</td>
-      <td><span class="badge badge-yellow">${p.product || 'takeoff'}</span></td>
+      <td><span class="badge badge-yellow">${isAdmin ? 'admin' : (p.product || 'takeoff')}</span>${trialExpiry ? `<div style="font-size:10px;color:#555;margin-top:4px">expires ${formatDateTime(trialExpiry)}</div>` : ''}</td>
       <td class="mono">${amount}</td>
       <td>${status}</td>
       <td class="mono" style="font-size:11px">${date}</td>
@@ -417,43 +1171,110 @@ function filterTable() {
   renderTable(filtered);
 }
 
+// ── ADMIN SECURITY ──
+function refreshPinState() {
+  const hasPin = !!localStorage.getItem(ADMIN_PIN_KEY);
+  const state = document.getElementById('pin-state');
+  if (state) state.textContent = hasPin ? 'PIN is set' : 'PIN not set';
+}
+
+function saveAdminPin() {
+  const pin = (document.getElementById('pin-new').value || '').trim();
+  const confirm = (document.getElementById('pin-confirm').value || '').trim();
+  if (!/^\d{4,8}$/.test(pin)) { showMsg('pin-msg', 'PIN must be 4-8 digits.', 'err'); return; }
+  if (pin !== confirm) { showMsg('pin-msg', 'PIN entries do not match.', 'err'); return; }
+  localStorage.setItem(ADMIN_PIN_KEY, pin);
+  document.getElementById('pin-new').value = '';
+  document.getElementById('pin-confirm').value = '';
+  refreshPinState();
+  showMsg('pin-msg', 'PIN saved.', 'ok');
+}
+
+async function changeAdminPassword() {
+  const pass = document.getElementById('pw-new').value;
+  const pass2 = document.getElementById('pw-confirm').value;
+  const pin = (document.getElementById('pw-pin').value || '').trim();
+  const stored = localStorage.getItem(ADMIN_PIN_KEY);
+  if (!stored) { showMsg('pw-msg', 'Set your admin PIN first.', 'err'); return; }
+  if (pin !== stored) { showMsg('pw-msg', 'Invalid PIN code.', 'err'); return; }
+  if (!pass || pass.length < 6) { showMsg('pw-msg', 'Password must be at least 6 characters.', 'err'); return; }
+  if (pass !== pass2) { showMsg('pw-msg', 'Passwords do not match.', 'err'); return; }
+
+  const btn = document.getElementById('pw-btn');
+  btn.disabled = true;
+  btn.textContent = 'Updating…';
+  const { error } = await sb.auth.updateUser({ password: pass });
+  btn.disabled = false;
+  btn.textContent = 'Update Password';
+  if (error) { showMsg('pw-msg', error.message, 'err'); return; }
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-confirm').value = '';
+  document.getElementById('pw-pin').value = '';
+  showMsg('pw-msg', 'Password updated successfully.', 'ok');
+}
+
 // ── ADD ACCOUNT ──
-function openAddModal() { openModal('add-modal'); document.getElementById('add-msg').style.display = 'none'; }
+function openAddModal() {
+  openModal('add-modal');
+  document.getElementById('add-msg').style.display = 'none';
+  onPlanChange();
+}
+
+function onPlanChange() {
+  const plan = document.getElementById('add-plan')?.value || 'paid';
+  const amountEl = document.getElementById('add-amount');
+  const noteEl = document.getElementById('add-plan-note');
+  if (!amountEl || !noteEl) return;
+  if (plan === 'trial_24h') {
+    amountEl.value = '0';
+    amountEl.disabled = true;
+    noteEl.textContent = 'Trial accounts are free and expire automatically after 24 hours.';
+  } else {
+    amountEl.disabled = false;
+    if (!amountEl.value || Number(amountEl.value) <= 0) amountEl.value = '5000';
+    noteEl.textContent = 'Paid license creates permanent active access.';
+  }
+}
 
 async function addAccount() {
   const name = document.getElementById('add-name').value.trim();
   const email = document.getElementById('add-email').value.trim();
   const pass = document.getElementById('add-pass').value;
-  const product = document.getElementById('add-product').value;
-  const amount = parseInt(document.getElementById('add-amount').value) || 5000;
+  const baseProduct = document.getElementById('add-product').value;
+  const plan = document.getElementById('add-plan').value;
+  const product = plan === 'trial_24h' ? TRIAL_PRODUCT_KEY : baseProduct;
+  const amount = plan === 'trial_24h' ? 0 : (parseInt(document.getElementById('add-amount').value) || 5000);
 
   if (!email || !pass) { showMsg('add-msg', 'Email and password required.', 'err'); return; }
 
   const btn = document.getElementById('add-btn');
   btn.disabled = true; btn.textContent = 'Creating…';
-
-  // Sign up the user
-  const { data, error } = await sb.auth.signUp({
-    email, password: pass,
-    options: { data: { full_name: name } }
-  });
-
-  if (error) {
-    showMsg('add-msg', error.message, 'err');
+  try {
+    const apiResp = await fetch(ADMIN_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        email,
+        password: pass,
+        product,
+        amountDollars: amount,
+        plan
+      })
+    });
+    const payload = await apiResp.json().catch(() => ({}));
+    if (!apiResp.ok) {
+      throw new Error(payload.error || `Create account failed (${apiResp.status})`);
+    }
+    if (plan === 'trial_24h') {
+      showMsg('add-msg', `✓ 24-hour trial created for ${email}. Expires automatically tomorrow.`, 'ok');
+    } else {
+      showMsg('add-msg', `✓ Account created for ${email}. Temporary password: ${pass}`, 'ok');
+    }
+  } catch (e) {
+    showMsg('add-msg', e.message || 'Create account failed.', 'err');
     btn.disabled = false; btn.textContent = 'Create Account';
     return;
-  }
-
-  // Manually insert purchase record
-  if (data.user) {
-    const { error: pe } = await sb.from('purchases').insert({
-      user_id: data.user.id,
-      product: product,
-      amount_paid: amount * 100,
-      status: 'active'
-    });
-    if (pe) { showMsg('add-msg', 'Account created but purchase record failed: ' + pe.message, 'err'); }
-    else { showMsg('add-msg', `✓ Account created for ${email}. Temporary password: ${pass}`, 'ok'); }
   }
 
   btn.disabled = false; btn.textContent = 'Create Account';
@@ -503,6 +1324,18 @@ async function grantAccess(userId, email) {
   else loadData();
 }
 
+async function grantTrialAccess(userId, email) {
+  await sb.from('purchases').update({ status: 'revoked' }).eq('user_id', userId).eq('status', 'active').eq('product', TRIAL_PRODUCT_KEY);
+  const { error } = await sb.from('purchases').insert({
+    user_id: userId,
+    product: TRIAL_PRODUCT_KEY,
+    amount_paid: 0,
+    status: 'active'
+  });
+  if (error) alert('Error: ' + error.message);
+  else loadData();
+}
+
 function stopLiveUpdates() {
   if (refreshTimer) {
     clearInterval(refreshTimer);
@@ -521,6 +1354,7 @@ function startLiveUpdates() {
     .channel('admin-live-updates')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => loadData())
     .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases' }, () => loadData())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => loadData())
     .subscribe();
 }
 

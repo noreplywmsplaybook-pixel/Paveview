@@ -59,6 +59,7 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
 const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const TRIAL_DURATION_MS = 24 * 60 * 60 * 1000;
 
 function showMsg(id, text, type) {
   const el = document.getElementById(id);
@@ -84,7 +85,7 @@ async function handleLogin() {
     setLoading(false);
     return;
   }
-  await checkPurchaseAndRedirect(data.user.id);
+  await checkPurchaseAndRedirect(data.user);
 }
 
 async function handleForgotPassword() {
@@ -100,13 +101,51 @@ async function handleForgotPassword() {
   }
 }
 
-async function checkPurchaseAndRedirect(userId) {
-  const { data, error } = await sb.from('purchases').select('id,product,status').eq('user_id', userId).eq('status', 'active').limit(1);
+function isTrialPurchase(purchase) {
+  const product = String(purchase?.product || '').toLowerCase();
+  const hasExplicitFreeAmount = purchase?.amount_paid !== null && purchase?.amount_paid !== undefined && Number(purchase?.amount_paid) === 0;
+  return product.includes('trial') || hasExplicitFreeAmount;
+}
+
+function isAccessActiveNow(purchase) {
+  if (!purchase || purchase.status !== 'active') return false;
+  if (!isTrialPurchase(purchase)) return true;
+  const createdAt = new Date(purchase.created_at || 0).getTime();
+  if (!createdAt) return false;
+  return (Date.now() - createdAt) < TRIAL_DURATION_MS;
+}
+
+async function markUserActive(user) {
+  if (!user?.id) return;
+  await sb.from('profiles').upsert({
+    id: user.id,
+    email: user.email || null,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'id' });
+}
+
+async function checkPurchaseAndRedirect(user) {
+  const userId = typeof user === 'string' ? user : user?.id;
+  if (!userId) { setLoading(false); return; }
+  const { data, error } = await sb
+    .from('purchases')
+    .select('id,product,status,amount_paid,created_at')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(20);
   if (error || !data || !data.length) {
     showMsg('login-msg', 'No active purchase found. Contact support@paveview.io', 'error');
     setLoading(false);
     return;
   }
+  const activeAccess = data.find(isAccessActiveNow);
+  if (!activeAccess) {
+    showMsg('login-msg', 'Your 24-hour trial has expired. Contact support to activate access.', 'error');
+    setLoading(false);
+    return;
+  }
+  await markUserActive(typeof user === 'string' ? { id: userId } : user);
   window.location.href = '/dashboard.html';
 }
 
@@ -114,7 +153,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin()
 
 (async () => {
   const { data: { session } } = await sb.auth.getSession();
-  if (session) await checkPurchaseAndRedirect(session.user.id);
+  if (session) await checkPurchaseAndRedirect(session.user);
 })();
 </script>
 </body>

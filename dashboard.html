@@ -430,14 +430,31 @@ function toggleThemeDash(){
 const SUPABASE_URL='https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const SUPABASE_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON);
+const TRIAL_DURATION_MS=24*60*60*1000;
 let currentUser=null;
 let logoDataUrl=null;
+
+function isTrialPurchase(p){
+  const product=String(p?.product||'').toLowerCase();
+  const hasExplicitFreeAmount=p?.amount_paid!==null&&p?.amount_paid!==undefined&&Number(p?.amount_paid)===0;
+  return product.includes('trial')||hasExplicitFreeAmount;
+}
+function hasActiveAccess(p){
+  if(!p||p.status!=='active')return false;
+  if(!isTrialPurchase(p))return true;
+  const createdAt=new Date(p.created_at||0).getTime();
+  if(!createdAt)return false;
+  return(Date.now()-createdAt)<TRIAL_DURATION_MS;
+}
 
 // ── INIT ──
 (async()=>{
   const {data:{session}}=await sb.auth.getSession();
   if(!session){window.location.replace('login.html');return;}
   currentUser=session.user;
+  const {data:purchases}=await sb.from('purchases').select('id,product,status,amount_paid,created_at').eq('user_id',currentUser.id).eq('status','active').order('created_at',{ascending:false}).limit(20);
+  if(!purchases||!purchases.find(hasActiveAccess)){window.location.replace('index.html');return;}
+  await sb.from('profiles').upsert({id:currentUser.id,email:currentUser.email||null,updated_at:new Date().toISOString()},{onConflict:'id'});
   const emailEl=document.getElementById('hdr-email');
   if(emailEl)emailEl.textContent=currentUser.email;
   const authCheck=document.getElementById('auth-check');
