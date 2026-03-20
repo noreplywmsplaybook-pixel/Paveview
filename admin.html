@@ -28,6 +28,11 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
 
 /* LAYOUT */
 #wrap{max-width:1200px;margin:0 auto;padding:28px 24px}
+.admin-tabs{display:flex;gap:8px;margin:0 0 16px}
+.admin-tab-btn{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:6px 12px;border:1px solid #2a2a2a;background:#111;color:#6e6a63;cursor:pointer}
+.admin-tab-btn.active{border-color:#f5c842;color:#f5c842}
+.admin-section{display:none}
+.admin-section.active{display:block}
 
 /* STATS */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
@@ -118,6 +123,7 @@ tr:hover td{background:#141414}
   .analytics-stats{grid-template-columns:repeat(2,1fr)}
   .charts{grid-template-columns:1fr}
   .security-grid{grid-template-columns:1fr}
+  .admin-tabs{flex-wrap:wrap}
 }
 </style>
 </head>
@@ -150,9 +156,15 @@ tr:hover td{background:#141414}
 
 <!-- MAIN -->
 <div id="wrap" style="display:none">
+  <div class="admin-tabs">
+    <button class="admin-tab-btn active" id="tab-btn-overview" onclick="showAdminTab('overview')">Overview</button>
+    <button class="admin-tab-btn" id="tab-btn-customers" onclick="showAdminTab('customers')">Customers</button>
+    <button class="admin-tab-btn" id="tab-btn-settings" onclick="showAdminTab('settings')">Settings</button>
+  </div>
+  <div id="data-mode-banner" class="msg err" style="display:none;margin-bottom:12px"></div>
 
   <!-- STATS -->
-  <div class="stats">
+  <div class="stats admin-section active" data-admin-tab="overview">
     <div class="stat"><div class="stat-l">Total Customers</div><div class="stat-v" id="s-total">—</div><div class="stat-sub">All time</div></div>
     <div class="stat"><div class="stat-l">Active Licenses</div><div class="stat-v" id="s-active">—</div><div class="stat-sub">Paid & active</div></div>
     <div class="stat"><div class="stat-l">Revenue</div><div class="stat-v" id="s-revenue">—</div><div class="stat-sub">Total collected</div></div>
@@ -160,7 +172,7 @@ tr:hover td{background:#141414}
   </div>
 
   <!-- ADMIN SECURITY -->
-  <div class="section">
+  <div class="section admin-section" data-admin-tab="settings">
     <div class="section-hdr">
       <span class="section-title">Admin Security</span>
       <span class="small-note">PIN required for password changes</span>
@@ -190,7 +202,7 @@ tr:hover td{background:#141414}
   </div>
 
   <!-- PLATFORM ANALYTICS -->
-  <div class="section">
+  <div class="section admin-section active" data-admin-tab="overview">
     <div class="section-hdr">
       <span class="section-title">Platform Analytics</span>
       <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#444" id="analytics-updated">Waiting for data…</span>
@@ -224,7 +236,7 @@ tr:hover td{background:#141414}
   </div>
 
   <!-- CUSTOMERS TABLE -->
-  <div class="section">
+  <div class="section admin-section" data-admin-tab="customers">
     <div class="section-hdr">
       <span class="section-title">Customers</span>
       <div class="section-hdr-right">
@@ -256,7 +268,7 @@ tr:hover td{background:#141414}
   </div>
 
   <!-- ACTIVE TESTERS -->
-  <div class="section">
+  <div class="section admin-section active" data-admin-tab="overview">
     <div class="section-hdr">
       <span class="section-title">Active Testers (Last 24h)</span>
       <span class="small-note" id="tester-summary">Waiting for data…</span>
@@ -280,7 +292,7 @@ tr:hover td{background:#141414}
   </div>
 
   <!-- RECENT PURCHASES -->
-  <div class="section">
+  <div class="section admin-section" data-admin-tab="customers">
     <div class="section-hdr">
       <span class="section-title">Recent Purchases</span>
     </div>
@@ -371,6 +383,7 @@ const TRIAL_PRODUCT_KEY = 'takeoff_trial_24h';
 const TRIAL_DURATION_MS = 24 * 60 * 60 * 1000;
 const ADMIN_PIN_KEY = 'paveview_admin_pin_v1';
 const ADMIN_USERS_KEY = 'paveview_admin_user_ids_v1';
+const ADMIN_API_URL = '/api/admin-users';
 
 let allCustomers = [];
 let revokeTarget = null;
@@ -538,7 +551,30 @@ function showApp(email) {
   document.getElementById('nav-user').textContent = email;
   loadAdminUserSet();
   refreshPinState();
+  showAdminTab('overview');
   startLiveUpdates();
+}
+
+function showAdminTab(tab) {
+  document.querySelectorAll('.admin-tab-btn').forEach(btn => btn.classList.remove('active'));
+  const btn = document.getElementById(`tab-btn-${tab}`);
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.admin-section').forEach(section => {
+    const shouldShow = section.dataset.adminTab === tab;
+    section.classList.toggle('active', shouldShow);
+  });
+}
+
+function showDataModeBanner(text) {
+  const el = document.getElementById('data-mode-banner');
+  if (!el) return;
+  if (!text) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+  el.textContent = text;
+  el.style.display = 'block';
 }
 
 async function signOut() {
@@ -564,22 +600,55 @@ async function loadData() {
   document.getElementById('tbl-body').innerHTML = '<tr><td colspan="9" class="empty">Loading…</td></tr>';
   document.getElementById('testers-body').innerHTML = '<tr><td colspan="5" class="empty">Loading…</td></tr>';
   try {
-    const [[{ data: profiles, error: profilesErr }, { data: purchases, error: purchasesErr }, { data: projects, error: projectsErr }], supplementalRows] = await Promise.all([
-      Promise.all([
-      sb.from('profiles').select('*').order('created_at', { ascending: false }),
-      sb.from('purchases').select('*').order('created_at', { ascending: false }),
-      sb.from('projects').select('user_id,created_at,updated_at').order('created_at', { ascending: false })
-      ]),
-      fetchSupplementalUsers()
-    ]);
-    if (profilesErr) throw profilesErr;
-    if (purchasesErr) throw purchasesErr;
-    if (projectsErr) throw projectsErr;
+    let profileRows = [];
+    let purchaseRows = [];
+    let projectRows = [];
+    let supplemental = [];
+    let usingServerApi = false;
 
-    const profileRows = profiles || [];
-    const purchaseRows = purchases || [];
-    const projectRows = projects || [];
-    const supplemental = supplementalRows || [];
+    try {
+      const apiResp = await fetch(`${ADMIN_API_URL}?t=${Date.now()}`, { headers: { Accept: 'application/json' } });
+      if (!apiResp.ok) {
+        const apiErr = await apiResp.json().catch(() => null);
+        throw new Error(apiErr?.error || `Admin API request failed (${apiResp.status})`);
+      }
+      const payload = await apiResp.json();
+      profileRows = Array.isArray(payload.profiles) ? payload.profiles : [];
+      purchaseRows = Array.isArray(payload.purchases) ? payload.purchases : [];
+      projectRows = Array.isArray(payload.projects) ? payload.projects : [];
+      supplemental = Array.isArray(payload.authUsers) ? payload.authUsers.map(u => ({
+        id: u.id,
+        email: u.email || '',
+        full_name: u.full_name || u.user_metadata?.full_name || '',
+        created_at: u.created_at || null,
+        updated_at: u.last_sign_in_at || null
+      })) : [];
+      usingServerApi = true;
+    } catch (apiError) {
+      // Fallback to client-side queries if API is not configured yet.
+      const [[{ data: profiles, error: profilesErr }, { data: purchases, error: purchasesErr }, { data: projects, error: projectsErr }], supplementalRows] = await Promise.all([
+        Promise.all([
+          sb.from('profiles').select('*').order('created_at', { ascending: false }),
+          sb.from('purchases').select('*').order('created_at', { ascending: false }),
+          sb.from('projects').select('user_id,created_at,updated_at').order('created_at', { ascending: false })
+        ]),
+        fetchSupplementalUsers()
+      ]);
+      if (profilesErr) throw profilesErr;
+      if (purchasesErr) throw purchasesErr;
+      if (projectsErr) throw projectsErr;
+      profileRows = profiles || [];
+      purchaseRows = purchases || [];
+      projectRows = projects || [];
+      supplemental = supplementalRows || [];
+    }
+
+    if (usingServerApi) {
+      showDataModeBanner('');
+    } else {
+      showDataModeBanner('Limited mode: browser access only. Set SUPABASE_SERVICE_ROLE_KEY for full Supabase user visibility.');
+    }
+
     const supplementalById = Object.fromEntries(supplemental.map(r => [r.id, r]));
     profilesById = Object.fromEntries(profileRows.map(p => [p.id, p]));
 
@@ -1180,51 +1249,32 @@ async function addAccount() {
 
   const btn = document.getElementById('add-btn');
   btn.disabled = true; btn.textContent = 'Creating…';
-  const { data: { session: adminSession } } = await sb.auth.getSession();
-
-  // Sign up the user
-  const { data, error } = await sb.auth.signUp({
-    email, password: pass,
-    options: { data: { full_name: name } }
-  });
-
-  if (error) {
-    showMsg('add-msg', error.message, 'err');
-    btn.disabled = false; btn.textContent = 'Create Account';
-    return;
-  }
-
-  // Restore admin session in case signUp switched auth context.
-  if (adminSession?.access_token && adminSession?.refresh_token) {
-    await sb.auth.setSession({
-      access_token: adminSession.access_token,
-      refresh_token: adminSession.refresh_token
+  try {
+    const apiResp = await fetch(ADMIN_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        email,
+        password: pass,
+        product,
+        amountDollars: amount,
+        plan
+      })
     });
-  }
-
-  // Manually insert purchase record and best-effort profile row.
-  if (data.user) {
-    const { error: profileErr } = await sb.from('profiles').upsert({
-      id: data.user.id,
-      email,
-      full_name: name || null,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'id' });
-    const { error: pe } = await sb.from('purchases').insert({
-      user_id: data.user.id,
-      product: product,
-      amount_paid: amount * 100,
-      status: 'active'
-    });
-    if (pe) {
-      showMsg('add-msg', 'Account created but purchase record failed: ' + pe.message, 'err');
-    } else if (profileErr) {
-      showMsg('add-msg', `✓ Account created for ${email}, but profile row could not be auto-synced (${profileErr.message}).`, 'ok');
-    } else if (plan === 'trial_24h') {
+    const payload = await apiResp.json().catch(() => ({}));
+    if (!apiResp.ok) {
+      throw new Error(payload.error || `Create account failed (${apiResp.status})`);
+    }
+    if (plan === 'trial_24h') {
       showMsg('add-msg', `✓ 24-hour trial created for ${email}. Expires automatically tomorrow.`, 'ok');
     } else {
       showMsg('add-msg', `✓ Account created for ${email}. Temporary password: ${pass}`, 'ok');
     }
+  } catch (e) {
+    showMsg('add-msg', e.message || 'Create account failed.', 'err');
+    btn.disabled = false; btn.textContent = 'Create Account';
+    return;
   }
 
   btn.disabled = false; btn.textContent = 'Create Account';
