@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PaveView Admin</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -34,6 +35,18 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
 .stat-l{font-family:'IBM Plex Mono',monospace;font-size:8px;color:#6e6a63;letter-spacing:.18em;text-transform:uppercase;margin-bottom:4px}
 .stat-v{font-family:'Bebas Neue',sans-serif;font-size:32px;color:#f5c842;line-height:1}
 .stat-sub{font-size:11px;color:#6e6a63;margin-top:2px}
+
+/* PLATFORM ANALYTICS */
+.analytics-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;padding:16px 18px;border-bottom:1px solid #1e1e1e}
+.a-stat{background:#0d0d0d;border:1px solid #1e1e1e;padding:14px}
+.a-stat-l{font-family:'IBM Plex Mono',monospace;font-size:8px;color:#6e6a63;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px}
+.a-stat-v{font-family:'Bebas Neue',sans-serif;font-size:30px;color:#f5c842;line-height:1}
+.a-stat-sub{font-size:10px;color:#555;margin-top:4px}
+.charts{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:12px 18px 18px}
+.chart-card{background:#0d0d0d;border:1px solid #1e1e1e;padding:12px}
+.chart-title{font-family:'IBM Plex Mono',monospace;font-size:9px;color:#888;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px}
+.chart-wrap{position:relative;height:240px}
+.analytics-note{padding:0 18px 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#4b4b4b}
 
 /* SECTION */
 .section{background:#111;border:1px solid #1e1e1e;margin-bottom:20px}
@@ -88,6 +101,12 @@ tr:hover td{background:#141414}
 .spinner{width:20px;height:20px;border:2px solid #1e1e1e;border-top-color:#f5c842;border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty{padding:40px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#444}
+
+@media (max-width: 1024px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .analytics-stats{grid-template-columns:repeat(2,1fr)}
+  .charts{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
@@ -126,6 +145,40 @@ tr:hover td{background:#141414}
     <div class="stat"><div class="stat-l">Active Licenses</div><div class="stat-v" id="s-active">—</div><div class="stat-sub">Paid & active</div></div>
     <div class="stat"><div class="stat-l">Revenue</div><div class="stat-v" id="s-revenue">—</div><div class="stat-sub">Total collected</div></div>
     <div class="stat"><div class="stat-l">This Month</div><div class="stat-v" id="s-month">—</div><div class="stat-sub">New customers</div></div>
+  </div>
+
+  <!-- PLATFORM ANALYTICS -->
+  <div class="section">
+    <div class="section-hdr">
+      <span class="section-title">Platform Analytics</span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#444" id="analytics-updated">Waiting for data…</span>
+    </div>
+    <div class="analytics-stats">
+      <div class="a-stat"><div class="a-stat-l">Daily Users</div><div class="a-stat-v" id="an-dau">—</div><div class="a-stat-sub">Distinct users active today</div></div>
+      <div class="a-stat"><div class="a-stat-l">MRR Estimate</div><div class="a-stat-v" id="an-mrr">—</div><div class="a-stat-sub">Active licenses monthly</div></div>
+      <div class="a-stat"><div class="a-stat-l">Monthly Revenue</div><div class="a-stat-v" id="an-month-rev">—</div><div class="a-stat-sub" id="an-month-rev-sub">Current month</div></div>
+      <div class="a-stat"><div class="a-stat-l">Churn Rate</div><div class="a-stat-v" id="an-churn">—</div><div class="a-stat-sub">Current month</div></div>
+      <div class="a-stat"><div class="a-stat-l">ARR Run-Rate</div><div class="a-stat-v" id="an-arr">—</div><div class="a-stat-sub">MRR x 12</div></div>
+    </div>
+    <div class="charts">
+      <div class="chart-card">
+        <div class="chart-title">Daily Users (Last 30 Days)</div>
+        <div class="chart-wrap"><canvas id="chart-dau"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Monthly Revenue (Last 12 Months)</div>
+        <div class="chart-wrap"><canvas id="chart-revenue"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Churn Rate Trend (Last 6 Months)</div>
+        <div class="chart-wrap"><canvas id="chart-churn"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Subscriber Status</div>
+        <div class="chart-wrap"><canvas id="chart-status"></canvas></div>
+      </div>
+    </div>
+    <div class="analytics-note">Churn is calculated from revocations over active subscriptions at month start. DAU uses profile, project, and purchase activity timestamps.</div>
   </div>
 
   <!-- CUSTOMERS TABLE -->
@@ -246,6 +299,7 @@ let profilesById = {};
 let liveChannel = null;
 let refreshTimer = null;
 let loadingData = false;
+const chartRefs = {};
 
 // ── AUTH ──
 async function googleLogin() {
@@ -310,15 +364,18 @@ async function loadData() {
   loadingData = true;
   document.getElementById('tbl-body').innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
   try {
-    const [{ data: profiles, error: profilesErr }, { data: purchases, error: purchasesErr }] = await Promise.all([
+    const [{ data: profiles, error: profilesErr }, { data: purchases, error: purchasesErr }, { data: projects, error: projectsErr }] = await Promise.all([
       sb.from('profiles').select('*').order('created_at', { ascending: false }),
-      sb.from('purchases').select('*').order('created_at', { ascending: false })
+      sb.from('purchases').select('*').order('created_at', { ascending: false }),
+      sb.from('projects').select('user_id,created_at,updated_at').order('created_at', { ascending: false })
     ]);
     if (profilesErr) throw profilesErr;
     if (purchasesErr) throw purchasesErr;
+    if (projectsErr) throw projectsErr;
 
     const profileRows = profiles || [];
     const purchaseRows = purchases || [];
+    const projectRows = projects || [];
     profilesById = Object.fromEntries(profileRows.map(p => [p.id, p]));
 
     // Map most-recent purchase to each user
@@ -335,9 +392,11 @@ async function loadData() {
     renderTable(allCustomers);
     renderPurchases(purchaseRows);
     updateStats(allCustomers, purchaseRows);
+    updatePlatformAnalytics(profileRows, purchaseRows, projectRows);
   } catch (err) {
     document.getElementById('tbl-body').innerHTML = `<tr><td colspan="7" class="empty">Failed to load data: ${err.message || err}</td></tr>`;
     document.getElementById('purchases-body').innerHTML = '<tr><td colspan="6" class="empty">Failed to load purchases.</td></tr>';
+    resetAnalytics(err.message || String(err));
   } finally {
     loadingData = false;
   }
@@ -356,6 +415,299 @@ function updateStats(customers, purchases) {
   document.getElementById('s-active').textContent = active;
   document.getElementById('s-revenue').textContent = '$' + (revenue / 100).toLocaleString('en-US', { maximumFractionDigits: 0 });
   document.getElementById('s-month').textContent = thisMonth;
+}
+
+function toDateOrNull(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function dayKey(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function monthKey(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthBuckets(count) {
+  const now = new Date();
+  now.setDate(1);
+  now.setHours(0, 0, 0, 0);
+  return Array.from({ length: count }).map((_, i) => {
+    const start = new Date(now.getFullYear(), now.getMonth() - (count - 1 - i), 1);
+    const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+    return {
+      key: monthKey(start),
+      start,
+      end,
+      label: start.toLocaleDateString('en-US', { month: 'short' })
+    };
+  });
+}
+
+function dayBuckets(count) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Array.from({ length: count }).map((_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() - (count - 1 - i));
+    return {
+      key: dayKey(d),
+      date: d,
+      label: d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })
+    };
+  });
+}
+
+function centsToMoney(cents) {
+  return '$' + Math.round((cents || 0) / 100).toLocaleString('en-US');
+}
+
+function renderMetric(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function upsertChart(id, config) {
+  const canvas = document.getElementById(id);
+  if (!canvas || !window.Chart) return;
+  if (chartRefs[id]) chartRefs[id].destroy();
+  chartRefs[id] = new Chart(canvas.getContext('2d'), config);
+}
+
+function resetAnalytics(reason) {
+  ['an-dau', 'an-mrr', 'an-month-rev', 'an-churn', 'an-arr'].forEach(id => renderMetric(id, '—'));
+  renderMetric('an-month-rev-sub', 'Unavailable');
+  const upd = document.getElementById('analytics-updated');
+  if (upd) upd.textContent = `Analytics unavailable (${reason || 'error'})`;
+  Object.keys(chartRefs).forEach(k => {
+    chartRefs[k].destroy();
+    delete chartRefs[k];
+  });
+}
+
+function updatePlatformAnalytics(profiles, purchases, projects) {
+  if (!profiles || !purchases) {
+    resetAnalytics('no data');
+    return;
+  }
+  const now = new Date();
+  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const previousMonthEnd = currentMonthStart;
+
+  const activePurchases = purchases.filter(p => p.status === 'active');
+  const mrrCents = activePurchases.reduce((sum, p) => sum + (p.amount_paid || DEFAULT_TAKEOFF_PRICE_CENTS), 0);
+  const arrCents = mrrCents * 12;
+  const monthRevenueCents = purchases.reduce((sum, p) => {
+    const d = toDateOrNull(p.created_at);
+    if (!d) return sum;
+    return (d >= currentMonthStart && d < new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() + 1, 1))
+      ? sum + (p.amount_paid || DEFAULT_TAKEOFF_PRICE_CENTS)
+      : sum;
+  }, 0);
+  const previousMonthRevenueCents = purchases.reduce((sum, p) => {
+    const d = toDateOrNull(p.created_at);
+    if (!d) return sum;
+    return (d >= previousMonthStart && d < previousMonthEnd) ? sum + (p.amount_paid || DEFAULT_TAKEOFF_PRICE_CENTS) : sum;
+  }, 0);
+  const monthDelta = previousMonthRevenueCents > 0
+    ? ((monthRevenueCents - previousMonthRevenueCents) / previousMonthRevenueCents) * 100
+    : null;
+
+  // Build daily activity map from profile/purchase/project create and update events.
+  const activityByDay = {};
+  const addActivity = (userId, dateValue) => {
+    if (!userId) return;
+    const d = toDateOrNull(dateValue);
+    if (!d) return;
+    const key = dayKey(d);
+    if (!activityByDay[key]) activityByDay[key] = new Set();
+    activityByDay[key].add(userId);
+  };
+
+  profiles.forEach(p => {
+    addActivity(p.id, p.created_at);
+    addActivity(p.id, p.updated_at);
+  });
+  purchases.forEach(p => {
+    addActivity(p.user_id, p.created_at);
+    addActivity(p.user_id, p.updated_at);
+  });
+  (projects || []).forEach(p => {
+    addActivity(p.user_id, p.created_at);
+    addActivity(p.user_id, p.updated_at);
+  });
+
+  const dailyWindow = dayBuckets(30);
+  const dailyUsersSeries = dailyWindow.map(d => (activityByDay[d.key] ? activityByDay[d.key].size : 0));
+  const todayUsers = dailyUsersSeries[dailyUsersSeries.length - 1] || 0;
+
+  const revenueWindow = monthBuckets(12);
+  const revenueByMonth = {};
+  purchases.forEach(p => {
+    const d = toDateOrNull(p.created_at);
+    if (!d) return;
+    const key = monthKey(d);
+    revenueByMonth[key] = (revenueByMonth[key] || 0) + (p.amount_paid || DEFAULT_TAKEOFF_PRICE_CENTS);
+  });
+  const monthlyRevenueSeries = revenueWindow.map(m => Math.round((revenueByMonth[m.key] || 0) / 100));
+
+  // Churn = revoked in month / active at start of month.
+  const churnWindow = monthBuckets(6);
+  const churnSeries = churnWindow.map(bucket => {
+    const startActive = purchases.filter(p => {
+      const createdAt = toDateOrNull(p.created_at);
+      if (!createdAt || createdAt >= bucket.start) return false;
+      if (p.status !== 'revoked') return true;
+      const revokedAt = toDateOrNull(p.updated_at) || createdAt;
+      return revokedAt >= bucket.start;
+    }).length;
+
+    const churned = purchases.filter(p => {
+      if (p.status !== 'revoked') return false;
+      const revokedAt = toDateOrNull(p.updated_at) || toDateOrNull(p.created_at);
+      if (!revokedAt) return false;
+      return revokedAt >= bucket.start && revokedAt < bucket.end;
+    }).length;
+
+    return startActive > 0 ? Number(((churned / startActive) * 100).toFixed(2)) : 0;
+  });
+  const currentChurn = churnSeries[churnSeries.length - 1] || 0;
+
+  // Subscriber status distribution.
+  const purchasedUsers = new Set(purchases.map(p => p.user_id).filter(Boolean));
+  const activeUsers = new Set(activePurchases.map(p => p.user_id).filter(Boolean));
+  const revokedUsers = new Set(
+    purchases
+      .filter(p => p.status === 'revoked')
+      .map(p => p.user_id)
+      .filter(Boolean)
+  );
+  const noPurchase = profiles.filter(p => !purchasedUsers.has(p.id)).length;
+
+  renderMetric('an-dau', String(todayUsers));
+  renderMetric('an-mrr', centsToMoney(mrrCents));
+  renderMetric('an-month-rev', centsToMoney(monthRevenueCents));
+  renderMetric('an-churn', `${currentChurn.toFixed(2)}%`);
+  renderMetric('an-arr', centsToMoney(arrCents));
+  renderMetric('an-month-rev-sub', monthDelta === null ? 'No previous month baseline' : `${monthDelta >= 0 ? '+' : ''}${monthDelta.toFixed(1)}% vs last month`);
+  const updatedEl = document.getElementById('analytics-updated');
+  if (updatedEl) {
+    updatedEl.textContent = `Updated ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+  }
+
+  if (!window.Chart) return;
+  const textColor = '#9a958d';
+  const gridColor = '#1f1f1f';
+  const accent = '#f5c842';
+
+  upsertChart('chart-dau', {
+    type: 'bar',
+    data: {
+      labels: dailyWindow.map(d => d.label),
+      datasets: [{
+        label: 'Daily Users',
+        data: dailyUsersSeries,
+        backgroundColor: 'rgba(245,200,66,0.45)',
+        borderColor: accent,
+        borderWidth: 1
+      }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: textColor, maxRotation: 0, autoSkip: true }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor, precision: 0 }, grid: { color: gridColor }, beginAtZero: true }
+      }
+    }
+  });
+
+  upsertChart('chart-revenue', {
+    type: 'line',
+    data: {
+      labels: revenueWindow.map(m => m.label),
+      datasets: [{
+        label: 'Revenue',
+        data: monthlyRevenueSeries,
+        borderColor: '#22c55e',
+        backgroundColor: 'rgba(34,197,94,0.2)',
+        fill: true,
+        tension: 0.25
+      }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: {
+          ticks: {
+            color: textColor,
+            callback: value => '$' + Number(value).toLocaleString('en-US')
+          },
+          grid: { color: gridColor },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+
+  upsertChart('chart-churn', {
+    type: 'line',
+    data: {
+      labels: churnWindow.map(m => m.label),
+      datasets: [{
+        label: 'Churn %',
+        data: churnSeries,
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239,68,68,0.2)',
+        fill: true,
+        tension: 0.25
+      }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: {
+          ticks: {
+            color: textColor,
+            callback: value => `${value}%`
+          },
+          grid: { color: gridColor },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+
+  upsertChart('chart-status', {
+    type: 'doughnut',
+    data: {
+      labels: ['Active', 'Revoked', 'No Purchase'],
+      datasets: [{
+        data: [activeUsers.size, revokedUsers.size, noPurchase],
+        backgroundColor: ['#22c55e', '#ef4444', '#4b5563'],
+        borderColor: '#0d0d0d',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: { color: textColor, font: { family: "'IBM Plex Mono', monospace", size: 10 } }
+        }
+      }
+    }
+  });
 }
 
 function renderTable(customers) {
