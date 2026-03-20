@@ -47,6 +47,17 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
 .chart-title{font-family:'IBM Plex Mono',monospace;font-size:9px;color:#888;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px}
 .chart-wrap{position:relative;height:240px}
 .analytics-note{padding:0 18px 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#4b4b4b}
+.small-note{font-family:'IBM Plex Mono',monospace;font-size:9px;color:#4b4b4b}
+
+/* SECURITY */
+.security-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 18px 18px}
+.security-card{background:#0d0d0d;border:1px solid #1e1e1e;padding:14px}
+.security-card h4{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#f5c842;margin-bottom:10px}
+.security-row{display:grid;grid-template-columns:1fr;gap:8px}
+
+/* TESTERS */
+.tester-online{color:#22c55e}
+.tester-idle{color:#f5c842}
 
 /* SECTION */
 .section{background:#111;border:1px solid #1e1e1e;margin-bottom:20px}
@@ -106,6 +117,7 @@ tr:hover td{background:#141414}
   .stats{grid-template-columns:repeat(2,1fr)}
   .analytics-stats{grid-template-columns:repeat(2,1fr)}
   .charts{grid-template-columns:1fr}
+  .security-grid{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -145,6 +157,36 @@ tr:hover td{background:#141414}
     <div class="stat"><div class="stat-l">Active Licenses</div><div class="stat-v" id="s-active">—</div><div class="stat-sub">Paid & active</div></div>
     <div class="stat"><div class="stat-l">Revenue</div><div class="stat-v" id="s-revenue">—</div><div class="stat-sub">Total collected</div></div>
     <div class="stat"><div class="stat-l">This Month</div><div class="stat-v" id="s-month">—</div><div class="stat-sub">New customers</div></div>
+  </div>
+
+  <!-- ADMIN SECURITY -->
+  <div class="section">
+    <div class="section-hdr">
+      <span class="section-title">Admin Security</span>
+      <span class="small-note">PIN required for password changes</span>
+    </div>
+    <div class="security-grid">
+      <div class="security-card">
+        <h4>Set / Rotate PIN</h4>
+        <div class="security-row">
+          <input type="password" id="pin-new" class="search-inp" style="width:100%" placeholder="Enter 4-8 digit PIN">
+          <input type="password" id="pin-confirm" class="search-inp" style="width:100%" placeholder="Confirm PIN">
+          <button class="btn y" onclick="saveAdminPin()">Save PIN</button>
+          <div id="pin-state" class="small-note">PIN not set</div>
+          <div class="msg" id="pin-msg"></div>
+        </div>
+      </div>
+      <div class="security-card">
+        <h4>Change Admin Password</h4>
+        <div class="security-row">
+          <input type="password" id="pw-new" class="search-inp" style="width:100%" placeholder="New password (min 6 chars)">
+          <input type="password" id="pw-confirm" class="search-inp" style="width:100%" placeholder="Confirm new password">
+          <input type="password" id="pw-pin" class="search-inp" style="width:100%" placeholder="PIN code required">
+          <button class="btn" id="pw-btn" onclick="changeAdminPassword()">Update Password</button>
+          <div class="msg" id="pw-msg"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- PLATFORM ANALYTICS -->
@@ -199,13 +241,39 @@ tr:hover td{background:#141414}
             <th>Email</th>
             <th>Status</th>
             <th>Product</th>
+            <th>Projects</th>
+            <th>Last Active</th>
             <th>Joined</th>
             <th>Purchase Date</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody id="tbl-body">
-          <tr><td colspan="7" class="empty">Loading…</td></tr>
+          <tr><td colspan="9" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ACTIVE TESTERS -->
+  <div class="section">
+    <div class="section-hdr">
+      <span class="section-title">Active Testers (Last 24h)</span>
+      <span class="small-note" id="tester-summary">Waiting for data…</span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Last Activity</th>
+            <th>Projects</th>
+            <th>Access</th>
+          </tr>
+        </thead>
+        <tbody id="testers-body">
+          <tr><td colspan="5" class="empty">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -251,9 +319,17 @@ tr:hover td{background:#141414}
       </select>
     </div>
     <div class="field">
+      <label>Access Type</label>
+      <select id="add-plan" onchange="onPlanChange()">
+        <option value="paid">Paid License</option>
+        <option value="trial_24h">24-Hour Free Trial</option>
+      </select>
+    </div>
+    <div class="field">
       <label>Payment Amount</label>
       <input type="number" id="add-amount" placeholder="5000" value="5000">
     </div>
+    <div class="small-note" id="add-plan-note" style="margin-top:-6px;margin-bottom:8px">Paid license creates permanent active access.</div>
     <div class="msg" id="add-msg"></div>
     <div class="mfooter">
       <button class="btn" onclick="closeModal('add-modal')">Cancel</button>
@@ -291,6 +367,9 @@ const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const DEFAULT_TAKEOFF_PRICE_CENTS = 500000; // $5,000
+const TRIAL_PRODUCT_KEY = 'takeoff_trial_24h';
+const TRIAL_DURATION_MS = 24 * 60 * 60 * 1000;
+const ADMIN_PIN_KEY = 'paveview_admin_pin_v1';
 
 let allCustomers = [];
 let revokeTarget = null;
@@ -300,6 +379,53 @@ let liveChannel = null;
 let refreshTimer = null;
 let loadingData = false;
 const chartRefs = {};
+
+function toDateOrNull(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function isTrialPurchase(purchase) {
+  if (!purchase) return false;
+  const product = String(purchase.product || '').toLowerCase();
+  const hasExplicitFreeAmount = purchase.amount_paid !== null && purchase.amount_paid !== undefined && Number(purchase.amount_paid) === 0;
+  return product.includes('trial') || hasExplicitFreeAmount;
+}
+
+function getTrialExpiry(purchase) {
+  const createdAt = toDateOrNull(purchase?.created_at);
+  if (!createdAt) return null;
+  return new Date(createdAt.getTime() + TRIAL_DURATION_MS);
+}
+
+function isPurchaseAccessActive(purchase) {
+  if (!purchase || purchase.status !== 'active') return false;
+  if (!isTrialPurchase(purchase)) return true;
+  const expiry = getTrialExpiry(purchase);
+  return !!expiry && expiry.getTime() > Date.now();
+}
+
+function getPurchaseAmountCents(purchase) {
+  if (purchase?.amount_paid === null || purchase?.amount_paid === undefined) return DEFAULT_TAKEOFF_PRICE_CENTS;
+  return Number(purchase.amount_paid || 0);
+}
+
+function formatDateTime(value) {
+  const d = toDateOrNull(value);
+  if (!d) return '—';
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function formatRelative(value) {
+  const d = toDateOrNull(value);
+  if (!d) return 'Never';
+  const delta = Date.now() - d.getTime();
+  if (delta < 60 * 1000) return 'just now';
+  if (delta < 60 * 60 * 1000) return `${Math.floor(delta / (60 * 1000))}m ago`;
+  if (delta < 24 * 60 * 60 * 1000) return `${Math.floor(delta / (60 * 60 * 1000))}h ago`;
+  return `${Math.floor(delta / (24 * 60 * 60 * 1000))}d ago`;
+}
 
 // ── AUTH ──
 async function googleLogin() {
@@ -339,6 +465,7 @@ function showApp(email) {
   document.getElementById('nav').style.display = 'flex';
   document.getElementById('wrap').style.display = 'block';
   document.getElementById('nav-user').textContent = email;
+  refreshPinState();
   startLiveUpdates();
 }
 
@@ -362,7 +489,8 @@ document.addEventListener('keydown', e => {
 async function loadData() {
   if (loadingData) return;
   loadingData = true;
-  document.getElementById('tbl-body').innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
+  document.getElementById('tbl-body').innerHTML = '<tr><td colspan="9" class="empty">Loading…</td></tr>';
+  document.getElementById('testers-body').innerHTML = '<tr><td colspan="5" class="empty">Loading…</td></tr>';
   try {
     const [{ data: profiles, error: profilesErr }, { data: purchases, error: purchasesErr }, { data: projects, error: projectsErr }] = await Promise.all([
       sb.from('profiles').select('*').order('created_at', { ascending: false }),
@@ -378,23 +506,68 @@ async function loadData() {
     const projectRows = projects || [];
     profilesById = Object.fromEntries(profileRows.map(p => [p.id, p]));
 
-    // Map most-recent purchase to each user
-    const purchaseMap = {};
+    const purchasesByUser = {};
     purchaseRows.forEach(p => {
-      if (!purchaseMap[p.user_id]) purchaseMap[p.user_id] = p;
+      if (!p.user_id) return;
+      if (!purchasesByUser[p.user_id]) purchasesByUser[p.user_id] = [];
+      purchasesByUser[p.user_id].push(p);
+    });
+    Object.keys(purchasesByUser).forEach(uid => {
+      purchasesByUser[uid].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     });
 
-    allCustomers = profileRows.map(p => ({
-      ...p,
-      purchase: purchaseMap[p.id] || null
-    }));
+    const projectStatsByUser = {};
+    projectRows.forEach(pr => {
+      if (!pr.user_id) return;
+      const current = projectStatsByUser[pr.user_id] || { count: 0, last: null };
+      current.count += 1;
+      const candidate = toDateOrNull(pr.updated_at) || toDateOrNull(pr.created_at);
+      if (candidate && (!current.last || candidate > current.last)) current.last = candidate;
+      projectStatsByUser[pr.user_id] = current;
+    });
+
+    const allUserIds = new Set([
+      ...profileRows.map(p => p.id).filter(Boolean),
+      ...Object.keys(purchasesByUser),
+      ...Object.keys(projectStatsByUser)
+    ]);
+
+    allCustomers = Array.from(allUserIds).map(uid => {
+      const profile = profilesById[uid] || {};
+      const userPurchases = purchasesByUser[uid] || [];
+      const purchase = userPurchases[0] || null;
+      const mostRecentPurchase = userPurchases
+        .map(p => toDateOrNull(p.updated_at) || toDateOrNull(p.created_at))
+        .filter(Boolean)
+        .sort((a, b) => b - a)[0] || null;
+      const profileActivity = toDateOrNull(profile.updated_at) || toDateOrNull(profile.created_at);
+      const projectActivity = projectStatsByUser[uid]?.last || null;
+      const lastActivity = [profileActivity, mostRecentPurchase, projectActivity].filter(Boolean).sort((a, b) => b - a)[0] || null;
+      const fallbackEmail = purchase?.email || purchase?.customer_email || purchase?.billing_email || (uid ? `${uid.substring(0, 8)}…` : '—');
+
+      return {
+        ...profile,
+        id: uid,
+        email: profile.email || fallbackEmail,
+        full_name: profile.full_name || purchase?.customer_name || purchase?.full_name || '',
+        created_at: profile.created_at || purchase?.created_at || null,
+        purchase,
+        purchases: userPurchases,
+        project_count: projectStatsByUser[uid]?.count || 0,
+        last_active_at: lastActivity ? lastActivity.toISOString() : null,
+        is_active_tester: !!lastActivity && (Date.now() - lastActivity.getTime()) <= TRIAL_DURATION_MS,
+        missing_profile: !profilesById[uid]
+      };
+    }).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
     renderTable(allCustomers);
+    renderActiveTesters(allCustomers);
     renderPurchases(purchaseRows);
     updateStats(allCustomers, purchaseRows);
     updatePlatformAnalytics(profileRows, purchaseRows, projectRows);
   } catch (err) {
-    document.getElementById('tbl-body').innerHTML = `<tr><td colspan="7" class="empty">Failed to load data: ${err.message || err}</td></tr>`;
+    document.getElementById('tbl-body').innerHTML = `<tr><td colspan="9" class="empty">Failed to load data: ${err.message || err}</td></tr>`;
+    document.getElementById('testers-body').innerHTML = '<tr><td colspan="5" class="empty">Failed to load tester activity.</td></tr>';
     document.getElementById('purchases-body').innerHTML = '<tr><td colspan="6" class="empty">Failed to load purchases.</td></tr>';
     resetAnalytics(err.message || String(err));
   } finally {
@@ -403,10 +576,18 @@ async function loadData() {
 }
 
 function updateStats(customers, purchases) {
-  const active = purchases.filter(p => p.status === 'active').length;
-  const revenue = purchases.filter(p => p.status === 'active').reduce((s, p) => s + (p.amount_paid || DEFAULT_TAKEOFF_PRICE_CENTS), 0);
+  const latestActiveByUser = {};
+  purchases.forEach(p => {
+    if (!p.user_id || !isPurchaseAccessActive(p)) return;
+    if (!latestActiveByUser[p.user_id]) latestActiveByUser[p.user_id] = p;
+  });
+  const active = Object.keys(latestActiveByUser).length;
+  const revenue = Object.values(latestActiveByUser).reduce((sum, p) => {
+    return sum + getPurchaseAmountCents(p);
+  }, 0);
   const thisMonth = customers.filter(c => {
-    const d = new Date(c.created_at);
+    const d = toDateOrNull(c.created_at);
+    if (!d) return false;
     const now = new Date();
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }).length;
@@ -415,12 +596,6 @@ function updateStats(customers, purchases) {
   document.getElementById('s-active').textContent = active;
   document.getElementById('s-revenue').textContent = '$' + (revenue / 100).toLocaleString('en-US', { maximumFractionDigits: 0 });
   document.getElementById('s-month').textContent = thisMonth;
-}
-
-function toDateOrNull(value) {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function dayKey(date) {
@@ -500,20 +675,27 @@ function updatePlatformAnalytics(profiles, purchases, projects) {
   const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const previousMonthEnd = currentMonthStart;
 
-  const activePurchases = purchases.filter(p => p.status === 'active');
-  const mrrCents = activePurchases.reduce((sum, p) => sum + (p.amount_paid || DEFAULT_TAKEOFF_PRICE_CENTS), 0);
+  const latestActiveByUser = {};
+  purchases.forEach(p => {
+    if (!p.user_id || !isPurchaseAccessActive(p)) return;
+    if (!latestActiveByUser[p.user_id]) latestActiveByUser[p.user_id] = p;
+  });
+  const activePurchases = Object.values(latestActiveByUser);
+  const mrrCents = activePurchases.reduce((sum, p) => {
+    return sum + getPurchaseAmountCents(p);
+  }, 0);
   const arrCents = mrrCents * 12;
   const monthRevenueCents = purchases.reduce((sum, p) => {
     const d = toDateOrNull(p.created_at);
     if (!d) return sum;
     return (d >= currentMonthStart && d < new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() + 1, 1))
-      ? sum + (p.amount_paid || DEFAULT_TAKEOFF_PRICE_CENTS)
+      ? sum + getPurchaseAmountCents(p)
       : sum;
   }, 0);
   const previousMonthRevenueCents = purchases.reduce((sum, p) => {
     const d = toDateOrNull(p.created_at);
     if (!d) return sum;
-    return (d >= previousMonthStart && d < previousMonthEnd) ? sum + (p.amount_paid || DEFAULT_TAKEOFF_PRICE_CENTS) : sum;
+    return (d >= previousMonthStart && d < previousMonthEnd) ? sum + getPurchaseAmountCents(p) : sum;
   }, 0);
   const monthDelta = previousMonthRevenueCents > 0
     ? ((monthRevenueCents - previousMonthRevenueCents) / previousMonthRevenueCents) * 100
@@ -553,7 +735,7 @@ function updatePlatformAnalytics(profiles, purchases, projects) {
     const d = toDateOrNull(p.created_at);
     if (!d) return;
     const key = monthKey(d);
-    revenueByMonth[key] = (revenueByMonth[key] || 0) + (p.amount_paid || DEFAULT_TAKEOFF_PRICE_CENTS);
+    revenueByMonth[key] = (revenueByMonth[key] || 0) + getPurchaseAmountCents(p);
   });
   const monthlyRevenueSeries = revenueWindow.map(m => Math.round((revenueByMonth[m.key] || 0) / 100));
 
@@ -563,6 +745,9 @@ function updatePlatformAnalytics(profiles, purchases, projects) {
     const startActive = purchases.filter(p => {
       const createdAt = toDateOrNull(p.created_at);
       if (!createdAt || createdAt >= bucket.start) return false;
+      const isTrial = isTrialPurchase(p);
+      const trialExpiry = getTrialExpiry(p);
+      if (isTrial && trialExpiry && trialExpiry < bucket.start) return false;
       if (p.status !== 'revoked') return true;
       const revokedAt = toDateOrNull(p.updated_at) || createdAt;
       return revokedAt >= bucket.start;
@@ -572,7 +757,8 @@ function updatePlatformAnalytics(profiles, purchases, projects) {
       if (p.status !== 'revoked') return false;
       const revokedAt = toDateOrNull(p.updated_at) || toDateOrNull(p.created_at);
       if (!revokedAt) return false;
-      return revokedAt >= bucket.start && revokedAt < bucket.end;
+      if (!(revokedAt >= bucket.start && revokedAt < bucket.end)) return false;
+      return !isTrialPurchase(p) || !!getTrialExpiry(p);
     }).length;
 
     return startActive > 0 ? Number(((churned / startActive) * 100).toFixed(2)) : 0;
@@ -584,7 +770,7 @@ function updatePlatformAnalytics(profiles, purchases, projects) {
   const activeUsers = new Set(activePurchases.map(p => p.user_id).filter(Boolean));
   const revokedUsers = new Set(
     purchases
-      .filter(p => p.status === 'revoked')
+      .filter(p => p.status === 'revoked' || (isTrialPurchase(p) && !isPurchaseAccessActive(p)))
       .map(p => p.user_id)
       .filter(Boolean)
   );
@@ -712,28 +898,70 @@ function updatePlatformAnalytics(profiles, purchases, projects) {
 
 function renderTable(customers) {
   const tbody = document.getElementById('tbl-body');
-  if (!customers.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">No customers yet.</td></tr>'; return; }
+  if (!customers.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty">No customers yet.</td></tr>'; return; }
 
   tbody.innerHTML = customers.map(c => {
     const p = c.purchase;
-    const status = p ? (p.status === 'active' ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Revoked</span>') : '<span class="badge badge-gray">No Purchase</span>';
+    const trial = isTrialPurchase(p);
+    const trialActive = trial && isPurchaseAccessActive(p);
+    const trialExpired = trial && !trialActive;
+    const status = p
+      ? (isPurchaseAccessActive(p)
+          ? (trial ? '<span class="badge badge-yellow">Trial (24h)</span>' : '<span class="badge badge-green">Active</span>')
+          : (trialExpired ? '<span class="badge badge-red">Expired Trial</span>' : '<span class="badge badge-red">Revoked</span>'))
+      : '<span class="badge badge-gray">No Purchase</span>';
     const product = p ? `<span class="badge badge-yellow">${p.product || 'takeoff'}</span>` : '—';
     const joined = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
     const purchaseDate = p ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-    const actions = p && p.status === 'active'
+    const lastActiveCell = c.last_active_at
+      ? `<span class="mono">${formatRelative(c.last_active_at)}</span><div style="font-size:10px;color:#555">${formatDateTime(c.last_active_at)}</div>`
+      : '<span style="color:#555">No activity</span>';
+    const profileFlag = c.missing_profile ? '<div style="font-size:10px;color:#f5c842">profile missing</div>' : '';
+    const actions = p && isPurchaseAccessActive(p)
       ? `<button class="btn red" style="padding:3px 8px;font-size:9px" onclick="revokeAccess('${c.id}','${(c.email||'').replace(/'/g,"\\'")}','${(c.full_name||c.email||'').replace(/'/g,"\\'")}')">Revoke</button>`
       : p
-        ? `<button class="btn green" style="padding:3px 8px;font-size:9px" onclick="restoreAccess('${p.id}','${(c.full_name||c.email||'').replace(/'/g,"\\'")}')">Restore</button>`
+        ? (trial
+            ? `<button class="btn y" style="padding:3px 8px;font-size:9px" onclick="grantTrialAccess('${c.id}','${(c.email||'').replace(/'/g,"\\'")}')">Renew 24h</button>`
+            : `<button class="btn green" style="padding:3px 8px;font-size:9px" onclick="restoreAccess('${p.id}','${(c.full_name||c.email||'').replace(/'/g,"\\'")}')">Restore</button>`)
         : `<button class="btn y" style="padding:3px 8px;font-size:9px" onclick="grantAccess('${c.id}','${(c.email||'').replace(/'/g,"\\'")}')">Grant</button>`;
 
     return `<tr>
-      <td>${c.full_name || '—'}</td>
+      <td>${c.full_name || '—'}${profileFlag}</td>
       <td class="mono">${c.email || '—'}</td>
       <td>${status}</td>
       <td>${product}</td>
+      <td class="mono">${c.project_count || 0}</td>
+      <td>${lastActiveCell}</td>
       <td class="mono" style="font-size:11px">${joined}</td>
       <td class="mono" style="font-size:11px">${purchaseDate}</td>
       <td><div class="td-actions">${actions}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderActiveTesters(customers) {
+  const tbody = document.getElementById('testers-body');
+  const summary = document.getElementById('tester-summary');
+  const testers = (customers || [])
+    .filter(c => c.is_active_tester)
+    .sort((a, b) => new Date(b.last_active_at || 0) - new Date(a.last_active_at || 0))
+    .slice(0, 30);
+
+  if (summary) summary.textContent = `${testers.length} user${testers.length === 1 ? '' : 's'} active in last 24h`;
+  if (!testers.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">No recent tester activity in the last 24 hours.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = testers.map(c => {
+    const access = c.purchase
+      ? (isPurchaseAccessActive(c.purchase) ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>')
+      : '<span class="badge badge-gray">No Purchase</span>';
+    return `<tr>
+      <td>${c.full_name || '—'}</td>
+      <td class="mono">${c.email || '—'}</td>
+      <td><span class="tester-online mono">${formatRelative(c.last_active_at)}</span><div style="font-size:10px;color:#555">${formatDateTime(c.last_active_at)}</div></td>
+      <td class="mono">${c.project_count || 0}</td>
+      <td>${access}</td>
     </tr>`;
   }).join('');
 }
@@ -743,14 +971,21 @@ function renderPurchases(purchases) {
   if (!purchases.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">No purchases yet.</td></tr>'; return; }
 
   tbody.innerHTML = purchases.slice(0, 50).map(p => {
-    const status = p.status === 'active' ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Revoked</span>';
-    const amount = p.amount_paid ? '$' + (p.amount_paid / 100).toLocaleString() : '$5,000';
+    const trial = isTrialPurchase(p);
+    const trialExpiry = trial ? getTrialExpiry(p) : null;
+    const status = isPurchaseAccessActive(p)
+      ? (trial ? '<span class="badge badge-yellow">Trial (24h)</span>' : '<span class="badge badge-green">Active</span>')
+      : '<span class="badge badge-red">Inactive</span>';
+    const amountCents = (p.amount_paid === null || p.amount_paid === undefined)
+      ? DEFAULT_TAKEOFF_PRICE_CENTS
+      : Number(p.amount_paid || 0);
+    const amount = amountCents > 0 ? '$' + (amountCents / 100).toLocaleString() : '$0';
     const date = new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const stripeId = p.stripe_payment_intent ? `<span class="mono" style="font-size:10px;color:#444">${p.stripe_payment_intent.substring(0, 20)}…</span>` : '—';
     const email = profilesById[p.user_id]?.email || `${(p.user_id || '').substring(0, 8)}…`;
     return `<tr>
       <td class="mono">${email}</td>
-      <td><span class="badge badge-yellow">${p.product || 'takeoff'}</span></td>
+      <td><span class="badge badge-yellow">${p.product || 'takeoff'}</span>${trialExpiry ? `<div style="font-size:10px;color:#555;margin-top:4px">expires ${formatDateTime(trialExpiry)}</div>` : ''}</td>
       <td class="mono">${amount}</td>
       <td>${status}</td>
       <td class="mono" style="font-size:11px">${date}</td>
@@ -769,20 +1004,85 @@ function filterTable() {
   renderTable(filtered);
 }
 
+// ── ADMIN SECURITY ──
+function refreshPinState() {
+  const hasPin = !!localStorage.getItem(ADMIN_PIN_KEY);
+  const state = document.getElementById('pin-state');
+  if (state) state.textContent = hasPin ? 'PIN is set' : 'PIN not set';
+}
+
+function saveAdminPin() {
+  const pin = (document.getElementById('pin-new').value || '').trim();
+  const confirm = (document.getElementById('pin-confirm').value || '').trim();
+  if (!/^\d{4,8}$/.test(pin)) { showMsg('pin-msg', 'PIN must be 4-8 digits.', 'err'); return; }
+  if (pin !== confirm) { showMsg('pin-msg', 'PIN entries do not match.', 'err'); return; }
+  localStorage.setItem(ADMIN_PIN_KEY, pin);
+  document.getElementById('pin-new').value = '';
+  document.getElementById('pin-confirm').value = '';
+  refreshPinState();
+  showMsg('pin-msg', 'PIN saved.', 'ok');
+}
+
+async function changeAdminPassword() {
+  const pass = document.getElementById('pw-new').value;
+  const pass2 = document.getElementById('pw-confirm').value;
+  const pin = (document.getElementById('pw-pin').value || '').trim();
+  const stored = localStorage.getItem(ADMIN_PIN_KEY);
+  if (!stored) { showMsg('pw-msg', 'Set your admin PIN first.', 'err'); return; }
+  if (pin !== stored) { showMsg('pw-msg', 'Invalid PIN code.', 'err'); return; }
+  if (!pass || pass.length < 6) { showMsg('pw-msg', 'Password must be at least 6 characters.', 'err'); return; }
+  if (pass !== pass2) { showMsg('pw-msg', 'Passwords do not match.', 'err'); return; }
+
+  const btn = document.getElementById('pw-btn');
+  btn.disabled = true;
+  btn.textContent = 'Updating…';
+  const { error } = await sb.auth.updateUser({ password: pass });
+  btn.disabled = false;
+  btn.textContent = 'Update Password';
+  if (error) { showMsg('pw-msg', error.message, 'err'); return; }
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-confirm').value = '';
+  document.getElementById('pw-pin').value = '';
+  showMsg('pw-msg', 'Password updated successfully.', 'ok');
+}
+
 // ── ADD ACCOUNT ──
-function openAddModal() { openModal('add-modal'); document.getElementById('add-msg').style.display = 'none'; }
+function openAddModal() {
+  openModal('add-modal');
+  document.getElementById('add-msg').style.display = 'none';
+  onPlanChange();
+}
+
+function onPlanChange() {
+  const plan = document.getElementById('add-plan')?.value || 'paid';
+  const amountEl = document.getElementById('add-amount');
+  const noteEl = document.getElementById('add-plan-note');
+  if (!amountEl || !noteEl) return;
+  if (plan === 'trial_24h') {
+    amountEl.value = '0';
+    amountEl.disabled = true;
+    noteEl.textContent = 'Trial accounts are free and expire automatically after 24 hours.';
+  } else {
+    amountEl.disabled = false;
+    if (!amountEl.value || Number(amountEl.value) <= 0) amountEl.value = '5000';
+    noteEl.textContent = 'Paid license creates permanent active access.';
+  }
+}
 
 async function addAccount() {
   const name = document.getElementById('add-name').value.trim();
   const email = document.getElementById('add-email').value.trim();
   const pass = document.getElementById('add-pass').value;
-  const product = document.getElementById('add-product').value;
-  const amount = parseInt(document.getElementById('add-amount').value) || 5000;
+  const baseProduct = document.getElementById('add-product').value;
+  const plan = document.getElementById('add-plan').value;
+  const product = plan === 'trial_24h' ? TRIAL_PRODUCT_KEY : baseProduct;
+  const amount = plan === 'trial_24h' ? 0 : (parseInt(document.getElementById('add-amount').value) || 5000);
 
   if (!email || !pass) { showMsg('add-msg', 'Email and password required.', 'err'); return; }
 
   const btn = document.getElementById('add-btn');
   btn.disabled = true; btn.textContent = 'Creating…';
+  const { data: { session: adminSession } } = await sb.auth.getSession();
 
   // Sign up the user
   const { data, error } = await sb.auth.signUp({
@@ -796,16 +1096,37 @@ async function addAccount() {
     return;
   }
 
-  // Manually insert purchase record
+  // Restore admin session in case signUp switched auth context.
+  if (adminSession?.access_token && adminSession?.refresh_token) {
+    await sb.auth.setSession({
+      access_token: adminSession.access_token,
+      refresh_token: adminSession.refresh_token
+    });
+  }
+
+  // Manually insert purchase record and best-effort profile row.
   if (data.user) {
+    const { error: profileErr } = await sb.from('profiles').upsert({
+      id: data.user.id,
+      email,
+      full_name: name || null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'id' });
     const { error: pe } = await sb.from('purchases').insert({
       user_id: data.user.id,
       product: product,
       amount_paid: amount * 100,
       status: 'active'
     });
-    if (pe) { showMsg('add-msg', 'Account created but purchase record failed: ' + pe.message, 'err'); }
-    else { showMsg('add-msg', `✓ Account created for ${email}. Temporary password: ${pass}`, 'ok'); }
+    if (pe) {
+      showMsg('add-msg', 'Account created but purchase record failed: ' + pe.message, 'err');
+    } else if (profileErr) {
+      showMsg('add-msg', `✓ Account created for ${email}, but profile row could not be auto-synced (${profileErr.message}).`, 'ok');
+    } else if (plan === 'trial_24h') {
+      showMsg('add-msg', `✓ 24-hour trial created for ${email}. Expires automatically tomorrow.`, 'ok');
+    } else {
+      showMsg('add-msg', `✓ Account created for ${email}. Temporary password: ${pass}`, 'ok');
+    }
   }
 
   btn.disabled = false; btn.textContent = 'Create Account';
@@ -855,6 +1176,18 @@ async function grantAccess(userId, email) {
   else loadData();
 }
 
+async function grantTrialAccess(userId, email) {
+  await sb.from('purchases').update({ status: 'revoked' }).eq('user_id', userId).eq('status', 'active').eq('product', TRIAL_PRODUCT_KEY);
+  const { error } = await sb.from('purchases').insert({
+    user_id: userId,
+    product: TRIAL_PRODUCT_KEY,
+    amount_paid: 0,
+    status: 'active'
+  });
+  if (error) alert('Error: ' + error.message);
+  else loadData();
+}
+
 function stopLiveUpdates() {
   if (refreshTimer) {
     clearInterval(refreshTimer);
@@ -873,6 +1206,7 @@ function startLiveUpdates() {
     .channel('admin-live-updates')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => loadData())
     .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases' }, () => loadData())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => loadData())
     .subscribe();
 }
 
