@@ -58,11 +58,11 @@ body{background:#000;color:var(--txt);font-family:"JetBrains Mono",monospace;hei
     <button class="ptab" onclick="setPage('c5',this)">C5 Grading</button>
   </div>
   <div style="display:flex;gap:3px">
-    <button class="lwbtn on" data-sw="24" style="border-color:#ef444466;color:#ef4444" onclick="toggleSW(this)">Property Boundary</button>
+    <button class="lwbtn " data-sw="24" style="border-color:#ef444466;color:#ef4444" onclick="toggleSW(this)">Property Boundary</button>
     <button class="lwbtn on" data-sw="14" style="border-color:#22c55e66;color:#22c55e" onclick="toggleSW(this)">Lot Perimeter</button>
-    <button class="lwbtn on" data-sw="12" style="border-color:#60a5fa66;color:#60a5fa" onclick="toggleSW(this)">Parking Stalls</button>
-    <button class="lwbtn " data-sw="10" style="border-color:#f59e0b66;color:#f59e0b" onclick="toggleSW(this)">Secondary</button>
-    <button class="lwbtn " data-sw="7" style="border-color:#a855f766;color:#a855f7" onclick="toggleSW(this)">Dimensions</button>
+    <button class="lwbtn " data-sw="12" style="border-color:#60a5fa66;color:#60a5fa" onclick="toggleSW(this)">Blue Markings</button>
+    <button class="lwbtn on" data-sw="10" style="border-color:#f59e0b66;color:#f59e0b" onclick="toggleSW(this)">Crosswalk/Hatch</button>
+    <button class="lwbtn on" data-sw="7" style="border-color:#a855f766;color:#a855f7" onclick="toggleSW(this)">Stencils</button>
     <button class="lwbtn on" data-sw="5" style="border-color:#e8e8e866;color:#e8e8e8" onclick="toggleSW(this)">Lines</button>
     <button class="lwbtn " data-sw="2" style="border-color:#66666;color:#666" onclick="toggleSW(this)">Fine</button>
     <button class="lwbtn " data-sw="1" style="border-color:#44466;color:#444" onclick="toggleSW(this)">Fill</button>
@@ -93,14 +93,14 @@ const SVG_DATA = {"c3": {"els": [[5.0, 62, [0.49116, 0.32135, 0.49109, 0.32108, 
 
 const SW_COLORS={"24": "#ef4444", "14": "#22c55e", "12": "#60a5fa", "10": "#f59e0b", "7": "#a855f7", "5": "#e8e8e8", "2": "#666", "1": "#444"};
 const SEL_COLORS=["#d4a843", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ef4444", "#06b6d4", "#f97316"];
-const TYPE_COLORS={lot_perimeter:"#22c55e",parking_stall:"#60a5fa",crosswalk:"#f59e0b",stencil:"#a855f7",line:"#e8e8e8",property_boundary:"#ef4444",other:"#9ca3af"};
-const TYPE_LABELS={lot_perimeter:"Lot Perimeter",parking_stall:"Parking Stalls",crosswalk:"Crosswalk",stencil:"Stencil",line:"Lines",property_boundary:"Property Boundary",other:"Other"};
-const TYPE_PICK_PRIORITY={lot_perimeter:7,parking_stall:6,crosswalk:5,stencil:4,property_boundary:3,line:1,other:0};
+const TYPE_COLORS={lot_perimeter:"#22c55e",parking_stall:"#e8e8e8",crosswalk:"#f59e0b",stencil:"#a855f7",line:"#e8e8e8",property_boundary:"#ef4444",other:"#9ca3af"};
+const TYPE_LABELS={lot_perimeter:"Lot Perimeter",parking_stall:"Parking Stalls",crosswalk:"Crosswalk/Hatch",stencil:"Stencil",line:"Lines",property_boundary:"Property Boundary",other:"Other"};
+const TYPE_PICK_PRIORITY={lot_perimeter:8,crosswalk:7,stencil:6,line:5,parking_stall:2,property_boundary:0,other:0};
 
 const cw=document.getElementById('cw'),mc=document.getElementById('mc'),ctx=mc.getContext('2d');
 let page='c4',zoom=1,pan={x:0,y:0},panning=false,panStart=null;
 let els=[],gmeta=[],swVis={},hovG=-1,selGroups=[],expData=null;
-let gById={},elsByGroup={},groupBounds={},groupTypes={},bridgeMap={};
+let gById={},elMeta=[],keyMembers={},keyBounds={},keyTypes={},keyInfo={},bridgeMap={};
 
 document.querySelectorAll('.lwbtn').forEach(b=>{swVis[b.dataset.sw]=b.classList.contains('on');});
 
@@ -116,29 +116,40 @@ function setPage(key,btn){
 }
 function toggleSW(btn){swVis[btn.dataset.sw]=!swVis[btn.dataset.sw];btn.classList.toggle('on',swVis[btn.dataset.sw]);render();}
 
+function keyFor(gi,swStr){return String(gi)+'|'+String(swStr);}
+function normSw(sw){return String(Math.round(Number(sw)||0));}
+function typeRank(t){return TYPE_PICK_PRIORITY[t]??0;}
+function chooseType(a,b){return typeRank(a)>=typeRank(b)?a:b;}
+function isTypeSelectable(t){return t!=='property_boundary'&&t!=='parking_stall'&&t!=='other';}
+
 function rebuildDerived(){
-  gById={};elsByGroup={};groupBounds={};groupTypes={};bridgeMap={};
+  gById={};elMeta=[];keyMembers={};keyBounds={};keyTypes={};keyInfo={};bridgeMap={};
   gmeta.forEach(g=>{gById[g.i]=g;});
   for(let i=0;i<els.length;i++){
     const el=els[i],gi=el[1],pts=el[2];
-    if(!elsByGroup[gi])elsByGroup[gi]=[];
-    elsByGroup[gi].push(el);
+    const swStr=normSw(el[0]);
+    const sw=Number(swStr||0);
+    const key=keyFor(gi,swStr);
+    if(!keyMembers[key])keyMembers[key]=[];
+    keyMembers[key].push(i);
+    if(!keyInfo[key])keyInfo[key]={gi,sw:swStr};
     if(!pts||pts.length<2)continue;
     let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
     for(let j=0;j<pts.length;j+=2){
       const x=pts[j],y=pts[j+1];
       if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;
     }
-    const b=groupBounds[gi];
-    if(!b)groupBounds[gi]={minX,minY,maxX,maxY};
-    else{
+    let b=keyBounds[key];
+    if(!b){
+      keyBounds[key]={minX,minY,maxX,maxY};
+      b=keyBounds[key];
+    }else{
       if(minX<b.minX)b.minX=minX;if(minY<b.minY)b.minY=minY;
       if(maxX>b.maxX)b.maxX=maxX;if(maxY>b.maxY)b.maxY=maxY;
     }
-  }
-  Object.keys(elsByGroup).forEach(k=>{
-    const gi=Number(k),g=gById[gi]||{sw:0,n:0,cx:0,cy:0};
-    const sw=Number(g.sw||0),n=Number(g.n||0),b=groupBounds[gi]||{minX:0,maxX:0,minY:0,maxY:0};
+    const g=gById[gi]||{n:0};
+    const n=Number(g.n||0);
+    const bb={minX,minY,maxX,maxY};
     const w=Math.max(0,b.maxX-b.minX),h=Math.max(0,b.maxY-b.minY),area=w*h;
     let type='line';
     if(sw>=20)type='property_boundary';
@@ -146,19 +157,20 @@ function rebuildDerived(){
       // In this data, 14pt is lot perimeter even when touching page edges.
       type='lot_perimeter';
     }else if(sw===12){
-      if(area<0.00022&&n<28)type='stencil';
-      else if(n>=45||area>0.0015)type='parking_stall';
-      else if(area>0.00055)type='crosswalk';
+      // Treat 12pt as markings/lines in this file; not true stall polygons.
+      if(area<0.00006&&n<40)type='stencil';
+      else if(area>0.00018)type='crosswalk';
       else type='line';
     }else if(sw===10){
-      type=area>0.00045?'crosswalk':'line';
+      type='crosswalk';
     }else if(sw===7){
       type='stencil';
     }else{
       type='line';
     }
-    groupTypes[gi]=type;
-  });
+    keyTypes[key]=chooseType(keyTypes[key]||'other',type);
+    elMeta[i]={gi,sw:swStr,key,type:keyTypes[key],bounds:bb};
+  }
   buildPerimeterBridgeMap();
 }
 
@@ -174,12 +186,12 @@ function areBoundsNear(a,b,eps){
 
 function buildPerimeterBridgeMap(){
   bridgeMap={};
-  const perims=Object.keys(groupTypes).map(Number).filter(gi=>groupTypes[gi]==='lot_perimeter');
+  const perims=Object.keys(keyTypes).filter(k=>keyTypes[k]==='lot_perimeter');
   const EPS=0.009;
   for(let i=0;i<perims.length;i++){
     for(let j=i+1;j<perims.length;j++){
       const a=perims[i],b=perims[j];
-      if(areBoundsNear(groupBounds[a],groupBounds[b],EPS)){
+      if(areBoundsNear(keyBounds[a],keyBounds[b],EPS)){
         if(!bridgeMap[a])bridgeMap[a]=new Set();
         if(!bridgeMap[b])bridgeMap[b]=new Set();
         bridgeMap[a].add(b);bridgeMap[b].add(a);
@@ -189,9 +201,9 @@ function buildPerimeterBridgeMap(){
 }
 
 function getHoverGroupSet(gi){
-  if(gi<0)return null;
+  if(!gi&&gi!==0)return null;
   const set=new Set([gi]);
-  if(groupTypes[gi]==='lot_perimeter'&&bridgeMap[gi]){
+  if(getSelectionType(gi)==='lot_perimeter'&&bridgeMap[gi]){
     const q=[gi],seen=new Set([gi]);
     while(q.length){
       const cur=q.shift(),next=bridgeMap[cur];
@@ -205,27 +217,75 @@ function getHoverGroupSet(gi){
   return set;
 }
 
+function mergeBounds(ids){
+  let out=null;
+  Array.from(ids||[]).forEach(id=>{
+    const b=keyBounds[id];
+    if(!b)return;
+    if(!out)out={minX:b.minX,minY:b.minY,maxX:b.maxX,maxY:b.maxY};
+    else{
+      if(b.minX<out.minX)out.minX=b.minX;
+      if(b.minY<out.minY)out.minY=b.minY;
+      if(b.maxX>out.maxX)out.maxX=b.maxX;
+      if(b.maxY>out.maxY)out.maxY=b.maxY;
+    }
+  });
+  return out;
+}
+function boundsArea(b){
+  if(!b)return 0;
+  return Math.max(0,b.maxX-b.minX)*Math.max(0,b.maxY-b.minY);
+}
+function boundsCenterInside(b,outer,pad){
+  if(!b||!outer)return false;
+  const p=pad||0;
+  const cx=(b.minX+b.maxX)/2,cy=(b.minY+b.maxY)/2;
+  return cx>=outer.minX+p&&cx<=outer.maxX-p&&cy>=outer.minY+p&&cy<=outer.maxY-p;
+}
+function expandPerimeterPickWithInteriorLines(basePick){
+  const out=new Set(basePick||[]);
+  const perimBox=mergeBounds(out);
+  if(!perimBox)return out;
+  const perimArea=boundsArea(perimBox)||0.00001;
+  Object.keys(keyTypes).forEach(k=>{
+    if(out.has(k))return;
+    if(keyTypes[k]!=='line')return;
+    const info=keyInfo[k]||{};
+    // White lines are the stall/stopblock signal in this file.
+    if(String(info.sw)!=='5')return;
+    const b=keyBounds[k];if(!b)return;
+    if(!boundsCenterInside(b,perimBox,0.0015))return;
+    const a=boundsArea(b);
+    // Exclude oversized line aggregates that leak outside parking area.
+    if(a>0.06||a>perimArea*0.45)return;
+    out.add(k);
+  });
+  return out;
+}
+
 function classifyMergedGroupType(groupIds){
   const ids=Array.from(groupIds||[]);
   if(!ids.length)return'other';
-  let hasPerim=false,hasStall=false,hasCross=false,hasStencil=false,hasProp=false;
+  let hasPerim=false,hasStall=false,hasCross=false,hasStencil=false,hasLine=false,hasProp=false;
   ids.forEach(gi=>{
-    const t=groupTypes[gi]||'other';
+    const t=keyTypes[gi]||'other';
     if(t==='lot_perimeter')hasPerim=true;
     else if(t==='parking_stall')hasStall=true;
     else if(t==='crosswalk')hasCross=true;
     else if(t==='stencil')hasStencil=true;
+    else if(t==='line')hasLine=true;
     else if(t==='property_boundary')hasProp=true;
   });
   if(hasPerim)return'lot_perimeter';
-  if(hasStall)return'parking_stall';
   if(hasCross)return'crosswalk';
   if(hasStencil)return'stencil';
+  if(hasLine)return'line';
+  if(hasStall)return'line';
   if(hasProp)return'property_boundary';
   return'line';
 }
 function getSelectionType(gi){
-  return groupTypes[gi]||'other';
+  return keyTypes[gi]||'other';
 }
 
 function pickPriorityForType(type){
@@ -240,7 +300,7 @@ function defaultLabelForSelection(gi){
 function normalizeSelectionLabels(){
   const used={};
   selGroups.forEach(sg=>{
-    const t=sg.type||getSelectionType(sg.gi)||'other';
+    const t=sg.type||getSelectionType(sg.key)||'other';
     sg.type=t;
     const base=TYPE_LABELS[t]||'Zone';
     used[base]=(used[base]||0)+1;
@@ -283,9 +343,13 @@ function groupAt(nx,ny){
   const SNAP=0.007/zoom;let best=-1,bestD=SNAP,bestP=-1;
   for(let i=0;i<els.length;i++){
     const el=els[i];
-    if(!swVis[String(el[0])])continue;
-    const gi=el[1];
-    const p=pickPriorityForType(getSelectionType(gi));
+    const swStr=normSw(el[0]);
+    if(!swVis[swStr])continue;
+    const meta=elMeta[i];if(!meta)continue;
+    const gi=meta.key;
+    const t=getSelectionType(gi);
+    if(!isTypeSelectable(t))continue;
+    const p=pickPriorityForType(t);
     const pts=el[2];if(!pts||pts.length<4)continue;
     for(let j=0;j<pts.length-3;j+=2){
       const d=ptSeg(nx,ny,pts[j],pts[j+1],pts[j+2],pts[j+3]);
@@ -304,17 +368,17 @@ function ptSeg(px,py,ax,ay,bx,by){
 function render(){
   const W=mc.width,H=mc.height;ctx.clearRect(0,0,W,H);ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
   if(!els.length)return;
-  const selSet=new Set(selGroups.map(s=>s.gi));
+  const selSet=new Set(selGroups.map(s=>s.key));
   const hovSet=getHoverGroupSet(hovG);
   for(let i=0;i<els.length;i++){
     const el=els[i],sw=el[0],gi=el[1],pts=el[2];
-    const swStr=String(sw);
+    const swStr=normSw(sw),meta=elMeta[i],key=meta?meta.key:keyFor(gi,swStr);
     if(!swVis[swStr])continue;
-    const isSel=selSet.has(gi),isHov=!!(hovSet&&hovSet.has(gi));
+    const isSel=selSet.has(key),isHov=!!(hovSet&&hovSet.has(key));
     let color=SW_COLORS[swStr]||'#555';
     let lineW=Math.max(0.5,sw/2592*800);  // scale stroke to canvas
     let alpha=0.65;
-    if(isSel){const sg=selGroups.find(s=>s.gi===gi);color=sg?sg.color:'#fff';lineW=Math.max(2,lineW*2);alpha=1;}
+    if(isSel){const sg=selGroups.find(s=>s.key===key);color=sg?sg.color:'#fff';lineW=Math.max(2,lineW*2);alpha=1;}
     else if(isHov){color='#fff';lineW=Math.max(1.5,lineW*1.8);alpha=1;}
     ctx.globalAlpha=alpha;
     drawEl(pts,color,lineW);
@@ -322,7 +386,7 @@ function render(){
   ctx.globalAlpha=1;
   // Labels
   selGroups.forEach(sg=>{
-    const g=gmeta.find(m=>m.i===sg.gi);if(!g)return;
+    const k=keyInfo[sg.key],g=k?gById[k.gi]:null;if(!g)return;
     const[lx,ly]=i2s(g.cx,g.cy);
     ctx.font='bold 9px JetBrains Mono';const tw=ctx.measureText(sg.label).width;
     ctx.fillStyle='rgba(0,0,0,.85)';ctx.fillRect(lx-tw/2-5,ly-8,tw+10,16);
@@ -340,16 +404,24 @@ mc.addEventListener('mousemove',e=>{
 });
 mc.addEventListener('click',e=>{
   if(panning)return;const{x,y}=s2n(e.clientX,e.clientY);const gi=groupAt(x,y);if(gi<0)return;
-  const pick=getHoverGroupSet(gi)||new Set([gi]);
-  const mergedType=classifyMergedGroupType(pick);
+  const basePick=getHoverGroupSet(gi)||new Set([gi]);
+  let pick=basePick;
+  if(classifyMergedGroupType(basePick)==='lot_perimeter'){
+    pick=expandPerimeterPickWithInteriorLines(basePick);
+  }
   let changed=false;
   pick.forEach(gx=>{
-    const ex=selGroups.findIndex(s=>s.gi===gx);
+    const baseType=getSelectionType(gx);
+    if(!isTypeSelectable(baseType))return;
+    const ex=selGroups.findIndex(s=>s.key===gx);
     if(ex>=0){selGroups.splice(ex,1);changed=true;}
     else{
-      const t=mergedType==='other'?getSelectionType(gx):mergedType;
+      const t=baseType;
+      if(!isTypeSelectable(t))return;
       const color=TYPE_COLORS[t]||SEL_COLORS[selGroups.length%SEL_COLORS.length];
-      selGroups.push({gi:gx,type:t,color,label:defaultLabelForSelection(gx)});
+      const info=keyInfo[gx]||{gi:-1,sw:'0'};
+      const members=(keyMembers[gx]||[]).slice();
+      selGroups.push({key:gx,gi:info.gi,sw:info.sw,members,type:t,color,label:defaultLabelForSelection(gx)});
       changed=true;
     }
   });
@@ -360,7 +432,7 @@ mc.addEventListener('mouseup',e=>{if(e.button===1||e.altKey)panning=false;});
 mc.addEventListener('mouseleave',()=>{panning=false;hovG=-1;mc.style.cursor='crosshair';render();});
 mc.addEventListener('contextmenu',e=>{
   e.preventDefault();const{x,y}=s2n(e.clientX,e.clientY);const gi=groupAt(x,y);if(gi<0)return;
-  const i=selGroups.findIndex(s=>s.gi===gi);if(i>=0){selGroups.splice(i,1);updatePanel();render();}
+  const i=selGroups.findIndex(s=>s.key===gi);if(i>=0){selGroups.splice(i,1);updatePanel();render();}
 });
 
 function updatePanel(){
@@ -369,11 +441,11 @@ function updatePanel(){
   if(!n){list.innerHTML='<div id="noz">Hover a line to see its group glow, click to select.</div>';return;}
   list.innerHTML='';
   selGroups.forEach((sg,i)=>{
-    const g=gmeta.find(m=>m.i===sg.gi)||{n:0,sw:0};
-    const t=sg.type||getSelectionType(sg.gi),tn=TYPE_LABELS[t]||'Other';
+    const mCt=(sg.members&&sg.members.length)||((keyMembers[sg.key]||[]).length);
+    const t=sg.type||getSelectionType(sg.key),tn=TYPE_LABELS[t]||'Other';
     const div=document.createElement('div');div.className='zi';div.style.borderLeft='3px solid '+sg.color;
     div.innerHTML='<span class="zd" style="background:'+sg.color+'"></span>'
-      +'<div><div class="zn">'+sg.label+'</div><div class="zm">'+tn+' &middot; '+g.n+' segs &middot; sw='+g.sw+'</div></div>'
+      +'<div><div class="zn">'+sg.label+'</div><div class="zm">'+tn+' &middot; '+mCt+' segs &middot; sw='+sg.sw+'</div></div>'
       +'<button class="zx" onclick="rmz('+i+',event)">&#x2715;</button>';
     list.appendChild(div);
   });
@@ -383,11 +455,10 @@ function clearAll(){selGroups=[];hovG=-1;updatePanel();render();}
 
 function showResult(){
   expData=selGroups.map((sg,i)=>{
-    const g=gmeta.find(m=>m.i===sg.gi)||{sw:0,n:0};
-    const gEls=els.filter(el=>el[1]===sg.gi);
-    const segs=gEls.map(el=>{const pts=el[2],out=[];for(let j=0;j<pts.length;j+=2)out.push({x:pts[j],y:pts[j+1]});return out;});
-    const type=sg.type||getSelectionType(sg.gi);
-    return{zone:i+1,label:sg.label,type,color:sg.color,sw:g.sw,segment_count:g.n,segments:segs};
+    const memberIdx=(sg.members&&sg.members.length)?sg.members:(keyMembers[sg.key]||[]);
+    const segs=memberIdx.map(idx=>{const pts=(els[idx]||[])[2]||[],out=[];for(let j=0;j<pts.length;j+=2)out.push({x:pts[j],y:pts[j+1]});return out;});
+    const type=sg.type||getSelectionType(sg.key);
+    return{zone:i+1,label:sg.label,type,color:sg.color,sw:sg.sw,segment_count:segs.length,segments:segs};
   });
   const body=document.getElementById('rbb');body.innerHTML='';
   expData.forEach(z=>{
