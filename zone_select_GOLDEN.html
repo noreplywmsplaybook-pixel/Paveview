@@ -247,6 +247,14 @@ function expandPerimeterPickWithInteriorLines(basePick){
   const perimBox=mergeBounds(out);
   if(!perimBox)return out;
   const perimArea=boundsArea(perimBox)||0.00001;
+  // Narrowed interior box prevents right-side building linework from being included.
+  const inner={
+    minX:perimBox.minX+0.01,
+    minY:perimBox.minY+0.004,
+    maxX:perimBox.maxX-0.004,
+    maxY:perimBox.maxY-0.004
+  };
+  if(inner.maxX<=inner.minX||inner.maxY<=inner.minY)return out;
   Object.keys(keyTypes).forEach(k=>{
     if(out.has(k))return;
     if(keyTypes[k]!=='line')return;
@@ -254,10 +262,12 @@ function expandPerimeterPickWithInteriorLines(basePick){
     // White lines are the stall/stopblock signal in this file.
     if(String(info.sw)!=='5')return;
     const b=keyBounds[k];if(!b)return;
-    if(!boundsCenterInside(b,perimBox,0.0015))return;
+    if(!boundsCenterInside(b,inner,0))return;
     const a=boundsArea(b);
-    // Exclude oversized line aggregates that leak outside parking area.
-    if(a>0.06||a>perimArea*0.45)return;
+    const w=Math.max(0,b.maxX-b.minX),h=Math.max(0,b.maxY-b.minY);
+    // Exclude oversized line aggregates and long diagonals/building edges.
+    if(a>0.02||a>perimArea*0.14)return;
+    if(w>0.11||h>0.11)return;
     out.add(k);
   });
   return out;
@@ -384,15 +394,7 @@ function render(){
     drawEl(pts,color,lineW);
   }
   ctx.globalAlpha=1;
-  // Labels
-  selGroups.forEach(sg=>{
-    const k=keyInfo[sg.key],g=k?gById[k.gi]:null;if(!g)return;
-    const[lx,ly]=i2s(g.cx,g.cy);
-    ctx.font='bold 9px JetBrains Mono';const tw=ctx.measureText(sg.label).width;
-    ctx.fillStyle='rgba(0,0,0,.85)';ctx.fillRect(lx-tw/2-5,ly-8,tw+10,16);
-    ctx.strokeStyle=sg.color;ctx.lineWidth=1;ctx.strokeRect(lx-tw/2-5,ly-8,tw+10,16);
-    ctx.fillStyle=sg.color;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(sg.label,lx,ly);
-  });
+  // Intentionally no on-canvas labels: keep selection as highlight-only.
 }
 
 mc.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(0.15,Math.min(20,zoom+(e.deltaY>0?-0.1:0.1)));document.getElementById('zi').textContent=Math.round(zoom*100)+'%';render();},{passive:false});
