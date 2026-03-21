@@ -93,10 +93,14 @@ const SVG_DATA = {"c3": {"els": [[5.0, 62, [0.49116, 0.32135, 0.49109, 0.32108, 
 
 const SW_COLORS={"24": "#ef4444", "14": "#22c55e", "12": "#60a5fa", "10": "#f59e0b", "7": "#a855f7", "5": "#e8e8e8", "2": "#666", "1": "#444"};
 const SEL_COLORS=["#d4a843", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ef4444", "#06b6d4", "#f97316"];
+const TYPE_COLORS={lot_perimeter:"#22c55e",parking_stall:"#60a5fa",crosswalk:"#f59e0b",stencil:"#a855f7",line:"#e8e8e8",property_boundary:"#ef4444",other:"#9ca3af"};
+const TYPE_LABELS={lot_perimeter:"Lot Perimeter",parking_stall:"Parking Stalls",crosswalk:"Crosswalk",stencil:"Stencil",line:"Lines",property_boundary:"Property Boundary",other:"Other"};
+const TYPE_PICK_PRIORITY={lot_perimeter:7,parking_stall:6,crosswalk:5,stencil:4,property_boundary:3,line:1,other:0};
 
 const cw=document.getElementById('cw'),mc=document.getElementById('mc'),ctx=mc.getContext('2d');
 let page='c4',zoom=1,pan={x:0,y:0},panning=false,panStart=null;
 let els=[],gmeta=[],swVis={},hovG=-1,selGroups=[],expData=null;
+let gById={},elsByGroup={},groupBounds={},groupTypes={},bridgeMap={};
 
 document.querySelectorAll('.lwbtn').forEach(b=>{swVis[b.dataset.sw]=b.classList.contains('on');});
 
@@ -105,9 +109,144 @@ window.addEventListener('resize',resize);resize();
 
 function setPage(key,btn){
   page=key;document.querySelectorAll('.ptab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');
-  const d=SVG_DATA[key];els=d.els;gmeta=d.g;hovG=-1;selGroups=[];zoom=1;pan={x:0,y:0};updatePanel();render();
+  const d=SVG_DATA[key];
+  els=d.els;gmeta=d.g;hovG=-1;selGroups=[];zoom=1;pan={x:0,y:0};
+  rebuildDerived();
+  updatePanel();render();
 }
 function toggleSW(btn){swVis[btn.dataset.sw]=!swVis[btn.dataset.sw];btn.classList.toggle('on',swVis[btn.dataset.sw]);render();}
+
+function rebuildDerived(){
+  gById={};elsByGroup={};groupBounds={};groupTypes={};bridgeMap={};
+  gmeta.forEach(g=>{gById[g.i]=g;});
+  for(let i=0;i<els.length;i++){
+    const el=els[i],gi=el[1],pts=el[2];
+    if(!elsByGroup[gi])elsByGroup[gi]=[];
+    elsByGroup[gi].push(el);
+    if(!pts||pts.length<2)continue;
+    let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+    for(let j=0;j<pts.length;j+=2){
+      const x=pts[j],y=pts[j+1];
+      if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;
+    }
+    const b=groupBounds[gi];
+    if(!b)groupBounds[gi]={minX,minY,maxX,maxY};
+    else{
+      if(minX<b.minX)b.minX=minX;if(minY<b.minY)b.minY=minY;
+      if(maxX>b.maxX)b.maxX=maxX;if(maxY>b.maxY)b.maxY=maxY;
+    }
+  }
+  Object.keys(elsByGroup).forEach(k=>{
+    const gi=Number(k),g=gById[gi]||{sw:0,n:0,cx:0,cy:0};
+    const sw=Number(g.sw||0),n=Number(g.n||0),b=groupBounds[gi]||{minX:0,maxX:0,minY:0,maxY:0};
+    const w=Math.max(0,b.maxX-b.minX),h=Math.max(0,b.maxY-b.minY),area=w*h;
+    let type='line';
+    if(sw>=20)type='property_boundary';
+    else if(sw>=13){
+      // In this data, 14pt is lot perimeter even when touching page edges.
+      type='lot_perimeter';
+    }else if(sw===12){
+      if(area<0.00022&&n<28)type='stencil';
+      else if(n>=45||area>0.0015)type='parking_stall';
+      else if(area>0.00055)type='crosswalk';
+      else type='line';
+    }else if(sw===10){
+      type=area>0.00045?'crosswalk':'line';
+    }else if(sw===7){
+      type='stencil';
+    }else{
+      type='line';
+    }
+    groupTypes[gi]=type;
+  });
+  buildPerimeterBridgeMap();
+}
+
+function areBoundsNear(a,b,eps){
+  if(!a||!b)return false;
+  const overlapX=Math.min(a.maxX,b.maxX)-Math.max(a.minX,b.minX);
+  const overlapY=Math.min(a.maxY,b.maxY)-Math.max(a.minY,b.minY);
+  if(overlapX>=-eps&&overlapY>=-eps)return true;
+  const cxA=(a.minX+a.maxX)/2,cyA=(a.minY+a.maxY)/2;
+  const cxB=(b.minX+b.maxX)/2,cyB=(b.minY+b.maxY)/2;
+  return Math.hypot(cxA-cxB,cyA-cyB)<eps*4;
+}
+
+function buildPerimeterBridgeMap(){
+  bridgeMap={};
+  const perims=Object.keys(groupTypes).map(Number).filter(gi=>groupTypes[gi]==='lot_perimeter');
+  const EPS=0.009;
+  for(let i=0;i<perims.length;i++){
+    for(let j=i+1;j<perims.length;j++){
+      const a=perims[i],b=perims[j];
+      if(areBoundsNear(groupBounds[a],groupBounds[b],EPS)){
+        if(!bridgeMap[a])bridgeMap[a]=new Set();
+        if(!bridgeMap[b])bridgeMap[b]=new Set();
+        bridgeMap[a].add(b);bridgeMap[b].add(a);
+      }
+    }
+  }
+}
+
+function getHoverGroupSet(gi){
+  if(gi<0)return null;
+  const set=new Set([gi]);
+  if(groupTypes[gi]==='lot_perimeter'&&bridgeMap[gi]){
+    const q=[gi],seen=new Set([gi]);
+    while(q.length){
+      const cur=q.shift(),next=bridgeMap[cur];
+      if(!next)continue;
+      next.forEach(n=>{
+        if(seen.has(n))return;
+        seen.add(n);set.add(n);q.push(n);
+      });
+    }
+  }
+  return set;
+}
+
+function classifyMergedGroupType(groupIds){
+  const ids=Array.from(groupIds||[]);
+  if(!ids.length)return'other';
+  let hasPerim=false,hasStall=false,hasCross=false,hasStencil=false,hasProp=false;
+  ids.forEach(gi=>{
+    const t=groupTypes[gi]||'other';
+    if(t==='lot_perimeter')hasPerim=true;
+    else if(t==='parking_stall')hasStall=true;
+    else if(t==='crosswalk')hasCross=true;
+    else if(t==='stencil')hasStencil=true;
+    else if(t==='property_boundary')hasProp=true;
+  });
+  if(hasPerim)return'lot_perimeter';
+  if(hasStall)return'parking_stall';
+  if(hasCross)return'crosswalk';
+  if(hasStencil)return'stencil';
+  if(hasProp)return'property_boundary';
+  return'line';
+}
+function getSelectionType(gi){
+  return groupTypes[gi]||'other';
+}
+
+function pickPriorityForType(type){
+  return TYPE_PICK_PRIORITY[type]??0;
+}
+
+function defaultLabelForSelection(gi){
+  const t=getSelectionType(gi);
+  return TYPE_LABELS[t]||'Zone';
+}
+
+function normalizeSelectionLabels(){
+  const used={};
+  selGroups.forEach(sg=>{
+    const t=sg.type||getSelectionType(sg.gi)||'other';
+    sg.type=t;
+    const base=TYPE_LABELS[t]||'Zone';
+    used[base]=(used[base]||0)+1;
+    sg.label=base+' '+used[base];
+  });
+}
 
 // Page aspect 2592:1728 = 1.5:1
 function getRect(){const W=mc.width,H=mc.height,iW=W*zoom,iH=iW/1.5;return{ox:pan.x+(W-iW)/2,oy:pan.y+(H-iH)/2,iW,iH};}
@@ -141,14 +280,17 @@ function drawEl(pts,color,lineW){
 }
 
 function groupAt(nx,ny){
-  const SNAP=0.007/zoom;let best=-1,bestD=SNAP;
+  const SNAP=0.007/zoom;let best=-1,bestD=SNAP,bestP=-1;
   for(let i=0;i<els.length;i++){
     const el=els[i];
     if(!swVis[String(el[0])])continue;
+    const gi=el[1];
+    const p=pickPriorityForType(getSelectionType(gi));
     const pts=el[2];if(!pts||pts.length<4)continue;
     for(let j=0;j<pts.length-3;j+=2){
       const d=ptSeg(nx,ny,pts[j],pts[j+1],pts[j+2],pts[j+3]);
-      if(d<bestD){bestD=d;best=el[1];}
+      if(d>SNAP)continue;
+      if(p>bestP||(p===bestP&&d<bestD)){bestP=p;bestD=d;best=gi;}
     }
   }
   return best;
@@ -163,11 +305,12 @@ function render(){
   const W=mc.width,H=mc.height;ctx.clearRect(0,0,W,H);ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
   if(!els.length)return;
   const selSet=new Set(selGroups.map(s=>s.gi));
+  const hovSet=getHoverGroupSet(hovG);
   for(let i=0;i<els.length;i++){
     const el=els[i],sw=el[0],gi=el[1],pts=el[2];
     const swStr=String(sw);
     if(!swVis[swStr])continue;
-    const isSel=selSet.has(gi),isHov=gi===hovG&&gi>=0;
+    const isSel=selSet.has(gi),isHov=!!(hovSet&&hovSet.has(gi));
     let color=SW_COLORS[swStr]||'#555';
     let lineW=Math.max(0.5,sw/2592*800);  // scale stroke to canvas
     let alpha=0.65;
@@ -197,9 +340,20 @@ mc.addEventListener('mousemove',e=>{
 });
 mc.addEventListener('click',e=>{
   if(panning)return;const{x,y}=s2n(e.clientX,e.clientY);const gi=groupAt(x,y);if(gi<0)return;
-  const ex=selGroups.findIndex(s=>s.gi===gi);
-  if(ex>=0)selGroups.splice(ex,1);
-  else selGroups.push({gi,color:SEL_COLORS[selGroups.length%SEL_COLORS.length],label:'Zone '+(selGroups.length+1)});
+  const pick=getHoverGroupSet(gi)||new Set([gi]);
+  const mergedType=classifyMergedGroupType(pick);
+  let changed=false;
+  pick.forEach(gx=>{
+    const ex=selGroups.findIndex(s=>s.gi===gx);
+    if(ex>=0){selGroups.splice(ex,1);changed=true;}
+    else{
+      const t=mergedType==='other'?getSelectionType(gx):mergedType;
+      const color=TYPE_COLORS[t]||SEL_COLORS[selGroups.length%SEL_COLORS.length];
+      selGroups.push({gi:gx,type:t,color,label:defaultLabelForSelection(gx)});
+      changed=true;
+    }
+  });
+  if(changed)normalizeSelectionLabels();
   updatePanel();render();
 });
 mc.addEventListener('mouseup',e=>{if(e.button===1||e.altKey)panning=false;});
@@ -216,9 +370,10 @@ function updatePanel(){
   list.innerHTML='';
   selGroups.forEach((sg,i)=>{
     const g=gmeta.find(m=>m.i===sg.gi)||{n:0,sw:0};
+    const t=sg.type||getSelectionType(sg.gi),tn=TYPE_LABELS[t]||'Other';
     const div=document.createElement('div');div.className='zi';div.style.borderLeft='3px solid '+sg.color;
     div.innerHTML='<span class="zd" style="background:'+sg.color+'"></span>'
-      +'<div><div class="zn">'+sg.label+'</div><div class="zm">'+g.n+' segs &middot; sw='+g.sw+'</div></div>'
+      +'<div><div class="zn">'+sg.label+'</div><div class="zm">'+tn+' &middot; '+g.n+' segs &middot; sw='+g.sw+'</div></div>'
       +'<button class="zx" onclick="rmz('+i+',event)">&#x2715;</button>';
     list.appendChild(div);
   });
@@ -231,14 +386,15 @@ function showResult(){
     const g=gmeta.find(m=>m.i===sg.gi)||{sw:0,n:0};
     const gEls=els.filter(el=>el[1]===sg.gi);
     const segs=gEls.map(el=>{const pts=el[2],out=[];for(let j=0;j<pts.length;j+=2)out.push({x:pts[j],y:pts[j+1]});return out;});
-    return{zone:i+1,label:sg.label,color:sg.color,sw:g.sw,segment_count:g.n,segments:segs};
+    const type=sg.type||getSelectionType(sg.gi);
+    return{zone:i+1,label:sg.label,type,color:sg.color,sw:g.sw,segment_count:g.n,segments:segs};
   });
   const body=document.getElementById('rbb');body.innerHTML='';
   expData.forEach(z=>{
     const d=document.createElement('div');d.className='ri';
     d.innerHTML='<div class="rih"><span style="width:9px;height:9px;border-radius:50%;background:'+z.color+';display:inline-block"></span>'
       +'<span class="rin">'+z.label+'</span><span class="rip">'+z.segment_count+' segs</span></div>'
-      +'<div class="rij">'+JSON.stringify({label:z.label,sw:z.sw,segments:z.segment_count},null,2)+'</div>';
+      +'<div class="rij">'+JSON.stringify({label:z.label,type:z.type,sw:z.sw,segments:z.segment_count},null,2)+'</div>';
     body.appendChild(d);
   });
   document.getElementById('rm').classList.add('open');
@@ -249,7 +405,7 @@ function copyJSON(){
   setTimeout(()=>{b.textContent='Copy JSON';b.style.color='';},2000);
 }
 
-const pd=SVG_DATA['c4'];els=pd.els;gmeta=pd.g;render();
+const pd=SVG_DATA['c4'];els=pd.els;gmeta=pd.g;rebuildDerived();render();
 
 </script>
 </body>
