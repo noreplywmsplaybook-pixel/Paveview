@@ -268,6 +268,15 @@ function pointInsideByRay(x,y,segs){
   }
   return(hits%2)===1;
 }
+function minDistToSegments(px,py,segs){
+  if(!Array.isArray(segs)||!segs.length)return 1e9;
+  let best=1e9;
+  for(let i=0;i<segs.length;i++){
+    const s=segs[i],d=ptSeg(px,py,s[0],s[1],s[2],s[3]);
+    if(d<best)best=d;
+  }
+  return best;
+}
 function expandPerimeterPickWithInteriorLines(basePick){
   const out=new Set(basePick||[]);
   const perimBox=mergeBounds(out);
@@ -289,13 +298,19 @@ function expandPerimeterPickWithInteriorLines(basePick){
     // White lines are the stall/stopblock signal in this file.
     if(String(info.sw)!=='5')return;
     const b=keyBounds[k];if(!b)return;
-    if(!boundsCenterInside(b,inner,0))return;
-    const cx=(b.minX+b.maxX)/2,cy=(b.minY+b.maxY)/2;
-    // Use perimeter ray-cast so anything outside the actual lot shape is excluded.
-    if(perimSegs.length>20&&!pointInsideByRay(cx,cy,perimSegs))return;
     const a=boundsArea(b);
     const w=Math.max(0,b.maxX-b.minX),h=Math.max(0,b.maxY-b.minY);
     const major=Math.max(w,h),minor=Math.max(1e-6,Math.min(w,h)),aspect=major/minor;
+    const cx=(b.minX+b.maxX)/2,cy=(b.minY+b.maxY)/2;
+    const insideBox=boundsCenterInside(b,inner,0);
+    const insideRay=(perimSegs.length>20)?pointInsideByRay(cx,cy,perimSegs):insideBox;
+    // Entrance stop-lines often sit exactly on/just outside the perimeter.
+    const nearPerim=minDistToSegments(cx,cy,perimSegs)<0.0085;
+    const likelyStopLine=(major<=0.055&&a<=0.0018&&aspect>=1.8);
+    const nearPerimBounds=(cx>=perimBox.minX-0.015&&cx<=perimBox.maxX+0.015&&cy>=perimBox.minY-0.01&&cy<=perimBox.maxY+0.02);
+    const boundaryStopCandidate=(!insideRay&&nearPerim&&likelyStopLine&&nearPerimBounds);
+    if(!insideBox&&!boundaryStopCandidate)return;
+    if(!insideRay&&!boundaryStopCandidate)return;
     // Exclude oversized aggregates and geometry unlike stall/stop-block lines.
     if(a>0.008||a>perimArea*0.08)return;
     if(major>0.16)return;
