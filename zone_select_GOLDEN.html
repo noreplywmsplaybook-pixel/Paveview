@@ -31,6 +31,7 @@ body{background:#000;color:var(--txt);font-family:"JetBrains Mono",monospace;hei
 .ci{width:54px;padding:3px 5px;font-size:8px;background:var(--surf2);border:1px solid var(--bdr);color:var(--txt);outline:none}
 .ci:focus{border-color:var(--adim)}
 #cal-out{font-size:8px;color:var(--acc);line-height:1.5}
+#cal-meta{font-size:7px;color:var(--t2);line-height:1.5}
 #zl{flex:1;overflow-y:auto;padding:7px;}
 .zi{display:flex;align-items:center;gap:7px;padding:6px 8px;border:1px solid var(--bdr);margin-bottom:4px;position:relative;}
 .zd{width:8px;height:8px;border-radius:50%;flex-shrink:0;}.zn{font-size:8px;color:var(--txt);}.zm{font-size:7px;color:var(--t3);margin-top:1px;}
@@ -86,7 +87,9 @@ body{background:#000;color:var(--txt);font-family:"JetBrains Mono",monospace;hei
       <div class="cr"><span class="cl">Scale</span><input class="ci" id="cal-ft" type="number" min="0.01" step="0.01" value="1"><span style="font-size:8px;color:var(--t3)">ft/in</span></div>
       <div class="cr"><span class="cl">Page W</span><input class="ci" id="cal-w" type="number" min="1" step="0.1" value="36"><span style="font-size:8px;color:var(--t3)">in</span></div>
       <div class="cr"><span class="cl">Page H</span><input class="ci" id="cal-h" type="number" min="1" step="0.1" value="24"><span style="font-size:8px;color:var(--t3)">in</span></div>
+      <div class="cr"><span class="cl">Target</span><input class="ci" id="cal-target" type="number" min="1" step="10" value="20500"><span style="font-size:8px;color:var(--t3)">sqft</span></div>
       <div id="cal-out">Inside lot area: —</div>
+      <div id="cal-meta">Select lot perimeter. Green fill shows measured interior.</div>
     </div>
     <div id="zl"><div id="noz">Hover a line to see its connected group glow white, click to select it.</div></div>
     <div id="bb"><button class="bbb" onclick="clearAll()">Clear</button><span id="zi">100%</span></div>
@@ -114,6 +117,7 @@ const cw=document.getElementById('cw'),mc=document.getElementById('mc'),ctx=mc.g
 let page='c4',zoom=1,pan={x:0,y:0},panning=false,panStart=null;
 let els=[],gmeta=[],swVis={},hovG=-1,selGroups=[],expData=null;
 let gById={},elMeta=[],keyMembers={},keyBounds={},keyTypes={},keyInfo={},bridgeMap={};
+let measureOverlay=null;
 
 document.querySelectorAll('.lwbtn').forEach(b=>{swVis[b.dataset.sw]=b.classList.contains('on');});
 
@@ -281,6 +285,49 @@ function pointInsideByRay(x,y,segs){
   }
   return(hits%2)===1;
 }
+function buildMeasuredInterior(perimKeys){
+  const box=mergeBounds(perimKeys);
+  const segs=collectSegmentsForKeys(perimKeys);
+  if(!box||!Array.isArray(segs)||!segs.length)return null;
+  const bw=Math.max(0,box.maxX-box.minX),bh=Math.max(0,box.maxY-box.minY);
+  if(bw<=0||bh<=0)return null;
+  const aspect=Math.max(0.25,Math.min(4,bw/Math.max(1e-9,bh)));
+  let nx=Math.max(40,Math.round(120*Math.sqrt(aspect)));
+  let ny=Math.max(40,Math.round(120/Math.sqrt(aspect)));
+  const maxCells=10000;
+  while(nx*ny>maxCells){nx=Math.max(30,Math.floor(nx*0.95));ny=Math.max(30,Math.floor(ny*0.95));}
+  const stepX=bw/nx,stepY=bh/ny;
+  if(stepX<=0||stepY<=0)return null;
+  const mask=new Uint8Array(nx*ny);
+  let inside=0;
+  for(let iy=0;iy<ny;iy++){
+    const y=box.minY+(iy+0.5)*stepY;
+    for(let ix=0;ix<nx;ix++){
+      const x=box.minX+(ix+0.5)*stepX;
+      if(pointInsideByRay(x,y,segs)){mask[iy*nx+ix]=1;inside++;}
+    }
+  }
+  const fracArea=(inside/(nx*ny))*bw*bh;
+  return{box,segs,nx,ny,stepX,stepY,mask,insideCells:inside,fracArea};
+}
+function drawMeasuredOverlay(){
+  if(!measureOverlay||!measureOverlay.mask)return;
+  const ov=measureOverlay;
+  ctx.save();
+  ctx.fillStyle='rgba(34,197,94,0.18)';
+  for(let iy=0;iy<ov.ny;iy++){
+    for(let ix=0;ix<ov.nx;ix++){
+      if(!ov.mask[iy*ov.nx+ix])continue;
+      const x0=ov.box.minX+ix*ov.stepX,y0=ov.box.minY+iy*ov.stepY;
+      const x1=x0+ov.stepX,y1=y0+ov.stepY;
+      const a=i2s(x0,y0),b=i2s(x1,y1);
+      const rx=Math.min(a[0],b[0]),ry=Math.min(a[1],b[1]);
+      const rw=Math.abs(b[0]-a[0]),rh=Math.abs(b[1]-a[1]);
+      if(rw>0&&rh>0)ctx.fillRect(rx,ry,rw,rh);
+    }
+  }
+  ctx.restore();
+}
 function minDistToSegments(px,py,segs){
   if(!Array.isArray(segs)||!segs.length)return 1e9;
   let best=1e9;
@@ -390,14 +437,38 @@ function estimateInteriorSqFt(){
   const ftPerIn=Math.max(0.0001,parseFloat(document.getElementById('cal-ft')?.value||'1'));
   const pageW=Math.max(1,parseFloat(document.getElementById('cal-w')?.value||'36'));
   const pageH=Math.max(1,parseFloat(document.getElementById('cal-h')?.value||'24'));
+  const targetSqFt=parseFloat(document.getElementById('cal-target')?.value||'');
+  const meta=document.getElementById('cal-meta');
   const perimKeys=firstSelectedPerimeterKeys();
-  if(!perimKeys.length){out.textContent='Inside lot area: select lot perimeter first';return;}
-  const merged=mergeBounds(perimKeys);
-  if(!merged){out.textContent='Inside lot area: —';return;}
-  const fracArea=boundsArea(merged);
+  if(!perimKeys.length){
+    measureOverlay=null;
+    out.textContent='Inside lot area: select lot perimeter first';
+    if(meta)meta.textContent='Select lot perimeter. Green fill shows measured interior.';
+    return;
+  }
+  const interior=buildMeasuredInterior(perimKeys);
+  if(!interior){
+    measureOverlay=null;
+    out.textContent='Inside lot area: —';
+    if(meta)meta.textContent='Could not resolve a closed interior from current perimeter selection.';
+    return;
+  }
+  measureOverlay=interior;
+  const fracArea=interior.fracArea;
   const pageSqFt=(pageW*ftPerIn)*(pageH*ftPerIn);
   const sqft=fracArea*pageSqFt;
   out.textContent='Inside lot area: '+Math.round(sqft).toLocaleString()+' sq ft';
+  if(meta){
+    const pct=(fracArea*100).toFixed(1);
+    if(Number.isFinite(targetSqFt)&&targetSqFt>0){
+      const suggested=Math.sqrt(targetSqFt/Math.max(1e-9,fracArea*pageW*pageH));
+      const delta=((sqft-targetSqFt)/targetSqFt*100);
+      const sign=delta>0?'+':'';
+      meta.textContent='Green fill = measured interior ('+pct+'% sheet). At current scale: '+sign+delta.toFixed(1)+'% vs target. Suggested scale: '+suggested.toFixed(2)+' ft/in.';
+    }else{
+      meta.textContent='Green fill = measured interior ('+pct+'% of sheet).';
+    }
+  }
 }
 
 // Page aspect 2592:1728 = 1.5:1
@@ -460,6 +531,7 @@ function ptSeg(px,py,ax,ay,bx,by){
 function render(){
   const W=mc.width,H=mc.height;ctx.clearRect(0,0,W,H);ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
   if(!els.length)return;
+  drawMeasuredOverlay();
   const selSet=new Set(selGroups.map(s=>s.key));
   const hovSet=getHoverGroupSet(hovG);
   for(let i=0;i<els.length;i++){
@@ -523,7 +595,11 @@ mc.addEventListener('contextmenu',e=>{
 function updatePanel(){
   const n=selGroups.length;document.getElementById('cnt').textContent=n;document.getElementById('done-btn').classList.toggle('on',n>0);
   const list=document.getElementById('zl');
-  if(!n){list.innerHTML='<div id="noz">Hover a line to see its group glow, click to select.</div>';return;}
+  if(!n){
+    list.innerHTML='<div id="noz">Hover a line to see its group glow, click to select.</div>';
+    estimateInteriorSqFt();
+    return;
+  }
   list.innerHTML='';
   selGroups.forEach((sg,i)=>{
     const mCt=(sg.members&&sg.members.length)||((keyMembers[sg.key]||[]).length);
@@ -563,9 +639,9 @@ function copyJSON(){
 }
 
 const pd=SVG_DATA['c4'];els=pd.els;gmeta=pd.g;rebuildDerived();render();estimateInteriorSqFt();
-['cal-ft','cal-w','cal-h'].forEach(id=>{
+['cal-ft','cal-w','cal-h','cal-target'].forEach(id=>{
   const el=document.getElementById(id);
-  if(el)el.addEventListener('input',estimateInteriorSqFt);
+  if(el)el.addEventListener('input',()=>{estimateInteriorSqFt();render();});
 });
 
 </script>
