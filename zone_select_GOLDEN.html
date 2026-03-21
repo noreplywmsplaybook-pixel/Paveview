@@ -154,8 +154,9 @@ function rebuildDerived(){
     let type='line';
     if(sw>=20)type='property_boundary';
     else if(sw>=13){
-      // In this data, 14pt is lot perimeter even when touching page edges.
-      type='lot_perimeter';
+      // Keep the main perimeter, but ignore tiny detached 14pt fragments.
+      if(n<8&&area<0.001)type='other';
+      else type='lot_perimeter';
     }else if(sw===12){
       // Treat 12pt as markings/lines in this file; not true stall polygons.
       if(area<0.00006&&n<40)type='stencil';
@@ -265,9 +266,11 @@ function expandPerimeterPickWithInteriorLines(basePick){
     if(!boundsCenterInside(b,inner,0))return;
     const a=boundsArea(b);
     const w=Math.max(0,b.maxX-b.minX),h=Math.max(0,b.maxY-b.minY);
-    // Exclude oversized line aggregates and long diagonals/building edges.
-    if(a>0.02||a>perimArea*0.14)return;
-    if(w>0.11||h>0.11)return;
+    const major=Math.max(w,h),minor=Math.max(1e-6,Math.min(w,h)),aspect=major/minor;
+    // Exclude oversized aggregates and geometry unlike stall/stop-block lines.
+    if(a>0.008||a>perimArea*0.08)return;
+    if(major>0.16)return;
+    if(aspect<2&&a>0.0007)return;
     out.add(k);
   });
   return out;
