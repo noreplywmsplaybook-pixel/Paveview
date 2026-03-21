@@ -243,11 +243,37 @@ function boundsCenterInside(b,outer,pad){
   const cx=(b.minX+b.maxX)/2,cy=(b.minY+b.maxY)/2;
   return cx>=outer.minX+p&&cx<=outer.maxX-p&&cy>=outer.minY+p&&cy<=outer.maxY-p;
 }
+function collectSegmentsForKeys(keys){
+  const segs=[];
+  Array.from(keys||[]).forEach(k=>{
+    const idxs=keyMembers[k]||[];
+    idxs.forEach(idx=>{
+      const pts=(els[idx]||[])[2]||[];
+      for(let j=0;j<pts.length-3;j+=2){
+        segs.push([pts[j],pts[j+1],pts[j+2],pts[j+3]]);
+      }
+    });
+  });
+  return segs;
+}
+function pointInsideByRay(x,y,segs){
+  if(!Array.isArray(segs)||!segs.length)return false;
+  let hits=0;
+  for(let i=0;i<segs.length;i++){
+    const s=segs[i],ax=s[0],ay=s[1],bx=s[2],by=s[3];
+    if(((ay>y)!==(by>y))){
+      const ix=((bx-ax)*(y-ay))/((by-ay)||1e-9)+ax;
+      if(ix>x)hits++;
+    }
+  }
+  return(hits%2)===1;
+}
 function expandPerimeterPickWithInteriorLines(basePick){
   const out=new Set(basePick||[]);
   const perimBox=mergeBounds(out);
   if(!perimBox)return out;
   const perimArea=boundsArea(perimBox)||0.00001;
+  const perimSegs=collectSegmentsForKeys(out);
   // Narrowed interior box prevents right-side building linework from being included.
   const inner={
     minX:perimBox.minX+0.01,
@@ -264,6 +290,9 @@ function expandPerimeterPickWithInteriorLines(basePick){
     if(String(info.sw)!=='5')return;
     const b=keyBounds[k];if(!b)return;
     if(!boundsCenterInside(b,inner,0))return;
+    const cx=(b.minX+b.maxX)/2,cy=(b.minY+b.maxY)/2;
+    // Use perimeter ray-cast so anything outside the actual lot shape is excluded.
+    if(perimSegs.length>20&&!pointInsideByRay(cx,cy,perimSegs))return;
     const a=boundsArea(b);
     const w=Math.max(0,b.maxX-b.minX),h=Math.max(0,b.maxY-b.minY);
     const major=Math.max(w,h),minor=Math.max(1e-6,Math.min(w,h)),aspect=major/minor;
