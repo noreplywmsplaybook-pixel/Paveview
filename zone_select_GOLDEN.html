@@ -25,6 +25,12 @@ body{background:#000;color:var(--txt);font-family:"JetBrains Mono",monospace;hei
 #mc{position:absolute;top:0;left:0;cursor:crosshair;}
 #side{width:195px;background:var(--surf);border-left:1px solid var(--bdr);display:flex;flex-direction:column;flex-shrink:0;}
 .sph{padding:9px 12px;border-bottom:1px solid var(--bdr);font-size:7px;letter-spacing:.1em;color:var(--acc);}
+#cal{padding:8px 10px;border-bottom:1px solid var(--bdr);display:flex;flex-direction:column;gap:6px;}
+.cr{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:6px}
+.cl{font-size:7px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em}
+.ci{width:54px;padding:3px 5px;font-size:8px;background:var(--surf2);border:1px solid var(--bdr);color:var(--txt);outline:none}
+.ci:focus{border-color:var(--adim)}
+#cal-out{font-size:8px;color:var(--acc);line-height:1.5}
 #zl{flex:1;overflow-y:auto;padding:7px;}
 .zi{display:flex;align-items:center;gap:7px;padding:6px 8px;border:1px solid var(--bdr);margin-bottom:4px;position:relative;}
 .zd{width:8px;height:8px;border-radius:50%;flex-shrink:0;}.zn{font-size:8px;color:var(--txt);}.zm{font-size:7px;color:var(--t3);margin-top:1px;}
@@ -75,6 +81,13 @@ body{background:#000;color:var(--txt);font-family:"JetBrains Mono",monospace;hei
   <div id="cw"><canvas id="mc"></canvas></div>
   <div id="side">
     <div class="sph">SELECTED ZONES</div>
+    <div id="cal">
+      <div class="cl" style="color:var(--acc)">Measure Tool</div>
+      <div class="cr"><span class="cl">Scale</span><input class="ci" id="cal-ft" type="number" min="0.01" step="0.01" value="1"><span style="font-size:8px;color:var(--t3)">ft/in</span></div>
+      <div class="cr"><span class="cl">Page W</span><input class="ci" id="cal-w" type="number" min="1" step="0.1" value="36"><span style="font-size:8px;color:var(--t3)">in</span></div>
+      <div class="cr"><span class="cl">Page H</span><input class="ci" id="cal-h" type="number" min="1" step="0.1" value="24"><span style="font-size:8px;color:var(--t3)">in</span></div>
+      <div id="cal-out">Inside lot area: —</div>
+    </div>
     <div id="zl"><div id="noz">Hover a line to see its connected group glow white, click to select it.</div></div>
     <div id="bb"><button class="bbb" onclick="clearAll()">Clear</button><span id="zi">100%</span></div>
   </div>
@@ -364,6 +377,28 @@ function normalizeSelectionLabels(){
     sg.label=base+' '+used[base];
   });
 }
+function selectedKeysByType(t){
+  return selGroups.filter(sg=>(sg.type||getSelectionType(sg.key))===t).map(sg=>sg.key);
+}
+function firstSelectedPerimeterKeys(){
+  const perims=selectedKeysByType('lot_perimeter');
+  return perims.length?perims:[];
+}
+function estimateInteriorSqFt(){
+  const out=document.getElementById('cal-out');
+  if(!out)return;
+  const ftPerIn=Math.max(0.0001,parseFloat(document.getElementById('cal-ft')?.value||'1'));
+  const pageW=Math.max(1,parseFloat(document.getElementById('cal-w')?.value||'36'));
+  const pageH=Math.max(1,parseFloat(document.getElementById('cal-h')?.value||'24'));
+  const perimKeys=firstSelectedPerimeterKeys();
+  if(!perimKeys.length){out.textContent='Inside lot area: select lot perimeter first';return;}
+  const merged=mergeBounds(perimKeys);
+  if(!merged){out.textContent='Inside lot area: —';return;}
+  const fracArea=boundsArea(merged);
+  const pageSqFt=(pageW*ftPerIn)*(pageH*ftPerIn);
+  const sqft=fracArea*pageSqFt;
+  out.textContent='Inside lot area: '+Math.round(sqft).toLocaleString()+' sq ft';
+}
 
 // Page aspect 2592:1728 = 1.5:1
 function getRect(){const W=mc.width,H=mc.height,iW=W*zoom,iH=iW/1.5;return{ox:pan.x+(W-iW)/2,oy:pan.y+(H-iH)/2,iW,iH};}
@@ -484,6 +519,7 @@ mc.addEventListener('contextmenu',e=>{
   const i=selGroups.findIndex(s=>s.key===gi);if(i>=0){selGroups.splice(i,1);updatePanel();render();}
 });
 
+
 function updatePanel(){
   const n=selGroups.length;document.getElementById('cnt').textContent=n;document.getElementById('done-btn').classList.toggle('on',n>0);
   const list=document.getElementById('zl');
@@ -498,6 +534,7 @@ function updatePanel(){
       +'<button class="zx" onclick="rmz('+i+',event)">&#x2715;</button>';
     list.appendChild(div);
   });
+  estimateInteriorSqFt();
 }
 function rmz(i,e){e.stopPropagation();selGroups.splice(i,1);updatePanel();render();}
 function clearAll(){selGroups=[];hovG=-1;updatePanel();render();}
@@ -525,7 +562,11 @@ function copyJSON(){
   setTimeout(()=>{b.textContent='Copy JSON';b.style.color='';},2000);
 }
 
-const pd=SVG_DATA['c4'];els=pd.els;gmeta=pd.g;rebuildDerived();render();
+const pd=SVG_DATA['c4'];els=pd.els;gmeta=pd.g;rebuildDerived();render();estimateInteriorSqFt();
+['cal-ft','cal-w','cal-h'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el)el.addEventListener('input',estimateInteriorSqFt);
+});
 
 </script>
 </body>
