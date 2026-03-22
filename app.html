@@ -1067,6 +1067,7 @@ select.sc-inp{cursor:pointer;width:40px}
           <label>Year</label>
           <select id="map-historical-year"></select>
           <button class="btn" id="btn-map-refresh">Refresh</button>
+          <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
         </div>
         <div id="map-import-status">Pick a location and click Refresh.</div>
         <canvas id="map-preview" width="1024" height="1024"></canvas>
@@ -1077,6 +1078,7 @@ select.sc-inp{cursor:pointer;width:40px}
       <span id="page-footer-text" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)"><strong id="page-sel-count" style="color:var(--stripe)">0</strong> selected</span>
       <span id="map-footer-text" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);display:none">Capture current map imagery into takeoff</span>
       <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn" id="btn-map-detect" style="display:none">Run AI Detect</button>
         <button class="btn y" id="btn-map-capture" style="display:none">Use Imagery →</button>
         <button class="btn y" id="btn-page-load">Load Selected →</button>
       </div>
@@ -1493,6 +1495,8 @@ const btnPageAll=document.getElementById('btn-page-all');
 const btnPageNone=document.getElementById('btn-page-none');
 const btnPageLoad=document.getElementById('btn-page-load');
 const btnMapCapture=document.getElementById('btn-map-capture');
+const btnMapDetect=document.getElementById('btn-map-detect');
+const btnMapAiDetect=document.getElementById('btn-map-ai-detect');
 const mapPreviewCanvas=document.getElementById('map-preview');
 const mapPreviewCtx=mapPreviewCanvas.getContext('2d');
 const mapImportStatus=document.getElementById('map-import-status');
@@ -1503,11 +1507,17 @@ let waybackByYear={...WAYBACK_FALLBACK_BY_YEAR}; // { [year]: {m, date, label} }
 let mapViewState={lat:37.4219999,lng:-122.0840575,zoom:20,mode:'google',year:''};
 let mapInteraction={dragging:false,startX:0,startY:0,startLat:0,startLng:0,startWorld:null};
 let mapRenderReqId=0;
+let mapDetections=[]; // [{x,y,width,height,class,confidence}]
+let mapDetectionRenderSize={w:0,h:0};
 
 function setImportStatus(msg,isError=false){
   if(!mapImportStatus)return;
   mapImportStatus.style.color=isError?'var(--red)':'var(--text3)';
   mapImportStatus.textContent=msg;
+}
+function clearMapDetections(){
+  mapDetections=[];
+  mapDetectionRenderSize={w:0,h:0};
 }
 
 function setPageModalView(view){
@@ -1698,6 +1708,7 @@ async function drawTilePreview(mode,lat,lng,zoomLv,year){
     }
   }
   await Promise.all(tasks);
+  mapDetectionRenderSize={w:mapPreviewCanvas.width,h:mapPreviewCanvas.height};
 }
 
 function drawMapOverlay(){
@@ -1736,12 +1747,37 @@ function drawMapOverlay(){
     yearLines.forEach((ln,i)=>mapPreviewCtx.fillText(ln,14,50+i*12));
   }
   mapPreviewCtx.fillText(`${Math.round(barFeet)} ft`,18+barPx, y+4);
+  if(mapDetections.length){
+    const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+    const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+    mapPreviewCtx.save();
+    mapPreviewCtx.lineWidth=2;
+    mapPreviewCtx.font='11px JetBrains Mono,monospace';
+    mapDetections.forEach((p,idx)=>{
+      const x=(p.x-p.width/2)*sx;
+      const y=(p.y-p.height/2)*sy;
+      const w=p.width*sx;
+      const h=p.height*sy;
+      const hue=(idx*57)%360;
+      const col=`hsl(${hue} 90% 55%)`;
+      mapPreviewCtx.strokeStyle=col;
+      mapPreviewCtx.fillStyle='rgba(0,0,0,.65)';
+      mapPreviewCtx.strokeRect(x,y,w,h);
+      const lbl=`${p.class||'object'} ${(Number(p.confidence||0)*100).toFixed(1)}%`;
+      const tw=mapPreviewCtx.measureText(lbl).width+8;
+      mapPreviewCtx.fillRect(x,Math.max(0,y-16),tw,14);
+      mapPreviewCtx.fillStyle=col;
+      mapPreviewCtx.fillText(lbl,x+4,Math.max(10,y-5));
+    });
+    mapPreviewCtx.restore();
+  }
 }
 
 async function loadMapPreview(opts={}){
   if(opts.fromInputs!==false)readMapInputsIntoState();
   const reqId=++mapRenderReqId;
   const lat=mapViewState.lat,lng=mapViewState.lng,zoomLv=mapViewState.zoom;
+  if(!opts.preserveDetections)clearMapDetections();
   if(!Number.isFinite(lat)||!Number.isFinite(lng)){setImportStatus('Enter valid latitude and longitude.',true);return;}
   setImportStatus(opts.reason||'Loading map imagery…');
   try{
@@ -1809,6 +1845,27 @@ async function captureMapImageryIntoPlan(){
   pendingAutoScaleFeetPerPx=feetPerPx;
   closeModal('page-modal');
   addCanvasAsPlan(oc,label,false,{autoScaleFeetPerPx:feetPerPx,skipCalibration:true});
+}
+
+async function runRoboflowDetection(){
+  try{
+    setImportStatus('Running Roboflow detection…');
+    const payload={imageDataUrl:mapPreviewCanvas.toDataURL('image/jpeg',0.9)};
+    const res=await fetch('/api/roboflow-detect',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload),
+    });
+    const data=await res.json();
+    if(!res.ok)throw new Error(data?.error||'Detection failed');
+    mapDetections=Array.isArray(data?.predictions)?data.predictions:[];
+    mapDetectionRenderSize={w:data?.image?.width||mapPreviewCanvas.width,h:data?.image?.height||mapPreviewCanvas.height};
+    await loadMapPreview({fromInputs:false,preserveDetections:true,reason:`Detections: ${mapDetections.length}`});
+    setImportStatus(`Detected ${mapDetections.length} objects.`);
+  }catch(e){
+    console.error(e);
+    setImportStatus(`Detection failed: ${e.message}`,true);
+  }
 }
 
 function startImportFromFile(f){
@@ -1937,6 +1994,8 @@ mapImageryModeSel.addEventListener('change',async()=>{
 });
 mapHistoricalYearSel.addEventListener('change',()=>{mapViewState.year=mapHistoricalYearSel.value;loadMapPreview({fromInputs:false,reason:'Loading selected year…'});});
 btnMapCapture.addEventListener('click',captureMapImageryIntoPlan);
+if(btnMapDetect)btnMapDetect.addEventListener('click',runRoboflowDetection);
+if(btnMapAiDetect)btnMapAiDetect.addEventListener('click',runRoboflowDetection);
 
 mapPreviewCanvas.addEventListener('wheel',e=>{
   if(pageModalView!=='map')return;
