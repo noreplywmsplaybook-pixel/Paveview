@@ -1482,6 +1482,9 @@ const mapImageryModeSel=document.getElementById('map-imagery-mode');
 const mapHistoricalYearSel=document.getElementById('map-historical-year');
 let pageModalView='source'; // source | pdf | map
 let waybackByYear=null; // { [year]: {m, date, label} }
+let mapViewState={lat:37.4219999,lng:-122.0840575,zoom:20,mode:'google',year:''};
+let mapInteraction={dragging:false,startX:0,startY:0,startLat:0,startLng:0,startWorld:null};
+let mapRenderReqId=0;
 
 function setImportStatus(msg,isError=false){
   if(!mapImportStatus)return;
@@ -1513,7 +1516,19 @@ function openImportSourceChooser(){
   openModal('page-modal');
 }
 
-function addCanvasAsPlan(oc,label,isPdf){
+function applyAutoImageryScale(feetPerPx){
+  const autoFeet=Math.max(0.001,Math.round(feetPerPx*1000)/1000);
+  document.getElementById('scale-px').value='1';
+  document.getElementById('scale-ft').value=String(autoFeet);
+  document.getElementById('scale-unit').value='ft';
+  calibrated=true;
+  updateScaleReadout();
+  updateStats();
+  updateCalibBadge();
+  savePlanData();
+}
+
+function addCanvasAsPlan(oc,label,isPdf,opts={}){
   const dataURL=oc.toDataURL('image/jpeg',0.85);
   if(plans.length===0){
     bgc.width=oc.width;bgc.height=oc.height;
@@ -1523,12 +1538,16 @@ function addCanvasAsPlan(oc,label,isPdf){
     plans=[{id:pid,label,dataURL,imgW:oc.width,imgH:oc.height}];
     planData[pid]={zones:[],markers:[],measurements:[],linearSegs:[],hatchZones:[]};
     currentPlanIdx=0;
-    onPlanLoaded(isPdf);
+    onPlanLoaded(isPdf,opts);
     document.getElementById('plan-tabs').classList.add('visible');
     renderPlanTabs();
   }else{
     addPlan(dataURL,oc.width,oc.height,label);
-    openModal('calib-modal');
+    if(opts.autoScaleFeetPerPx){
+      applyAutoImageryScale(opts.autoScaleFeetPerPx);
+    }else{
+      openModal('calib-modal');
+    }
   }
 }
 
@@ -1541,6 +1560,22 @@ function latLngToWorldPixel(lat,lng,zoomLv){
     y:(0.5-Math.log((1+sin)/(1-sin))/(4*Math.PI))*scale
   };
 }
+function worldPixelToLatLng(x,y,zoomLv){
+  const scale=256*Math.pow(2,zoomLv);
+  const lng=x/scale*360-180;
+  const n=Math.PI-(2*Math.PI*y)/scale;
+  const lat=(180/Math.PI)*Math.atan(0.5*(Math.exp(n)-Math.exp(-n)));
+  return{lat,lng};
+}
+function metersPerPixel(lat,zoomLv){
+  return (156543.03392*Math.cos(lat*Math.PI/180))/Math.pow(2,zoomLv);
+}
+function normalizeLng(lng){
+  let v=lng;
+  while(v>180)v-=360;
+  while(v<-180)v+=360;
+  return v;
+}
 function loadImageFromUrl(url){
   return new Promise((resolve,reject)=>{
     const img=new Image();
@@ -1549,6 +1584,24 @@ function loadImageFromUrl(url){
     img.onerror=()=>reject(new Error('Image load failed'));
     img.src=url;
   });
+}
+
+function readMapInputsIntoState(){
+  const lat=parseFloat(document.getElementById('map-lat').value);
+  const lng=parseFloat(document.getElementById('map-lng').value);
+  const zoomLv=Math.max(14,Math.min(22,parseInt(document.getElementById('map-zoom').value,10)||20));
+  if(Number.isFinite(lat)&&Number.isFinite(lng)){
+    mapViewState.lat=Math.max(-85.05112878,Math.min(85.05112878,lat));
+    mapViewState.lng=normalizeLng(lng);
+    mapViewState.zoom=zoomLv;
+  }
+  mapViewState.mode=mapImageryModeSel.value;
+  mapViewState.year=mapHistoricalYearSel.value||mapViewState.year||'';
+}
+function syncMapInputsFromState(){
+  document.getElementById('map-lat').value=mapViewState.lat.toFixed(7);
+  document.getElementById('map-lng').value=mapViewState.lng.toFixed(7);
+  document.getElementById('map-zoom').value=String(mapViewState.zoom);
 }
 async function ensureWaybackYears(){
   if(waybackByYear)return;
@@ -1569,21 +1622,7 @@ async function ensureWaybackYears(){
   mapHistoricalYearSel.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join('');
 }
 
-async function renderGooglePreview(lat,lng,zoomLv){
-  const url='https://maps.googleapis.com/maps/api/staticmap'
-    +`?center=${encodeURIComponent(lat+','+lng)}`
-    +`&zoom=${zoomLv}&size=640x640&scale=2&maptype=satellite&key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`;
-  const img=await loadImageFromUrl(url);
-  mapPreviewCtx.clearRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
-  mapPreviewCtx.drawImage(img,0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
-}
-
-async function renderHistoricalPreview(lat,lng,zoomLv){
-  await ensureWaybackYears();
-  const year=mapHistoricalYearSel.value||Object.keys(waybackByYear||{})[0];
-  const rel=waybackByYear?.[year];
-  if(!rel)throw new Error('No historical imagery release found');
-  const m=rel.m;
+async function drawTilePreview(mode,lat,lng,zoomLv,year){
   const tileSize=256;
   const world=latLngToWorldPixel(lat,lng,zoomLv);
   const startX=world.x-mapPreviewCanvas.width/2;
@@ -1595,38 +1634,77 @@ async function renderHistoricalPreview(lat,lng,zoomLv){
   const n=Math.pow(2,zoomLv);
   mapPreviewCtx.fillStyle='#151515';
   mapPreviewCtx.fillRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
-  const tiles=[];
+  const tasks=[];
   for(let ty=minTy;ty<=maxTy;ty++){
     if(ty<0||ty>=n)continue;
     for(let tx=minTx;tx<=maxTx;tx++){
       const wrapped=((tx%n)+n)%n;
       const dx=tx*tileSize-startX;
       const dy=ty*tileSize-startY;
-      const url=`https://wayback.maptiles.arcgis.com/arcgis/rest/services/world_imagery/mapserver/tile/${m}/${zoomLv}/${ty}/${wrapped}`;
-      tiles.push(loadImageFromUrl(url).then(img=>mapPreviewCtx.drawImage(img,dx,dy,tileSize,tileSize)).catch(()=>{}));
+      let url='';
+      if(mode==='historical'){
+        const rel=waybackByYear?.[year];
+        if(!rel)continue;
+        url=`https://wayback.maptiles.arcgis.com/arcgis/rest/services/world_imagery/mapserver/tile/${rel.m}/${zoomLv}/${ty}/${wrapped}`;
+      }else{
+        url=`https://mt1.google.com/vt/lyrs=s&x=${wrapped}&y=${ty}&z=${zoomLv}`;
+      }
+      tasks.push(loadImageFromUrl(url).then(img=>mapPreviewCtx.drawImage(img,dx,dy,tileSize,tileSize)).catch(()=>{}));
     }
   }
-  await Promise.all(tiles);
-  mapPreviewCtx.fillStyle='rgba(0,0,0,.5)';
-  mapPreviewCtx.fillRect(8,8,300,22);
-  mapPreviewCtx.fillStyle='#fff';
-  mapPreviewCtx.font='11px JetBrains Mono,monospace';
-  mapPreviewCtx.fillText(`Historical ${year} · ${rel.date}`,14,23);
+  await Promise.all(tasks);
 }
 
-async function loadMapPreview(){
-  const lat=parseFloat(document.getElementById('map-lat').value);
-  const lng=parseFloat(document.getElementById('map-lng').value);
-  const zoomLv=Math.max(14,Math.min(22,parseInt(document.getElementById('map-zoom').value,10)||20));
+function drawMapOverlay(){
+  const mpp=metersPerPixel(mapViewState.lat,mapViewState.zoom);
+  const feetPerPx=mpp*3.28084;
+  const barFeet=feetPerPx<0.5?20:feetPerPx<1?50:feetPerPx<2?100:feetPerPx<5?200:500;
+  const barPx=Math.max(30,Math.min(240,barFeet/feetPerPx));
+  const y=mapPreviewCanvas.height-18;
+  mapPreviewCtx.fillStyle='rgba(0,0,0,.55)';
+  mapPreviewCtx.fillRect(8,8,360,24);
+  mapPreviewCtx.fillRect(8,mapPreviewCanvas.height-30,Math.ceil(barPx)+16,20);
+  mapPreviewCtx.strokeStyle='#fff';
+  mapPreviewCtx.lineWidth=2;
+  mapPreviewCtx.beginPath();
+  mapPreviewCtx.moveTo(14,y);
+  mapPreviewCtx.lineTo(14+barPx,y);
+  mapPreviewCtx.stroke();
+  mapPreviewCtx.beginPath();
+  mapPreviewCtx.moveTo(14,y-5);mapPreviewCtx.lineTo(14,y+5);
+  mapPreviewCtx.moveTo(14+barPx,y-5);mapPreviewCtx.lineTo(14+barPx,y+5);
+  mapPreviewCtx.stroke();
+  mapPreviewCtx.fillStyle='#fff';
+  mapPreviewCtx.font='11px JetBrains Mono,monospace';
+  const modeLabel=mapViewState.mode==='historical'?`Historical ${mapViewState.year||''}`:'Google Current';
+  mapPreviewCtx.fillText(`${modeLabel} · z${mapViewState.zoom} · ${mapViewState.lat.toFixed(5)}, ${mapViewState.lng.toFixed(5)}`,14,24);
+  mapPreviewCtx.fillText(`${Math.round(barFeet)} ft`,18+barPx, y+4);
+}
+
+async function loadMapPreview(opts={}){
+  if(opts.fromInputs!==false)readMapInputsIntoState();
+  const reqId=++mapRenderReqId;
+  const lat=mapViewState.lat,lng=mapViewState.lng,zoomLv=mapViewState.zoom;
   if(!Number.isFinite(lat)||!Number.isFinite(lng)){setImportStatus('Enter valid latitude and longitude.',true);return;}
-  setImportStatus('Loading map imagery…');
+  setImportStatus(opts.reason||'Loading map imagery…');
   try{
-    if(mapImageryModeSel.value==='historical')await renderHistoricalPreview(lat,lng,zoomLv);
-    else await renderGooglePreview(lat,lng,zoomLv);
-    setImportStatus('Preview ready. Click "Use Imagery" to add this as a plan.');
+    if(mapViewState.mode==='historical'){
+      await ensureWaybackYears();
+      if(!mapViewState.year){
+        const first=Object.keys(waybackByYear||{}).sort((a,b)=>b.localeCompare(a))[0];
+        mapViewState.year=first||'';
+      }
+      if(mapHistoricalYearSel.value!==mapViewState.year)mapHistoricalYearSel.value=mapViewState.year;
+    }
+    await drawTilePreview(mapViewState.mode,lat,lng,zoomLv,mapViewState.year);
+    if(reqId!==mapRenderReqId)return;
+    drawMapOverlay();
+    syncMapInputsFromState();
+    setImportStatus('Drag to pan, scroll to zoom, then click "Use Imagery".');
   }catch(e){
     console.error(e);
-    setImportStatus('Unable to load imagery. Check API key, coordinates, or zoom.',true);
+    if(reqId!==mapRenderReqId)return;
+    setImportStatus('Unable to load imagery. Check connectivity or selected source.',true);
   }
 }
 
@@ -1642,7 +1720,10 @@ async function geocodeMapSearch(){
     if(!loc)throw new Error('No location found');
     document.getElementById('map-lat').value=loc.lat.toFixed(7);
     document.getElementById('map-lng').value=loc.lng.toFixed(7);
-    await loadMapPreview();
+    mapViewState.lat=loc.lat;
+    mapViewState.lng=loc.lng;
+    syncMapInputsFromState();
+    await loadMapPreview({fromInputs:false,reason:'Loading searched location…'});
   }catch(e){
     console.error(e);
     setImportStatus('Location search failed. Try a full address.',true);
@@ -1663,8 +1744,9 @@ async function captureMapImageryIntoPlan(){
   const oc=document.createElement('canvas');
   oc.width=mapPreviewCanvas.width;oc.height=mapPreviewCanvas.height;
   oc.getContext('2d').drawImage(mapPreviewCanvas,0,0);
+  const feetPerPx=metersPerPixel(mapViewState.lat,mapViewState.zoom)*3.28084;
   closeModal('page-modal');
-  addCanvasAsPlan(oc,label,false);
+  addCanvasAsPlan(oc,label,false,{autoScaleFeetPerPx:feetPerPx,skipCalibration:true});
 }
 
 function startImportFromFile(f){
@@ -1775,22 +1857,77 @@ document.getElementById('btn-import-source-file').addEventListener('click',()=>i
 document.getElementById('btn-import-source-map').addEventListener('click',async()=>{
   setPageModalView('map');
   updateHistoricalControls();
-  if(mapImageryModeSel.value==='historical'){try{await ensureWaybackYears();}catch(e){console.warn(e);}}
-  await loadMapPreview();
+  readMapInputsIntoState();
+  if(mapViewState.mode==='historical'){try{await ensureWaybackYears();}catch(e){console.warn(e);}}
+  await loadMapPreview({fromInputs:false});
 });
 importFileInput.addEventListener('change',e=>{if(e.target.files[0])startImportFromFile(e.target.files[0]);e.target.value='';});
 btnImportBack.addEventListener('click',()=>setPageModalView('source'));
 document.getElementById('btn-page-cancel').onclick=()=>{closeModal('page-modal');setPageModalView('source');};
 document.getElementById('btn-map-search').addEventListener('click',geocodeMapSearch);
-document.getElementById('btn-map-refresh').addEventListener('click',loadMapPreview);
+document.getElementById('btn-map-refresh').addEventListener('click',()=>loadMapPreview({fromInputs:true,reason:'Refreshing imagery…'}));
 document.getElementById('map-search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();geocodeMapSearch();}});
 mapImageryModeSel.addEventListener('change',async()=>{
+  mapViewState.mode=mapImageryModeSel.value;
   updateHistoricalControls();
-  if(mapImageryModeSel.value==='historical'){try{await ensureWaybackYears();}catch(e){console.warn(e);}}
-  await loadMapPreview();
+  if(mapViewState.mode==='historical'){try{await ensureWaybackYears();}catch(e){console.warn(e);}}
+  await loadMapPreview({fromInputs:true});
 });
-mapHistoricalYearSel.addEventListener('change',loadMapPreview);
+mapHistoricalYearSel.addEventListener('change',()=>{mapViewState.year=mapHistoricalYearSel.value;loadMapPreview({fromInputs:false,reason:'Loading selected year…'});});
 btnMapCapture.addEventListener('click',captureMapImageryIntoPlan);
+
+mapPreviewCanvas.addEventListener('wheel',e=>{
+  if(pageModalView!=='map')return;
+  e.preventDefault();
+  const oldZoom=mapViewState.zoom;
+  const next=Math.max(14,Math.min(22,oldZoom+(e.deltaY<0?1:-1)));
+  if(next===oldZoom)return;
+  const rect=mapPreviewCanvas.getBoundingClientRect();
+  const sx=e.clientX-rect.left;
+  const sy=e.clientY-rect.top;
+  const oldWorld=latLngToWorldPixel(mapViewState.lat,mapViewState.lng,oldZoom);
+  const cursorWorld={x:oldWorld.x+(sx-mapPreviewCanvas.width/2),y:oldWorld.y+(sy-mapPreviewCanvas.height/2)};
+  const scale=Math.pow(2,next-oldZoom);
+  const newCursorWorld={x:cursorWorld.x*scale,y:cursorWorld.y*scale};
+  const newCenterWorld={x:newCursorWorld.x-(sx-mapPreviewCanvas.width/2),y:newCursorWorld.y-(sy-mapPreviewCanvas.height/2)};
+  const ll=worldPixelToLatLng(newCenterWorld.x,newCenterWorld.y,next);
+  mapViewState.zoom=next;
+  mapViewState.lat=Math.max(-85.05112878,Math.min(85.05112878,ll.lat));
+  mapViewState.lng=normalizeLng(ll.lng);
+  loadMapPreview({fromInputs:false,reason:'Zooming imagery…'});
+},{passive:false});
+mapPreviewCanvas.addEventListener('mousedown',e=>{
+  if(pageModalView!=='map')return;
+  mapInteraction.dragging=true;
+  mapInteraction.startX=e.clientX;
+  mapInteraction.startY=e.clientY;
+  mapInteraction.startLat=mapViewState.lat;
+  mapInteraction.startLng=mapViewState.lng;
+  mapInteraction.startWorld=latLngToWorldPixel(mapViewState.lat,mapViewState.lng,mapViewState.zoom);
+  mapPreviewCanvas.style.cursor='grabbing';
+});
+window.addEventListener('mousemove',e=>{
+  if(!mapInteraction.dragging)return;
+  const dx=e.clientX-mapInteraction.startX;
+  const dy=e.clientY-mapInteraction.startY;
+  const c={
+    x:mapInteraction.startWorld.x-dx,
+    y:mapInteraction.startWorld.y-dy
+  };
+  const ll=worldPixelToLatLng(c.x,c.y,mapViewState.zoom);
+  mapViewState.lat=Math.max(-85.05112878,Math.min(85.05112878,ll.lat));
+  mapViewState.lng=normalizeLng(ll.lng);
+  syncMapInputsFromState();
+  mapRenderReqId++;
+  setImportStatus('Panning map…');
+});
+window.addEventListener('mouseup',()=>{
+  if(!mapInteraction.dragging)return;
+  mapInteraction.dragging=false;
+  mapPreviewCanvas.style.cursor='grab';
+  loadMapPreview({fromInputs:false,reason:'Loading panned imagery…'});
+});
+mapPreviewCanvas.style.cursor='grab';
 
 // Upload zone drag/drop and canvas drop
 const uzFull=document.querySelector('.upload-zone-full');
@@ -1802,7 +1939,7 @@ if(uzFull){
 cview.addEventListener('dragover',e=>e.preventDefault());
 cview.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0])});
 
-function onPlanLoaded(isPdf){
+function onPlanLoaded(isPdf,opts={}){
   loadedAsPdf=isPdf;
   imgW=bgc.width;imgH=bgc.height;
   dc.width=imgW;dc.height=imgH;
@@ -1822,7 +1959,12 @@ function onPlanLoaded(isPdf){
   inProg=[];inHatch=[];inLinear=[];
   activeZone=zones.length>0?zones[zones.length-1]:null;
   calibrated=false;rulerPos=null;
-  updateCalibBadge();fitZoom();renderAll();
+  fitZoom();renderAll();
+  if(opts.skipCalibration&&opts.autoScaleFeetPerPx){
+    applyAutoImageryScale(opts.autoScaleFeetPerPx);
+    return;
+  }
+  updateCalibBadge();
   // Update DPI note in calibration
   const note=document.getElementById('wr-dpi-note');
   if(note)note.textContent=isPdf?'PDF detected — 144 dpi recommended.':'Image detected — try 150 or 300 dpi.';
