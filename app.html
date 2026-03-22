@@ -1570,6 +1570,75 @@ function classIsLot(cls){
   const c=String(cls||'').toLowerCase();
   return c.includes('lot');
 }
+function polygonArea(pts){
+  if(!Array.isArray(pts)||pts.length<3)return 0;
+  let s=0;
+  for(let i=0;i<pts.length;i++){
+    const a=pts[i],b=pts[(i+1)%pts.length];
+    s+=(a.x*b.y)-(b.x*a.y);
+  }
+  return Math.abs(s)/2;
+}
+function perpendicularDistanceToSegment(p,a,b){
+  const dx=b.x-a.x,dy=b.y-a.y;
+  const len2=dx*dx+dy*dy;
+  if(len2===0)return dist(p,a);
+  const t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/len2));
+  const proj={x:a.x+t*dx,y:a.y+t*dy};
+  return dist(p,proj);
+}
+function rdpSimplify(points,epsilon){
+  if(!Array.isArray(points)||points.length<=2)return Array.isArray(points)?points.slice():[];
+  let maxDist=-1;
+  let idx=-1;
+  const first=points[0],last=points[points.length-1];
+  for(let i=1;i<points.length-1;i++){
+    const d=perpendicularDistanceToSegment(points[i],first,last);
+    if(d>maxDist){maxDist=d;idx=i;}
+  }
+  if(maxDist>epsilon&&idx>0){
+    const left=rdpSimplify(points.slice(0,idx+1),epsilon);
+    const right=rdpSimplify(points.slice(idx),epsilon);
+    return left.slice(0,-1).concat(right);
+  }
+  return [first,last];
+}
+function simplifyClosedPolygon(rawPts,targetMax=80){
+  if(!Array.isArray(rawPts)||rawPts.length<3)return Array.isArray(rawPts)?rawPts.slice():[];
+  let pts=rawPts.map(p=>({x:p.x,y:p.y})).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+  if(pts.length<3)return pts;
+  // Remove exact duplicate closure point if present
+  if(dist(pts[0],pts[pts.length-1])<0.001)pts=pts.slice(0,-1);
+  if(pts.length<3)return pts;
+  if(pts.length<=targetMax)return pts;
+  const area=polygonArea(pts);
+  const bbox=pts.reduce((b,p)=>({
+    minX:Math.min(b.minX,p.x),maxX:Math.max(b.maxX,p.x),
+    minY:Math.min(b.minY,p.y),maxY:Math.max(b.maxY,p.y)
+  }),{minX:pts[0].x,maxX:pts[0].x,minY:pts[0].y,maxY:pts[0].y});
+  const diag=Math.hypot(bbox.maxX-bbox.minX,bbox.maxY-bbox.minY)||1;
+  // Baseline epsilon scales by geometry size and complexity.
+  let eps=Math.max(0.8,diag*0.003,Math.sqrt(area||1)/220);
+  let simplified=pts;
+  for(let i=0;i<12;i++){
+    const open=pts.concat([pts[0]]);
+    const simpOpen=rdpSimplify(open,eps);
+    simplified=simpOpen.slice(0,-1);
+    if(simplified.length<=targetMax&&simplified.length>=6)break;
+    if(simplified.length>targetMax)eps*=1.35; else eps*=0.82;
+  }
+  if(simplified.length<3){
+    // Safe fallback: sparse sampling keeps shape editable.
+    const step=Math.max(1,Math.ceil(pts.length/targetMax));
+    simplified=pts.filter((_,i)=>i%step===0);
+  }
+  // Final hard cap in pathological cases.
+  if(simplified.length>targetMax){
+    const step=Math.max(1,Math.ceil(simplified.length/targetMax));
+    simplified=simplified.filter((_,i)=>i%step===0);
+  }
+  return simplified.length>=3?simplified:pts.slice(0,Math.min(pts.length,targetMax));
+}
 function detectionToZone(det){
   const pts=Array.isArray(det?.points)&&det.points.length>=3
     ? det.points.map(pt=>({x:pt.x,y:pt.y}))
@@ -1580,6 +1649,8 @@ function detectionToZone(det){
         {x:det.x-det.width/2,y:det.y+det.height/2}
       ];
   if(pts.length<3)return null;
+  const simplifiedPts=simplifyClosedPolygon(pts,80);
+  if(simplifiedPts.length<3)return null;
   const isObs=classIsObstruction(det.class);
   const idx=isObs?zones.filter(z=>z.obstruct).length+1:zones.filter(z=>!z.obstruct).length+1;
   const id='z'+Date.now()+Math.floor(Math.random()*10000);
@@ -1588,7 +1659,7 @@ function detectionToZone(det){
     id,
     name:isObs?`Obstruction ${idx}`:`Lot ${idx}`,
     color,
-    pts,
+    pts:simplifiedPts,
     closed:true,
     locked:false,
     showFill:true,
