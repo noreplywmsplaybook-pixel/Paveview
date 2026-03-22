@@ -455,6 +455,7 @@ select.sc-inp{cursor:pointer;width:40px}
 #map-search{min-width:220px;flex:1}
 #map-lat,#map-lng{width:136px}
 #map-zoom{width:66px}
+#map-historical-year{min-width:96px}
 #map-import-status{
   font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);
   border:1px solid var(--border);background:var(--surface2);padding:6px 8px;margin-bottom:8px;min-height:30px;
@@ -1061,10 +1062,10 @@ select.sc-inp{cursor:pointer;width:40px}
           <label>Imagery</label>
           <select id="map-imagery-mode">
             <option value="google" selected>Google Satellite (current)</option>
-            <option value="historical">Historical Satellite (year)</option>
+            <option value="historical">Historical Satellite (pick year)</option>
           </select>
-          <label class="hist-only">Year</label>
-          <select id="map-historical-year" class="hist-only"></select>
+          <label>Year</label>
+          <select id="map-historical-year"></select>
           <button class="btn" id="btn-map-refresh">Refresh</button>
         </div>
         <div id="map-import-status">Pick a location and click Refresh.</div>
@@ -1498,7 +1499,7 @@ const mapImportStatus=document.getElementById('map-import-status');
 const mapImageryModeSel=document.getElementById('map-imagery-mode');
 const mapHistoricalYearSel=document.getElementById('map-historical-year');
 let pageModalView='source'; // source | pdf | map
-let waybackByYear=null; // { [year]: {m, date, label} }
+let waybackByYear={...WAYBACK_FALLBACK_BY_YEAR}; // { [year]: {m, date, label} }
 let mapViewState={lat:37.4219999,lng:-122.0840575,zoom:20,mode:'google',year:''};
 let mapInteraction={dragging:false,startX:0,startY:0,startLat:0,startLng:0,startWorld:null};
 let mapRenderReqId=0;
@@ -1989,6 +1990,8 @@ window.addEventListener('mouseup',()=>{
   loadMapPreview({fromInputs:false,reason:'Loading panned imagery…'});
 });
 mapPreviewCanvas.style.cursor='grab';
+populateWaybackYearsDropdown();
+updateHistoricalControls();
 
 // Upload zone drag/drop and canvas drop
 const uzFull=document.querySelector('.upload-zone-full');
