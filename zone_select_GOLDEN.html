@@ -143,6 +143,7 @@ let measureOverlay=null;
 const LEARN_STORAGE_KEY='paveview_learning_v1';
 const LEARNABLE_TYPES=['line','stencil','crosswalk','lot_perimeter'];
 let learningDb={version:1,samples:[]};
+let lockedLabels={};
 
 function saveLearning(){
   try{localStorage.setItem(LEARN_STORAGE_KEY,JSON.stringify(learningDb));}catch(_e){}
@@ -152,7 +153,10 @@ function loadLearning(){
     const raw=localStorage.getItem(LEARN_STORAGE_KEY);
     if(!raw)return;
     const parsed=JSON.parse(raw);
-    if(parsed&&Array.isArray(parsed.samples))learningDb={version:1,samples:parsed.samples};
+    if(parsed&&Array.isArray(parsed.samples)){
+      learningDb={version:1,samples:parsed.samples};
+      lockedLabels=(parsed.lockedLabels&&typeof parsed.lockedLabels==='object')?parsed.lockedLabels:{};
+    }
   }catch(_e){learningDb={version:1,samples:[]};}
 }
 function learningCounts(){
@@ -198,8 +202,14 @@ function featureDistance(a,b){
 }
 function predictTypeFromLearning(feat){
   const samples=(learningDb.samples||[]).filter(s=>LEARNABLE_TYPES.includes(s.type)&&s.feat);
-  if(samples.length<3)return null;
-  const ranked=samples.map(s=>({type:s.type,d:featureDistance(feat,s.feat)})).sort((a,b)=>a.d-b.d);
+  if(samples.length<6)return null;
+  const classCounts={line:0,stencil:0,crosswalk:0,lot_perimeter:0};
+  samples.forEach(s=>{classCounts[s.type]=(classCounts[s.type]||0)+1;});
+  const classList=Object.keys(classCounts).filter(t=>classCounts[t]>=2);
+  if(classList.length<2)return null;
+  const filtered=samples.filter(s=>classList.includes(s.type));
+  if(filtered.length<6)return null;
+  const ranked=filtered.map(s=>({type:s.type,d:featureDistance(feat,s.feat)})).sort((a,b)=>a.d-b.d);
   const k=Math.min(9,ranked.length);
   const sums={line:0,stencil:0,crosswalk:0,lot_perimeter:0};
   let total=0;
@@ -207,15 +217,20 @@ function predictTypeFromLearning(feat){
     const r=ranked[i],w=1/(r.d+0.05);
     sums[r.type]=(sums[r.type]||0)+w;total+=w;
   }
-  let best='line',bestW=-1;
-  Object.keys(sums).forEach(t=>{if(sums[t]>bestW){bestW=sums[t];best=t;}});
-  return{type:best,conf:total>0?bestW/total:0};
+  const rankedTypes=Object.keys(sums).map(t=>({t,w:sums[t]})).sort((a,b)=>b.w-a.w);
+  const best=rankedTypes[0],second=rankedTypes[1]||{w:0};
+  const conf=total>0?best.w/total:0;
+  const margin=best.w-second.w;
+  return{type:best.t,conf,margin};
 }
 function applyTypeToKey(key,type){
   keyTypes[key]=type;
   (keyMembers[key]||[]).forEach(idx=>{if(elMeta[idx])elMeta[idx].type=type;});
   const sg=selGroups.find(s=>s.key===key);
   if(sg){sg.type=type;sg.color=TYPE_COLORS[type]||sg.color;}
+}
+function keyLabelSource(key){
+  return lockedLabels[key]||'auto';
 }
 function labelSelected(){
   const target=document.getElementById('learn-type')?.value||'line';
@@ -226,6 +241,7 @@ function labelSelected(){
     const feat=featureForKey(sg.key);if(!feat)return;
     learningDb.samples.push({type:target,feat});
     applyTypeToKey(sg.key,target);
+    lockedLabels[sg.key]='manual';
     added++;
   });
   if(learningDb.samples.length>3000)learningDb.samples=learningDb.samples.slice(-3000);
@@ -236,10 +252,17 @@ function labelSelected(){
 }
 function autoClassifyFromLearning(){
   if(!(learningDb.samples||[]).length){updateLearningMsg('No samples yet. Label some groups first.');return;}
+  const c=learningCounts();
+  const activeClasses=Object.keys(c).filter(t=>c[t]>=2);
+  if(activeClasses.length<2){
+    updateLearningMsg('Need at least 2 classes with 2+ samples each before auto-classify.');
+    return;
+  }
   let changed=0;
   Object.keys(keyTypes).forEach(key=>{
+    if(keyLabelSource(key)==='manual')return;
     const feat=featureForKey(key);if(!feat)return;
-    const pred=predictTypeFromLearning(feat);if(!pred||pred.conf<0.62)return;
+    const pred=predictTypeFromLearning(feat);if(!pred||pred.conf<0.72||pred.margin<0.35)return;
     if(pred.type==='lot_perimeter'&&feat.sw<12)return;
     if(pred.type==='crosswalk'&&feat.sw<8)return;
     if(pred.type==='stencil'&&feat.sw<6)return;
@@ -251,6 +274,7 @@ function autoClassifyFromLearning(){
 }
 function clearLearning(){
   learningDb={version:1,samples:[]};
+  lockedLabels={};
   saveLearning();
   updateLearningMsg('Learning reset.');
 }
