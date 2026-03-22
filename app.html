@@ -1280,7 +1280,7 @@ function renderZoneCollapsed(){
     el.className='zi-collapsed'+(z.id===activeZone?.id?' active':'');
     el.innerHTML='<div class="zi-dot" style="background:'+(z.obstruct?'#ef4444':z.color)+'"></div><span class="zi-short">'+shortName+'</span>';
     el.title=z.name+(z.closed?' \u2014 '+Math.round(polyArea(z.pts)*getScale()*getScale()).toLocaleString()+' sq ft':'');
-    el.onclick=()=>{activeZone=z;renderZoneList();renderZoneCollapsed();};
+    el.onclick=()=>{activeZone=z;setFocusedZone(z.id);renderZoneList();renderZoneCollapsed();};
     list.appendChild(el);
   });
   const addEl=document.createElement('div');
@@ -1288,6 +1288,10 @@ function renderZoneCollapsed(){
   addEl.title='Add Zone';addEl.textContent='+';
   addEl.onclick=()=>{if(inProg.length>=3)closeZone();addZone(mode==='obstruct');renderAll();};
   list.appendChild(addEl);
+}
+function setFocusedZone(zoneId){
+  const has=zones.some(z=>z.id===zoneId);
+  focusedZoneId=has?zoneId:null;
 }
 
 
@@ -1306,6 +1310,7 @@ let zones=[], activeZone=null, inProg=[];
 let markers=[], hatchZones=[], linearSegs=[];
 let inHatch=[], inLinear=[];
 let dragging=null, hovering=null;
+let focusedZoneId=null; // when set, stats panel shows only this zone
 let mx=0, my=0; // mouse in image coords
 let isPanning=false;
 let lastClick=0; // for dblclick detection
@@ -1379,6 +1384,7 @@ function loadPlanData(idx){
   linearSegs=JSON.parse(JSON.stringify(pd.linearSegs||[]));
   hatchZones=JSON.parse(JSON.stringify(pd.hatchZones||[]));
   activeZone=zones.filter(z=>z.closed).slice(-1)[0]||zones.slice(-1)[0]||null;
+  focusedZoneId=activeZone?.id||null;
   inProg=[];inHatch=[];inLinear=[];
   calibrated=pd.calibrated||false;
 
@@ -1713,6 +1719,7 @@ function transferDetectionsToEditableObjects(){
   });
   if(zonesAdded||markersAdded){
     activeZone=zones.filter(z=>z.closed).slice(-1)[0]||zones.slice(-1)[0]||activeZone;
+    focusedZoneId=activeZone?.id||focusedZoneId;
     undoHistory.push({type:'ai-import',zonesAdded,markersAdded});
     renderZoneList();updateStats();renderAll();savePlanData();
   }
@@ -2546,6 +2553,8 @@ ic.addEventListener('mousedown',e=>{
       // Insert new vertex at this edge point then drag it
       const zo=zones.find(z=>z.id===near.id);
       if(zo){
+        activeZone=zo;
+        setFocusedZone(zo.id);
         zo.pts.splice(near.afterIdx+1,0,{x:near.x,y:near.y});
         dragging={type:'zone',id:zo.id,idx:near.afterIdx+1};
         ic.style.cursor='grabbing';
@@ -2566,6 +2575,8 @@ ic.addEventListener('mousedown',e=>{
         // Insert new vertex at click point
         const zo=zones.find(z=>z.id===near2.id);
         if(zo){
+          activeZone=zo;
+          setFocusedZone(zo.id);
           zo.pts.splice(near2.afterIdx+1,0,{x:near2.x,y:near2.y});
           // Immediately start dragging the new vertex
           dragging={type:'zone',id:zo.id,idx:near2.afterIdx+1};
@@ -2663,6 +2674,7 @@ function findNearEdge(ix,iy){
   // Check zone edges
   for(let z=zones.length-1;z>=0;z--){
     const zo=zones[z];
+    if(focusedZoneId&&zo.id!==focusedZoneId)continue;
     if(zo.pts.length<3)continue; // need at least 3 pts for edges
     for(let i=0;i<zo.pts.length;i++){
       const a=zo.pts[i],b=zo.pts[(i+1)%zo.pts.length];
@@ -2705,15 +2717,16 @@ function findNear(ix,iy){
   for(let h=hatchZones.length-1;h>=0;h--)for(let i=0;i<hatchZones[h].pts.length;i++)if(dist({x:ix,y:iy},hatchZones[h].pts[i])<t)return{type:'hatch',id:hatchZones[h].id,idx:i};
   for(let mi=measurements.length-1;mi>=0;mi--)for(let i=0;i<measurements[mi].pts.length;i++)if(dist({x:ix,y:iy},measurements[mi].pts[i])<t)return{type:'meas',id:measurements[mi].id,idx:i};
   for(let s=linearSegs.length-1;s>=0;s--)for(let i=0;i<linearSegs[s].pts.length;i++)if(dist({x:ix,y:iy},linearSegs[s].pts[i])<t)return{type:'linear',idx:s,ptIdx:i};
-  // Edge insertion: check active unlocked zone edges
-  if(activeZone&&!activeZone.locked&&activeZone.pts.length>=3){
+  // Edge insertion: prioritize focused zone, then active zone (even if locked)
+  const edgeZone=(focusedZoneId?zones.find(z=>z.id===focusedZoneId):null)||activeZone;
+  if(edgeZone&&edgeZone.pts.length>=3){
     const te=Math.max(10,14/zoom);
-    const pts=activeZone.pts;
+    const pts=edgeZone.pts;
     for(let i=0;i<pts.length;i++){
       const a=pts[i],b=pts[(i+1)%pts.length];
       const p=ptOnSeg(ix,iy,a.x,a.y,b.x,b.y);
       if(dist({x:ix,y:iy},p)<te&&p.t>0.02&&p.t<0.98){
-        return{type:'zone-edge',id:activeZone.id,afterIdx:i,x:p.x,y:p.y};
+        return{type:'zone-edge',id:edgeZone.id,afterIdx:i,x:p.x,y:p.y};
       }
     }
   }
@@ -2733,6 +2746,20 @@ function findNear(ix,iy){
   return null;
 }
 
+function findNearZoneEdge(ix,iy,zone){
+  if(!zone||!Array.isArray(zone.pts)||zone.pts.length<3)return null;
+  const te=Math.max(10,14/zoom);
+  const pts=zone.pts;
+  for(let i=0;i<pts.length;i++){
+    const a=pts[i],b=pts[(i+1)%pts.length];
+    const p=ptOnSeg(ix,iy,a.x,a.y,b.x,b.y);
+    if(dist({x:ix,y:iy},p)<te&&p.t>0.02&&p.t<0.98){
+      return{type:'zone-edge',id:zone.id,afterIdx:i,x:p.x,y:p.y};
+    }
+  }
+  return null;
+}
+
 // ── ZONES ──
 function addZone(isObs=false){
   const id='z'+Date.now();
@@ -2741,6 +2768,7 @@ function addZone(isObs=false){
   const name=isObs?`Obstruction ${zones.filter(z=>z.obstruct).length+1}`:`Zone ${nz+1}`;
   zones.push({id,name,color,pts:[],closed:false,locked:false,showFill:true,obstruct:isObs,labelSize:12,opacity:15,lineWidth:2,lineDashed:false});
   activeZone=zones[zones.length-1];
+  setFocusedZone(activeZone.id);
   inProg=[];renderZoneList();
 }
 function getZone(id){return zones.find(z=>z.id===id)}
@@ -2795,7 +2823,12 @@ ${z.closed ? `<div style="display:flex;align-items:center;gap:4px;padding:2px 8p
 </div>` : ''}`;
     el.addEventListener('click',ev=>{
       const act=ev.target.dataset.act, id=ev.target.dataset.id;
-      if(act==='del'){zones=zones.filter(x=>x.id!==id);if(activeZone?.id===id){activeZone=zones[zones.length-1]||null;inProg=[]}renderZoneList();updateStats();renderAll();return}
+      if(act==='del'){
+        zones=zones.filter(x=>x.id!==id);
+        if(activeZone?.id===id){activeZone=zones[zones.length-1]||null;inProg=[]}
+        if(focusedZoneId===id)setFocusedZone(null);
+        renderZoneList();updateStats();renderAll();return
+      }
       if(act==='lock'){const z2=getZone(id);if(z2)z2.locked=!z2.locked;renderZoneList();renderAll();return}
       if(act==='fill'){const z2=getZone(id);if(z2)z2.showFill=z2.showFill===false?true:false;renderZoneList();renderAll();return}
       // Only enter edit mode when EDIT badge is clicked
@@ -2810,6 +2843,7 @@ ${z.closed ? `<div style="display:flex;align-items:center;gap:4px;padding:2px 8p
         }
         // Enter edit mode
         activeZone=z2;
+        setFocusedZone(z2.id);
         z2.locked=false;
         inProg=[];z2.closed=false;
         setMode(z2.obstruct?'obstruct':'draw');
@@ -2818,6 +2852,7 @@ ${z.closed ? `<div style="display:flex;align-items:center;gap:4px;padding:2px 8p
       }
       // Clicking zone row just selects it as active (no edit)
       activeZone=z;
+      setFocusedZone(z.id);
       renderZoneList();renderAll();
     });
     // Color picker
@@ -3157,8 +3192,11 @@ function calcBase(sqft,d){return sqft*(d/12)*110/2000}
 // ── STATS ──
 function updateStats(){
   const sc=getScale(),u=document.getElementById('scale-unit').value;
-  const closed=zones.filter(z=>z.closed&&!z.obstruct);
-  const obst=zones.filter(z=>z.closed&&z.obstruct);
+  if(focusedZoneId&&!zones.some(z=>z.id===focusedZoneId&&z.closed))focusedZoneId=null;
+  const focusZone=focusedZoneId?zones.find(z=>z.id===focusedZoneId&&z.closed):null;
+  const focusObs=focusZone&&focusZone.obstruct;
+  const closed=focusZone?(focusObs?[]:[focusZone]):zones.filter(z=>z.closed&&!z.obstruct);
+  const obst=focusZone?(focusObs?[focusZone]:[]):zones.filter(z=>z.closed&&z.obstruct);
   let area=0,perim=0,obArea=0;
   closed.forEach(z=>{area+=polyArea(z.pts)*sc*sc;perim+=polyPerim(z.pts)*sc});
   obst.forEach(z=>{obArea+=polyArea(z.pts)*sc*sc});
@@ -3547,6 +3585,7 @@ document.getElementById('btn-undo').onclick=()=>{
     if(last.type==='zone'){
       zones=zones.filter(z=>z.id!==last.id);
       if(activeZone?.id===last.id)activeZone=zones.filter(z=>z.closed).slice(-1)[0]||null;
+      if(focusedZoneId===last.id)focusedZoneId=activeZone?.id||null;
       renderZoneList();
     } else if(last.type==='marker'){
       markers.splice(last.idx,1);
@@ -3576,7 +3615,12 @@ document.getElementById('btn-clear').onclick=()=>{
   if(measurements.length>0){measurements.pop();renderMeasurements();renderAll();return;}
   if(zones.length>1){
     const lastClosed=[...zones].reverse().find(z=>z.closed);
-    if(lastClosed){zones=zones.filter(z=>z.id!==lastClosed.id);if(activeZone?.id===lastClosed.id)activeZone=zones[zones.length-1]||null;renderZoneList();updateStats();renderAll();}
+    if(lastClosed){
+      zones=zones.filter(z=>z.id!==lastClosed.id);
+      if(activeZone?.id===lastClosed.id)activeZone=zones[zones.length-1]||null;
+      if(focusedZoneId===lastClosed.id)focusedZoneId=activeZone?.id||null;
+      renderZoneList();updateStats();renderAll();
+    }
   }
 };
 document.getElementById('btn-add-zone').onclick=()=>{
