@@ -1463,6 +1463,21 @@ function renderPlanTabs(){
 // ── FILE LOADING / IMPORT MODAL ──
 const GOOGLE_MAPS_API_KEY='AIzaSyDmfG4UZGYNEE6vlPEBiD8b6YT624eGZK0';
 const WAYBACK_SELECTION_URL='https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer?f=pjson';
+const WAYBACK_FALLBACK_BY_YEAR={
+  '2026':{m:'64001',date:'2026-02-26',label:'World Imagery (Wayback 2026-02-26)'},
+  '2025':{m:'13192',date:'2025-12-18',label:'World Imagery (Wayback 2025-12-18)'},
+  '2024':{m:'16453',date:'2024-12-12',label:'World Imagery (Wayback 2024-12-12)'},
+  '2023':{m:'56102',date:'2023-12-07',label:'World Imagery (Wayback 2023-12-07)'},
+  '2022':{m:'45134',date:'2022-12-14',label:'World Imagery (Wayback 2022-12-14)'},
+  '2021':{m:'26120',date:'2021-12-21',label:'World Imagery (Wayback 2021-12-21)'},
+  '2020':{m:'29260',date:'2020-12-16',label:'World Imagery (Wayback 2020-12-16)'},
+  '2019':{m:'4756',date:'2019-12-12',label:'World Imagery (Wayback 2019-12-12)'},
+  '2018':{m:'23448',date:'2018-12-14',label:'World Imagery (Wayback 2018-12-14)'},
+  '2017':{m:'13161',date:'2018-01-08',label:'World Imagery (Wayback 2018-01-08)'},
+  '2016':{m:'18966',date:'2016-12-20',label:'World Imagery (Wayback 2016-12-20)'},
+  '2015':{m:'28163',date:'2015-12-16',label:'World Imagery (Wayback 2015-12-16)'},
+  '2014':{m:'5844',date:'2014-12-30',label:'World Imagery (Wayback 2014-12-30)'},
+};
 const importFileInput=document.getElementById('import-file-input');
 const pageModalTitle=document.getElementById('page-modal-title');
 const pageFilename=document.getElementById('page-filename');
@@ -1611,26 +1626,43 @@ function syncMapInputsFromState(){
   document.getElementById('map-lng').value=mapViewState.lng.toFixed(7);
   document.getElementById('map-zoom').value=String(mapViewState.zoom);
 }
+function populateWaybackYearsDropdown(){
+  const years=listWaybackYears();
+  mapHistoricalYearSel.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join('');
+}
+function ensureFallbackWaybackYears(){
+  if(!waybackByYear)waybackByYear={...WAYBACK_FALLBACK_BY_YEAR};
+  else waybackByYear={...WAYBACK_FALLBACK_BY_YEAR,...waybackByYear};
+  populateWaybackYearsDropdown();
+}
 function listWaybackYears(){
   return Object.keys(waybackByYear||{}).sort((a,b)=>b.localeCompare(a));
 }
 async function ensureWaybackYears(){
-  if(waybackByYear)return;
-  const res=await fetch(WAYBACK_SELECTION_URL);
-  const data=await res.json();
-  const byYear={};
-  (data.Selection||[]).forEach(row=>{
-    const m=String(row.M||'').trim();
-    const name=String(row.Name||'');
-    const dateMatch=name.match(/(\d{4}-\d{2}-\d{2})/);
-    if(!m||!dateMatch)return;
-    const date=dateMatch[1];
-    const year=date.slice(0,4);
-    if(!byYear[year]||date>byYear[year].date)byYear[year]={m,date,label:name};
-  });
-  waybackByYear=byYear;
-  const years=listWaybackYears();
-  mapHistoricalYearSel.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  if(waybackByYear&&Object.keys(waybackByYear).length>0){
+    populateWaybackYearsDropdown();
+    return;
+  }
+  ensureFallbackWaybackYears();
+  try{
+    const res=await fetch(WAYBACK_SELECTION_URL);
+    const data=await res.json();
+    const byYear={};
+    (data.Selection||[]).forEach(row=>{
+      const m=String(row.M||'').trim();
+      const name=String(row.Name||'');
+      const dateMatch=name.match(/(\d{4}-\d{2}-\d{2})/);
+      if(!m||!dateMatch)return;
+      const date=dateMatch[1];
+      const year=date.slice(0,4);
+      if(!byYear[year]||date>byYear[year].date)byYear[year]={m,date,label:name};
+    });
+    waybackByYear={...WAYBACK_FALLBACK_BY_YEAR,...byYear};
+    populateWaybackYearsDropdown();
+  }catch(e){
+    console.warn('Falling back to bundled historical years:',e);
+    ensureFallbackWaybackYears();
+  }
 }
 
 async function drawTilePreview(mode,lat,lng,zoomLv,year){
