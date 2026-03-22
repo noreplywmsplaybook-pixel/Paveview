@@ -3294,8 +3294,10 @@ function renderAll(){renderZones();render()}
 function renderZones(){
   dCtx.clearRect(0,0,dc.width,dc.height);
   const sc=getScale();
+  const focusedZone=focusedZoneId?zones.find(z=>z.id===focusedZoneId):null;
+  const hasZoneFocus=!!focusedZone;
   // Hatch zones
-  hatchZones.forEach(h=>{
+  if(!hasZoneFocus)hatchZones.forEach(h=>{
     if(h.pts.length<3)return;
     const col=h.type==='ada-hatch'?'#3b82f6':'#22c55e';
     dCtx.save();
@@ -3313,7 +3315,7 @@ function renderZones(){
     h.pts.forEach((p,i)=>{dCtx.beginPath();dCtx.arc(p.x,p.y,3,0,Math.PI*2);dCtx.fillStyle=col;dCtx.fill()});
   });
   // Linear segs
-  linearSegs.forEach(s=>{
+  if(!hasZoneFocus)linearSegs.forEach(s=>{
     if(s.pts.length<2)return;
     const lCol=s.color||'#06b6d4';
     const lw=s.lineWidth||2;
@@ -3338,10 +3340,9 @@ function renderZones(){
   };
 
   // Zones
-  const focusedZone=focusedZoneId?zones.find(z=>z.id===focusedZoneId):null;
-  const hasZoneFocus=!!focusedZone;
   if(_layerOn('zones')) zones.forEach(z=>{
     if(z.pts.length<3)return;
+    if(hasZoneFocus&&z.id!==focusedZoneId)return;
     // Search: if searching, dim non-matching zones
     const _searching=searchTerm&&searchMatches.length>=0;
     const _zMatch=!_searching||!searchTerm||searchMatches.some(m=>m.type==='zone'&&m.id===z.id);
@@ -3354,10 +3355,8 @@ function renderZones(){
     }
     const isA=z.id===activeZone?.id;
     const isFocused=focusedZoneId===z.id;
-    const isDimmed=hasZoneFocus&&!isFocused;
     dCtx.beginPath();z.pts.forEach((p,i)=>i===0?dCtx.moveTo(p.x,p.y):dCtx.lineTo(p.x,p.y));dCtx.closePath();
     if(z.obstruct){
-      if(isDimmed)dCtx.save(),dCtx.globalAlpha=0.22;
       dCtx.fillStyle='rgba(239,68,68,.1)';dCtx.fill();
       dCtx.save();dCtx.clip();
       const xs=z.pts.map(p=>p.x),ys=z.pts.map(p=>p.y);
@@ -3366,14 +3365,12 @@ function renderZones(){
       dCtx.strokeStyle='rgba(239,68,68,.3)';dCtx.lineWidth=1;
       for(let d=mx2-(My-my2);d<Mx+(My-my2);d+=sp){dCtx.beginPath();dCtx.moveTo(d,my2);dCtx.lineTo(d+(My-my2),My);dCtx.stroke()}
       dCtx.restore();
-      if(isDimmed)dCtx.restore();
       // Re-draw the zone outline cleanly (separate path to avoid clip artifact)
       dCtx.beginPath();z.pts.forEach((p,i)=>i===0?dCtx.moveTo(p.x,p.y):dCtx.lineTo(p.x,p.y));dCtx.closePath();
       dCtx.strokeStyle='#ef4444';
       dCtx.lineWidth=isFocused?2.4:(isA?2:1.5);
       dCtx.setLineDash([6,4]);dCtx.stroke();dCtx.setLineDash([]);
     }else{
-      if(isDimmed)dCtx.save(),dCtx.globalAlpha=0.22;
       if(z.showFill!==false){
         const alpha=Math.round((z.opacity!=null?z.opacity:15)/100*255).toString(16).padStart(2,'0');
         dCtx.fillStyle=z.color+alpha;dCtx.fill();
@@ -3383,9 +3380,8 @@ function renderZones(){
       dCtx.lineWidth=isFocused?lw+1.2:(isA?lw+0.5:lw);
       dCtx.setLineDash(z.lineDashed?[10,5]:[]);
       dCtx.stroke();dCtx.setLineDash([]);
-      if(isDimmed)dCtx.restore();
     }
-    if(!z.locked&&(!hasZoneFocus||isFocused))z.pts.forEach((p,i)=>{
+    if(!z.locked)z.pts.forEach((p,i)=>{
       const isH=hovering&&hovering.type==='zone'&&hovering.id===z.id&&hovering.idx===i;
       dCtx.beginPath();dCtx.arc(p.x,p.y,isH?5:2.5,0,Math.PI*2);
       dCtx.fillStyle=isH?'#fff':(z.obstruct?'#ef4444':z.color);dCtx.fill();
@@ -3401,31 +3397,25 @@ function renderZones(){
     const tw=dCtx.measureText(lbl).width;
     const _isMatch=searchTerm&&searchMatches.some(m=>m.type==='zone'&&m.id===z.id);
     dCtx.fillStyle=_isMatch?'rgba(212,168,67,.9)':'rgba(0,0,0,.82)';
-    if(!isDimmed)dCtx.fillRect(cx2-tw/2-8,cy2-10,tw+16,20);
-    if(_isMatch&&!isDimmed){dCtx.strokeStyle='#d4a843';dCtx.lineWidth=3;dCtx.strokeRect(cx2-tw/2-8,cy2-10,tw+16,20);}
-    if(!isDimmed){
-      dCtx.fillStyle=_isMatch?'#000':(z.obstruct?'#ef4444':z.color);
-      dCtx.fillText(lbl,cx2,cy2);
-    }
+    dCtx.fillRect(cx2-tw/2-8,cy2-10,tw+16,20);
+    if(_isMatch){dCtx.strokeStyle='#d4a843';dCtx.lineWidth=3;dCtx.strokeRect(cx2-tw/2-8,cy2-10,tw+16,20);}
+    dCtx.fillStyle=_isMatch?'#000':(z.obstruct?'#ef4444':z.color);
+    dCtx.fillText(lbl,cx2,cy2);
     // Drag grip dots
-    if(!isDimmed){
-      dCtx.fillStyle='rgba(255,255,255,.25)';
-      dCtx.fillRect(cx2-tw/2-6,cy2-10,4,20);
-    }
+    dCtx.fillStyle='rgba(255,255,255,.25)';
+    dCtx.fillRect(cx2-tw/2-6,cy2-10,4,20);
     const lblSz=Math.max(8,(z.labelSize||12)/zoom);
     dCtx.font=`700 ${lblSz}px Syne,sans-serif`;
     dCtx.textAlign='center';dCtx.textBaseline='middle';
-    if(!isDimmed){
-      dCtx.fillStyle=z.obstruct?'#ef4444':z.color;
-      dCtx.strokeStyle='rgba(0,0,0,.6)';dCtx.lineWidth=3;
-      dCtx.strokeText(z.name,cx2,cy2-lblSz*1.2);
-      dCtx.fillText(z.name,cx2,cy2-lblSz*1.2);
-    }
+    dCtx.fillStyle=z.obstruct?'#ef4444':z.color;
+    dCtx.strokeStyle='rgba(0,0,0,.6)';dCtx.lineWidth=3;
+    dCtx.strokeText(z.name,cx2,cy2-lblSz*1.2);
+    dCtx.fillText(z.name,cx2,cy2-lblSz*1.2);
   });
   // Measurements
-  renderMeasurementShapes(dCtx);
+  if(!hasZoneFocus)renderMeasurementShapes(dCtx);
   // Markers
-  markers.forEach((m,idx)=>{
+  if(!hasZoneFocus)markers.forEach((m,idx)=>{
     const isH=hovering&&hovering.type==='marker'&&hovering.idx===idx;
     const col={stall:'#f5c842',ada:'#3b82f6',bollard:'#f97316',stopblock:'#ef4444',stencil:'#a855f7','bollard-sign':'#f97316'}[m.type]||'#fff';
     const r=Math.max(5,Math.min(12,8/zoom))*(isH?1.4:1);
