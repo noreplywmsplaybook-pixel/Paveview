@@ -1505,10 +1505,11 @@ const mapHistoricalYearSel=document.getElementById('map-historical-year');
 let pageModalView='source'; // source | pdf | map
 let waybackByYear={...WAYBACK_FALLBACK_BY_YEAR}; // { [year]: {m, date, label} }
 let mapViewState={lat:37.4219999,lng:-122.0840575,zoom:20,mode:'google',year:''};
-let mapInteraction={dragging:false,startX:0,startY:0,startLat:0,startLng:0,startWorld:null};
+let mapInteraction={dragging:false,startX:0,startY:0,startLat:0,startLng:0,startWorld:null,startTx:0,startTy:0};
 let mapRenderReqId=0;
 let mapDetections=[]; // [{x,y,width,height,class,confidence,points?}]
 let mapDetectionRenderSize={w:0,h:0};
+let mapReviewState={active:false,scale:1,tx:0,ty:0,image:null}; // freeze-and-review state after AI detect
 
 function setImportStatus(msg,isError=false){
   if(!mapImportStatus)return;
@@ -1518,12 +1519,36 @@ function setImportStatus(msg,isError=false){
 function clearMapDetections(){
   mapDetections=[];
   mapDetectionRenderSize={w:0,h:0};
+  mapReviewState={active:false,scale:1,tx:0,ty:0,image:null};
 }
 function detKind(p){
   const c=String(p?.class||'').toLowerCase();
   if(c.includes('stall')||c.includes('handicap')||c.includes('ada')||c.includes('arrow'))return 'box';
   if(c.includes('lot')||c.includes('obstruction')||c.includes('obstruct'))return 'seg';
   return (Array.isArray(p?.points)&&p.points.length>=3)?'seg':'box';
+}
+
+function renderDetectionReview(){
+  if(!mapReviewState.active||!mapReviewState.image)return;
+  mapPreviewCtx.save();
+  mapPreviewCtx.setTransform(1,0,0,1,0,0);
+  mapPreviewCtx.clearRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  mapPreviewCtx.fillStyle='#151515';
+  mapPreviewCtx.fillRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  mapPreviewCtx.setTransform(mapReviewState.scale,0,0,mapReviewState.scale,mapReviewState.tx,mapReviewState.ty);
+  mapPreviewCtx.drawImage(mapReviewState.image,0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  mapPreviewCtx.restore();
+}
+
+async function enableDetectionReviewMode(){
+  try{
+    const snap=mapPreviewCanvas.toDataURL('image/png');
+    const img=await loadImageFromUrl(snap);
+    mapReviewState={active:true,scale:1,tx:0,ty:0,image:img};
+    renderDetectionReview();
+  }catch(e){
+    console.warn('Unable to start review mode:',e);
+  }
 }
 
 function setPageModalView(view){
@@ -1873,6 +1898,8 @@ async function captureMapImageryIntoPlan(){
 async function runRoboflowDetection(){
   try{
     setImportStatus('Running Roboflow detection…');
+    mapReviewState.active=false;
+    mapInteraction.dragging=false;
     const payload={imageDataUrl:mapPreviewCanvas.toDataURL('image/jpeg',0.9),mode:'hybrid'};
     const res=await fetch('/api/roboflow-detect',{
       method:'POST',
@@ -1886,7 +1913,8 @@ async function runRoboflowDetection(){
     await loadMapPreview({fromInputs:false,preserveDetections:true,reason:`Detections: ${mapDetections.length}`});
     const segCount=mapDetections.filter(p=>detKind(p)==='seg').length;
     const boxCount=mapDetections.filter(p=>detKind(p)==='box').length;
-    setImportStatus(`Detected ${mapDetections.length} objects (${boxCount} boxed, ${segCount} segmented).`);
+    await enableDetectionReviewMode();
+    setImportStatus(`Detected ${mapDetections.length} objects (${boxCount} boxed, ${segCount} segmented). Drag/scroll now review detections only.`);
   }catch(e){
     console.error(e);
     setImportStatus(`Detection failed: ${e.message}`,true);
@@ -2025,6 +2053,22 @@ if(btnMapAiDetect)btnMapAiDetect.addEventListener('click',runRoboflowDetection);
 mapPreviewCanvas.addEventListener('wheel',e=>{
   if(pageModalView!=='map')return;
   e.preventDefault();
+  if(mapReviewState.active){
+    const rect=mapPreviewCanvas.getBoundingClientRect();
+    const sx=e.clientX-rect.left;
+    const sy=e.clientY-rect.top;
+    const oldScale=mapReviewState.scale;
+    const newScale=Math.max(0.3,Math.min(5,oldScale*(e.deltaY<0?1.1:1/1.1)));
+    if(newScale===oldScale)return;
+    const wx=(sx-mapReviewState.tx)/oldScale;
+    const wy=(sy-mapReviewState.ty)/oldScale;
+    mapReviewState.scale=newScale;
+    mapReviewState.tx=sx-wx*newScale;
+    mapReviewState.ty=sy-wy*newScale;
+    renderDetectionReview();
+    setImportStatus('Review mode: zooming detections');
+    return;
+  }
   const oldZoom=mapViewState.zoom;
   const next=Math.max(14,Math.min(22,oldZoom+(e.deltaY<0?1:-1)));
   if(next===oldZoom)return;
@@ -2047,6 +2091,12 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
   mapInteraction.dragging=true;
   mapInteraction.startX=e.clientX;
   mapInteraction.startY=e.clientY;
+  mapInteraction.startTx=mapReviewState.tx;
+  mapInteraction.startTy=mapReviewState.ty;
+  if(mapReviewState.active){
+    mapPreviewCanvas.style.cursor='grabbing';
+    return;
+  }
   mapInteraction.startLat=mapViewState.lat;
   mapInteraction.startLng=mapViewState.lng;
   mapInteraction.startWorld=latLngToWorldPixel(mapViewState.lat,mapViewState.lng,mapViewState.zoom);
@@ -2054,6 +2104,15 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
 });
 window.addEventListener('mousemove',e=>{
   if(!mapInteraction.dragging)return;
+  if(mapReviewState.active){
+    const dx=e.clientX-mapInteraction.startX;
+    const dy=e.clientY-mapInteraction.startY;
+    mapReviewState.tx=mapInteraction.startTx+dx;
+    mapReviewState.ty=mapInteraction.startTy+dy;
+    renderDetectionReview();
+    setImportStatus('Review mode: panning detections…');
+    return;
+  }
   const dx=e.clientX-mapInteraction.startX;
   const dy=e.clientY-mapInteraction.startY;
   const c={
@@ -2071,6 +2130,10 @@ window.addEventListener('mouseup',()=>{
   if(!mapInteraction.dragging)return;
   mapInteraction.dragging=false;
   mapPreviewCanvas.style.cursor='grab';
+  if(mapReviewState.active){
+    renderDetectionReview();
+    return;
+  }
   loadMapPreview({fromInputs:false,reason:'Loading panned imagery…'});
 });
 mapPreviewCanvas.style.cursor='grab';
