@@ -285,30 +285,205 @@ function pointInsideByRay(x,y,segs){
   }
   return(hits%2)===1;
 }
+function nearestPointOnSegments(px,py,segs){
+  if(!Array.isArray(segs)||!segs.length)return null;
+  let best=null,bestD=1e9;
+  for(let i=0;i<segs.length;i++){
+    const s=segs[i],ax=s[0],ay=s[1],bx=s[2],by=s[3];
+    const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+    if(!l2){
+      const d=Math.hypot(px-ax,py-ay);
+      if(d<bestD){bestD=d;best={x:ax,y:ay,d};}
+      continue;
+    }
+    const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l2));
+    const x=ax+t*dx,y=ay+t*dy,d=Math.hypot(px-x,py-y);
+    if(d<bestD){bestD=d;best={x,y,d};}
+  }
+  return best;
+}
+function collectClosureWallSegments(perimBox,perimSegs){
+  const out=[];
+  if(!perimBox||!Array.isArray(perimSegs)||!perimSegs.length)return out;
+  const bw=Math.max(0,perimBox.maxX-perimBox.minX),bh=Math.max(0,perimBox.maxY-perimBox.minY);
+  const nearPerimDist=Math.max(0.006,Math.min(0.018,Math.max(bw,bh)*0.04));
+  Object.keys(keyTypes).forEach(k=>{
+    if(keyTypes[k]!=='line')return;
+    const info=keyInfo[k]||{};
+    if(String(info.sw)!=='5')return;
+    const b=keyBounds[k];if(!b)return;
+    const w=Math.max(0,b.maxX-b.minX),h=Math.max(0,b.maxY-b.minY);
+    const major=Math.max(w,h),minor=Math.max(1e-6,Math.min(w,h)),aspect=major/minor;
+    if(major>0.09||aspect<1.6)return;
+    const cx=(b.minX+b.maxX)/2,cy=(b.minY+b.maxY)/2;
+    const nearPerim=minDistToSegments(cx,cy,perimSegs)<=nearPerimDist;
+    const nearPerimBounds=(cx>=perimBox.minX-0.02&&cx<=perimBox.maxX+0.02&&cy>=perimBox.minY-0.02&&cy<=perimBox.maxY+0.02);
+    if(!nearPerim||!nearPerimBounds)return;
+    const idxs=keyMembers[k]||[];
+    idxs.forEach(idx=>{
+      const pts=(els[idx]||[])[2]||[];
+      for(let j=0;j<pts.length-3;j+=2){
+        const ax=pts[j],ay=pts[j+1],bx=pts[j+2],by=pts[j+3];
+        if(Math.hypot(bx-ax,by-ay)<=0.11)out.push([ax,ay,bx,by]);
+      }
+    });
+  });
+  // Promote one primary left divider line to a hard closure wall.
+  // This avoids fill bleeding through the intended stop-border seam.
+  const allLineKeys=Object.keys(keyTypes).filter(k=>{
+    if(keyTypes[k]!=='line')return false;
+    const info=keyInfo[k]||{};
+    return String(info.sw)==='5';
+  });
+  const selectedLineSet=new Set(selectedKeysByType('line'));
+  function keyGeo(k){
+    const b=keyBounds[k];if(!b)return null;
+    const w=Math.max(0,b.maxX-b.minX),h=Math.max(0,b.maxY-b.minY);
+    const major=Math.max(w,h),minor=Math.max(1e-6,Math.min(w,h)),aspect=major/minor;
+    const cx=(b.minX+b.maxX)/2,cy=(b.minY+b.maxY)/2;
+    const leftSide=(b.minX<=perimBox.minX+bw*0.24)||(cx<=perimBox.minX+bw*0.20);
+    const idxs=keyMembers[k]||[];
+    const segs=[],ends=[];
+    idxs.forEach(idx=>{
+      const pts=(els[idx]||[])[2]||[];
+      if(pts.length<4)return;
+      ends.push([pts[0],pts[1]],[pts[pts.length-2],pts[pts.length-1]]);
+      for(let j=0;j<pts.length-3;j+=2)segs.push([pts[j],pts[j+1],pts[j+2],pts[j+3]]);
+    });
+    if(!segs.length)return null;
+    return{k,b,major,aspect,cx,cy,leftSide,segs,ends};
+  }
+  function scoreDivider(g){
+    if(!g||!g.leftSide)return-1;
+    if(g.major<Math.max(0.095,bh*0.12)||g.aspect<1.8)return-1;
+    let nearCt=0,best=1e9;
+    g.ends.forEach(p=>{
+      const n=nearestPointOnSegments(p[0],p[1],perimSegs);
+      if(!n)return;
+      if(n.d<best)best=n.d;
+      if(n.d<=Math.max(0.02,Math.min(0.08,Math.max(bw,bh)*0.16)))nearCt++;
+    });
+    if(best>Math.max(0.05,Math.min(0.14,Math.max(bw,bh)*0.28)))return-1;
+    const selBoost=selectedLineSet.has(g.k)?50:0;
+    return g.major*1000+g.aspect*30+nearCt*20+selBoost-best*260;
+  }
+  function pickBest(keys){
+    let best=null,bestScore=-1;
+    keys.forEach(k=>{
+      const g=keyGeo(k),s=scoreDivider(g);
+      if(s>bestScore){bestScore=s;best=g;}
+    });
+    return best;
+  }
+  const selectedKeys=allLineKeys.filter(k=>selectedLineSet.has(k));
+  const divider=pickBest(selectedKeys.length?selectedKeys:allLineKeys)||pickBest(allLineKeys);
+  if(divider){
+    divider.segs.forEach(s=>out.push(s));
+    const connectDist=Math.max(0.03,Math.min(0.12,Math.max(bw,bh)*0.24));
+    divider.ends.forEach(p=>{
+      const n=nearestPointOnSegments(p[0],p[1],perimSegs);
+      if(n&&n.d<=connectDist)out.push([p[0],p[1],n.x,n.y]);
+    });
+    // Add a full-height/width cutline along the divider axis so flood-fill
+    // cannot route around tiny endpoint gaps.
+    const isVertical=(divider.b.maxY-divider.b.minY)>=(divider.b.maxX-divider.b.minX);
+    if(isVertical){
+      const x=divider.cx;
+      out.push([x,perimBox.minY-0.01,x,perimBox.maxY+0.01]);
+    }else{
+      const y=divider.cy;
+      out.push([perimBox.minX-0.01,y,perimBox.maxX+0.01,y]);
+    }
+  }
+  return out;
+}
+function buildWallAndInteriorMask(box,segs,nx,ny){
+  const bw=Math.max(0,box.maxX-box.minX),bh=Math.max(0,box.maxY-box.minY);
+  const stepX=bw/nx,stepY=bh/ny;
+  if(stepX<=0||stepY<=0)return null;
+  const wall=new Uint8Array(nx*ny);
+  const cell=Math.max(1e-9,Math.min(stepX,stepY));
+  const rad=2;
+  function mark(ix,iy){
+    if(ix<0||iy<0||ix>=nx||iy>=ny)return;
+    wall[iy*nx+ix]=1;
+  }
+  (segs||[]).forEach(s=>{
+    const ax=s[0],ay=s[1],bx=s[2],by=s[3];
+    const len=Math.hypot(bx-ax,by-ay);
+    const steps=Math.max(2,Math.ceil(len/(cell*0.45)));
+    for(let t=0;t<=steps;t++){
+      const u=t/steps;
+      const x=ax+(bx-ax)*u,y=ay+(by-ay)*u;
+      const ix=Math.floor((x-box.minX)/stepX),iy=Math.floor((y-box.minY)/stepY);
+      for(let oy=-rad;oy<=rad;oy++)for(let ox=-rad;ox<=rad;ox++)mark(ix+ox,iy+oy);
+    }
+  });
+  const outside=new Uint8Array(nx*ny);
+  const q=[];let qi=0;
+  function tryPush(ix,iy){
+    if(ix<0||iy<0||ix>=nx||iy>=ny)return;
+    const id=iy*nx+ix;
+    if(wall[id]||outside[id])return;
+    outside[id]=1;q.push(id);
+  }
+  for(let x=0;x<nx;x++){tryPush(x,0);tryPush(x,ny-1);}
+  for(let y=0;y<ny;y++){tryPush(0,y);tryPush(nx-1,y);}
+  while(qi<q.length){
+    const id=q[qi++],x=id%nx,y=(id/nx)|0;
+    tryPush(x+1,y);tryPush(x-1,y);tryPush(x,y+1);tryPush(x,y-1);
+  }
+  const mask=new Uint8Array(nx*ny);
+  let inside=0;
+  for(let i=0;i<mask.length;i++){
+    if(!wall[i]&&!outside[i]){mask[i]=1;inside++;}
+  }
+  // Keep only the dominant enclosed component so split-off bleed pockets are discarded.
+  if(inside>0){
+    const seen=new Uint8Array(nx*ny);
+    let bestCells=null,bestCount=0;
+    for(let i=0;i<mask.length;i++){
+      if(!mask[i]||seen[i])continue;
+      const comp=[],q=[i];
+      seen[i]=1;
+      for(let qi=0;qi<q.length;qi++){
+        const id=q[qi];
+        comp.push(id);
+        const x=id%nx,y=(id/nx)|0;
+        const n1=id+1,n2=id-1,n3=id+nx,n4=id-nx;
+        if(x+1<nx&&mask[n1]&&!seen[n1]){seen[n1]=1;q.push(n1);}
+        if(x>0&&mask[n2]&&!seen[n2]){seen[n2]=1;q.push(n2);}
+        if(y+1<ny&&mask[n3]&&!seen[n3]){seen[n3]=1;q.push(n3);}
+        if(y>0&&mask[n4]&&!seen[n4]){seen[n4]=1;q.push(n4);}
+      }
+      if(comp.length>bestCount){bestCount=comp.length;bestCells=comp;}
+    }
+    if(bestCells){
+      mask.fill(0);
+      for(let i=0;i<bestCells.length;i++)mask[bestCells[i]]=1;
+      inside=bestCount;
+    }
+  }
+  return{mask,inside,stepX,stepY};
+}
 function buildMeasuredInterior(perimKeys){
   const box=mergeBounds(perimKeys);
   const segs=collectSegmentsForKeys(perimKeys);
   if(!box||!Array.isArray(segs)||!segs.length)return null;
+  const closureSegs=collectClosureWallSegments(box,segs);
+  const wallSegs=segs.concat(closureSegs);
   const bw=Math.max(0,box.maxX-box.minX),bh=Math.max(0,box.maxY-box.minY);
   if(bw<=0||bh<=0)return null;
   const aspect=Math.max(0.25,Math.min(4,bw/Math.max(1e-9,bh)));
-  let nx=Math.max(40,Math.round(120*Math.sqrt(aspect)));
-  let ny=Math.max(40,Math.round(120/Math.sqrt(aspect)));
-  const maxCells=10000;
+  let nx=Math.max(48,Math.round(140*Math.sqrt(aspect)));
+  let ny=Math.max(48,Math.round(140/Math.sqrt(aspect)));
+  const maxCells=14000;
   while(nx*ny>maxCells){nx=Math.max(30,Math.floor(nx*0.95));ny=Math.max(30,Math.floor(ny*0.95));}
-  const stepX=bw/nx,stepY=bh/ny;
-  if(stepX<=0||stepY<=0)return null;
-  const mask=new Uint8Array(nx*ny);
-  let inside=0;
-  for(let iy=0;iy<ny;iy++){
-    const y=box.minY+(iy+0.5)*stepY;
-    for(let ix=0;ix<nx;ix++){
-      const x=box.minX+(ix+0.5)*stepX;
-      if(pointInsideByRay(x,y,segs)){mask[iy*nx+ix]=1;inside++;}
-    }
-  }
+  const wallFill=buildWallAndInteriorMask(box,wallSegs,nx,ny);
+  if(!wallFill)return null;
+  const mask=wallFill.mask,inside=wallFill.inside,stepX=wallFill.stepX,stepY=wallFill.stepY;
   const fracArea=(inside/(nx*ny))*bw*bh;
-  return{box,segs,nx,ny,stepX,stepY,mask,insideCells:inside,fracArea};
+  return{box,segs:wallSegs,nx,ny,stepX,stepY,mask,insideCells:inside,fracArea,closureSegCount:closureSegs.length};
 }
 function drawMeasuredOverlay(){
   if(!measureOverlay||!measureOverlay.mask)return;
