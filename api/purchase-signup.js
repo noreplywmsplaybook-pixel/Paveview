@@ -60,52 +60,35 @@ async function stripeGet(path, stripeSecretKey) {
 
 function isStripeSessionPaid(session) {
   if (!session) return false;
+  const paymentMode = String(session.mode || '').toLowerCase() === 'payment';
   const paid = String(session.payment_status || '').toLowerCase() === 'paid';
   const complete = String(session.status || '').toLowerCase() === 'complete';
   const amount = Number(session.amount_total || 0);
-  return paid && complete && amount > 0;
+  return paymentMode && paid && complete && amount > 0;
 }
 
-async function verifyPaidStripeSession({ stripeSecretKey, email, sessionId }) {
+async function verifyPaidStripeSession({ stripeSecretKey, sessionId }) {
   if (!stripeSecretKey) {
     return { error: 'Missing STRIPE_SECRET_KEY environment variable.' };
   }
-  const normalizedEmail = normalizeEmail(email);
 
-  if (sessionId) {
-    const byId = await stripeGet(`/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, stripeSecretKey);
-    if (!byId.ok) {
-      return { error: byId.payload?.error?.message || 'Unable to verify Stripe session.' };
-    }
-    const session = byId.payload || null;
-    if (!isStripeSessionPaid(session)) {
-      return { error: 'Stripe session is not paid yet.' };
-    }
-    const sessionEmail = normalizeEmail(session?.customer_details?.email || session?.customer_email || '');
-    if (normalizedEmail && sessionEmail && sessionEmail !== normalizedEmail) {
-      return { error: 'Stripe payment email does not match this account email.' };
-    }
-    return { session };
+  if (!sessionId) {
+    return { error: 'Missing Stripe checkout session id.' };
   }
 
-  if (!normalizedEmail) {
-    return { error: 'Email is required to verify Stripe payment.' };
+  const byId = await stripeGet(`/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, stripeSecretKey);
+  if (!byId.ok) {
+    return { error: byId.payload?.error?.message || 'Unable to verify Stripe session.' };
   }
-
-  const listRes = await stripeGet('/v1/checkout/sessions?limit=100', stripeSecretKey);
-  if (!listRes.ok) {
-    return { error: listRes.payload?.error?.message || 'Unable to load Stripe sessions.' };
+  const session = byId.payload || null;
+  if (!isStripeSessionPaid(session)) {
+    return { error: 'Stripe session is not paid yet.' };
   }
-  const sessions = Array.isArray(listRes.payload?.data) ? listRes.payload.data : [];
-  const matched = sessions.find((session) => {
-    if (!isStripeSessionPaid(session)) return false;
-    const sessionEmail = normalizeEmail(session?.customer_details?.email || session?.customer_email || '');
-    return sessionEmail === normalizedEmail;
-  });
-  if (!matched) {
-    return { error: 'No paid Stripe checkout found for this email yet.' };
+  const sessionEmail = normalizeEmail(session?.customer_details?.email || session?.customer_email || '');
+  if (!sessionEmail) {
+    return { error: 'Paid Stripe session is missing customer email.' };
   }
-  return { session: matched };
+  return { session, sessionEmail };
 }
 
 async function createAuthUser({ email, password, name, serviceRoleKey }) {
@@ -119,6 +102,37 @@ async function createAuthUser({ email, password, name, serviceRoleKey }) {
       user_metadata: { full_name: name || '' }
     }
   });
+}
+
+async function findAuthUserByEmail(email, serviceRoleKey) {
+  const target = normalizeEmail(email);
+  if (!target) return null;
+  const perPage = 200;
+  for (let page = 1; page <= 10; page += 1) {
+    const chunkRes = await supabaseFetch(`/auth/v1/admin/users?page=${page}&per_page=${perPage}`, { serviceRoleKey });
+    if (!chunkRes.ok || !chunkRes.payload) break;
+    const users = Array.isArray(chunkRes.payload.users) ? chunkRes.payload.users : [];
+    const matched = users.find((u) => normalizeEmail(u.email) === target);
+    if (matched) return matched;
+    if (users.length < perPage) break;
+  }
+  return null;
+}
+
+async function findPurchaseByPaymentIntent(stripePaymentIntent, serviceRoleKey) {
+  if (!stripePaymentIntent) return { claimed: false, error: '' };
+  const existing = await supabaseFetch(
+    `/rest/v1/purchases?select=id,user_id&stripe_payment_intent=eq.${encodeURIComponent(stripePaymentIntent)}&limit=1`,
+    { serviceRoleKey }
+  );
+  if (!existing.ok) {
+    return {
+      claimed: false,
+      error: existing.payload?.message || 'Unable to validate Stripe payment claim.'
+    };
+  }
+  const rows = Array.isArray(existing.payload) ? existing.payload : [];
+  return { claimed: rows.length > 0, error: '' };
 }
 
 async function insertLifetimePurchase({ userId, stripePaymentIntent, serviceRoleKey }) {
@@ -158,13 +172,13 @@ async function handlePost(req, res, serviceRoleKey, stripeSecretKey) {
     return;
   }
 
-  const email = normalizeEmail(body.email);
+  const submittedEmail = normalizeEmail(body.email);
   const password = String(body.password || '');
   const name = String(body.name || '').trim();
   const stripeSessionId = String(body.stripeSessionId || '').trim();
 
-  if (!email || !password) {
-    sendJson(res, 400, { error: 'Email and password are required.' });
+  if (!password) {
+    sendJson(res, 400, { error: 'Password is required.' });
     return;
   }
   if (password.length < 6) {
@@ -174,15 +188,45 @@ async function handlePost(req, res, serviceRoleKey, stripeSecretKey) {
 
   const verified = await verifyPaidStripeSession({
     stripeSecretKey,
-    email,
     sessionId: stripeSessionId
   });
   if (verified.error) {
     sendJson(res, 402, { error: verified.error });
     return;
   }
+  const verifiedEmail = normalizeEmail(verified.sessionEmail);
+  if (submittedEmail && submittedEmail !== verifiedEmail) {
+    sendJson(res, 400, { error: 'Email must match the Stripe checkout email for this purchase.' });
+    return;
+  }
+  const stripePaymentIntent = String(verified.session?.payment_intent || '').trim() || '';
+  if (!stripePaymentIntent) {
+    sendJson(res, 402, {
+      error: 'Stripe payment intent not found for this checkout session.'
+    });
+    return;
+  }
+  if (stripePaymentIntent) {
+    const claimedCheck = await findPurchaseByPaymentIntent(stripePaymentIntent, serviceRoleKey);
+    if (claimedCheck.error) {
+      sendJson(res, 500, { error: claimedCheck.error });
+      return;
+    }
+    if (claimedCheck.claimed) {
+      sendJson(res, 409, { error: 'This Stripe checkout has already been claimed by an account.' });
+      return;
+    }
+  }
 
-  const created = await createAuthUser({ email, password, name, serviceRoleKey });
+  const existingAuthUser = await findAuthUserByEmail(verifiedEmail, serviceRoleKey);
+  if (existingAuthUser?.id) {
+    sendJson(res, 409, {
+      error: 'An account for this purchased email already exists. Please sign in.'
+    });
+    return;
+  }
+
+  const created = await createAuthUser({ email: verifiedEmail, password, name, serviceRoleKey });
   if (!created.ok) {
     const msg = created.payload?.msg || created.payload?.message || 'Failed to create account.';
     const alreadyExists = String(msg).toLowerCase().includes('already') || String(msg).toLowerCase().includes('exists');
@@ -207,13 +251,12 @@ async function handlePost(req, res, serviceRoleKey, stripeSecretKey) {
     prefer: 'resolution=merge-duplicates',
     body: [{
       id: userId,
-      email,
+      email: verifiedEmail,
       full_name: name || null,
       updated_at: new Date().toISOString()
     }]
   });
 
-  const stripePaymentIntent = String(verified.session?.payment_intent || '').trim() || null;
   const purchaseInsert = await insertLifetimePurchase({ userId, stripePaymentIntent, serviceRoleKey });
   if (!purchaseInsert.ok) {
     sendJson(res, purchaseInsert.status || 500, {
@@ -226,7 +269,7 @@ async function handlePost(req, res, serviceRoleKey, stripeSecretKey) {
     ok: true,
     user: {
       id: userId,
-      email,
+      email: verifiedEmail,
       full_name: name || ''
     },
     product: LIFETIME_PRODUCT_KEY

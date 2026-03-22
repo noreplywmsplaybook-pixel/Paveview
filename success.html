@@ -34,6 +34,7 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
 .msg.info{background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.2);color:#f5c842}
 .small-link{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6e6a63;margin-top:14px;display:block}
 .small-link a{color:#f5c842;text-decoration:none}
+.lock-copy{font-size:12px;color:#6e6a63;line-height:1.75}
 </style>
 </head>
 <body>
@@ -101,13 +102,21 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
   <p>Just a moment.</p>
 </div>
 
+<div class="card yellow" id="card-missing-session" style="display:none">
+  <div class="icon">🔒</div>
+  <h1>Secure Purchase Link Required</h1>
+  <p class="lock-copy">This account setup page is only available from a valid Stripe checkout return link.</p>
+  <p class="lock-copy">If you completed payment, use the exact redirect URL from checkout (including <strong>session_id</strong>) or contact support.</p>
+  <div class="small-link"><a href="/login.html">Go to login</a></div>
+</div>
+
 <script>
 const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 function show(id) {
-  ['card-loading','card-purchase-signup','card-set-password','card-paid-active'].forEach((c) => {
+  ['card-loading','card-purchase-signup','card-set-password','card-paid-active','card-missing-session'].forEach((c) => {
     const el = document.getElementById(c);
     if (el) el.style.display = c === id ? 'block' : 'none';
   });
@@ -223,12 +232,13 @@ document.addEventListener('keydown', (e) => {
 
   const urlParams = new URLSearchParams(window.location.search);
   const email = (urlParams.get('prefilled_email') || '').trim().toLowerCase();
+  const stripeSessionId = getStripeSessionIdFromUrl();
+  if (!stripeSessionId) {
+    show('card-missing-session');
+    return;
+  }
   document.getElementById('purchase-email').textContent = email || 'Use the same email used during Stripe checkout';
   if (email) document.getElementById('new-email').value = email;
-
-  if (!getStripeSessionIdFromUrl()) {
-    showMsg('Tip: pass Stripe session_id to success URL for strongest purchase verification.', 'info', 'purchase-msg');
-  }
   show('card-purchase-signup');
 })();
 </script>
