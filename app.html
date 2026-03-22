@@ -1507,7 +1507,7 @@ let waybackByYear={...WAYBACK_FALLBACK_BY_YEAR}; // { [year]: {m, date, label} }
 let mapViewState={lat:37.4219999,lng:-122.0840575,zoom:20,mode:'google',year:''};
 let mapInteraction={dragging:false,startX:0,startY:0,startLat:0,startLng:0,startWorld:null};
 let mapRenderReqId=0;
-let mapDetections=[]; // [{x,y,width,height,class,confidence}]
+let mapDetections=[]; // [{x,y,width,height,class,confidence,points?}]
 let mapDetectionRenderSize={w:0,h:0};
 
 function setImportStatus(msg,isError=false){
@@ -1518,6 +1518,12 @@ function setImportStatus(msg,isError=false){
 function clearMapDetections(){
   mapDetections=[];
   mapDetectionRenderSize={w:0,h:0};
+}
+function detKind(p){
+  const c=String(p?.class||'').toLowerCase();
+  if(c.includes('stall')||c.includes('handicap')||c.includes('ada')||c.includes('arrow'))return 'box';
+  if(c.includes('lot')||c.includes('obstruction')||c.includes('obstruct'))return 'seg';
+  return (Array.isArray(p?.points)&&p.points.length>=3)?'seg':'box';
 }
 
 function setPageModalView(view){
@@ -1762,12 +1768,29 @@ function drawMapOverlay(){
       const col=`hsl(${hue} 90% 55%)`;
       mapPreviewCtx.strokeStyle=col;
       mapPreviewCtx.fillStyle='rgba(0,0,0,.65)';
-      mapPreviewCtx.strokeRect(x,y,w,h);
+      const kind=detKind(p);
+      if(kind==='seg'&&Array.isArray(p.points)&&p.points.length>=3){
+        mapPreviewCtx.beginPath();
+        p.points.forEach((pt,i)=>{
+          const px=(pt.x||0)*sx, py=(pt.y||0)*sy;
+          if(i===0)mapPreviewCtx.moveTo(px,py); else mapPreviewCtx.lineTo(px,py);
+        });
+        mapPreviewCtx.closePath();
+        mapPreviewCtx.fillStyle='hsla('+hue+',90%,55%,0.20)';
+        mapPreviewCtx.fill();
+        mapPreviewCtx.strokeStyle=col;
+        mapPreviewCtx.stroke();
+        mapPreviewCtx.fillStyle='rgba(0,0,0,.65)';
+      }else{
+        mapPreviewCtx.strokeRect(x,y,w,h);
+      }
       const lbl=`${p.class||'object'} ${(Number(p.confidence||0)*100).toFixed(1)}%`;
       const tw=mapPreviewCtx.measureText(lbl).width+8;
-      mapPreviewCtx.fillRect(x,Math.max(0,y-16),tw,14);
+      const lx=(kind==='seg'&&Array.isArray(p.points)&&p.points.length)?(p.points[0].x*sx):x;
+      const ly=(kind==='seg'&&Array.isArray(p.points)&&p.points.length)?(p.points[0].y*sy):y;
+      mapPreviewCtx.fillRect(lx,Math.max(0,ly-16),tw,14);
       mapPreviewCtx.fillStyle=col;
-      mapPreviewCtx.fillText(lbl,x+4,Math.max(10,y-5));
+      mapPreviewCtx.fillText(lbl,lx+4,Math.max(10,ly-5));
     });
     mapPreviewCtx.restore();
   }
@@ -1850,7 +1873,7 @@ async function captureMapImageryIntoPlan(){
 async function runRoboflowDetection(){
   try{
     setImportStatus('Running Roboflow detection…');
-    const payload={imageDataUrl:mapPreviewCanvas.toDataURL('image/jpeg',0.9)};
+    const payload={imageDataUrl:mapPreviewCanvas.toDataURL('image/jpeg',0.9),mode:'hybrid'};
     const res=await fetch('/api/roboflow-detect',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -1861,7 +1884,9 @@ async function runRoboflowDetection(){
     mapDetections=Array.isArray(data?.predictions)?data.predictions:[];
     mapDetectionRenderSize={w:data?.image?.width||mapPreviewCanvas.width,h:data?.image?.height||mapPreviewCanvas.height};
     await loadMapPreview({fromInputs:false,preserveDetections:true,reason:`Detections: ${mapDetections.length}`});
-    setImportStatus(`Detected ${mapDetections.length} objects.`);
+    const segCount=mapDetections.filter(p=>detKind(p)==='seg').length;
+    const boxCount=mapDetections.filter(p=>detKind(p)==='box').length;
+    setImportStatus(`Detected ${mapDetections.length} objects (${boxCount} boxed, ${segCount} segmented).`);
   }catch(e){
     console.error(e);
     setImportStatus(`Detection failed: ${e.message}`,true);
