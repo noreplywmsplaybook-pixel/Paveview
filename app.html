@@ -3192,54 +3192,6 @@ function polyCentroid(pts){
   pts.forEach(p=>{x+=p.x;y+=p.y;});
   return {x:x/pts.length,y:y/pts.length};
 }
-function pointInPolygon(pt,poly){
-  if(!pt||!Array.isArray(poly)||poly.length<3)return false;
-  let inside=false;
-  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
-    const xi=poly[i].x, yi=poly[i].y;
-    const xj=poly[j].x, yj=poly[j].y;
-    const intersect=((yi>pt.y)!==(yj>pt.y))&&(pt.x<((xj-xi)*(pt.y-yi))/((yj-yi)||1e-9)+xi);
-    if(intersect)inside=!inside;
-  }
-  return inside;
-}
-function polygonContainsAnyPoint(containerPoly,testPts){
-  if(!Array.isArray(containerPoly)||containerPoly.length<3||!Array.isArray(testPts)||!testPts.length)return false;
-  return testPts.some(pt=>pointInPolygon(pt,containerPoly));
-}
-function zoneBelongsToLot(zone,lot){
-  if(!zone||!Array.isArray(zone.pts)||zone.pts.length<3||!lot||!Array.isArray(lot.pts)||lot.pts.length<3)return false;
-  const ctr=polyCentroid(zone.pts);
-  if(pointInPolygon(ctr,lot.pts))return true;
-  if(polygonContainsAnyPoint(lot.pts,zone.pts))return true;
-  // Also catch cases where lot vertices fall within the obstruction polygon.
-  if(polygonContainsAnyPoint(zone.pts,lot.pts))return true;
-  return false;
-}
-function resolveFocusedLotAndObstructions(){
-  const allClosed=zones.filter(z=>z.closed&&!z.obstruct);
-  const allObst=zones.filter(z=>z.closed&&z.obstruct);
-  if(!focusedZoneId)return {focusZone:null,parentLot:null,closed:allClosed,obst:allObst};
-  const focusZone=zones.find(z=>z.id===focusedZoneId&&z.closed);
-  if(!focusZone)return {focusZone:null,parentLot:null,closed:allClosed,obst:allObst};
-  if(!focusZone.obstruct){
-    const lot=focusZone;
-    return{
-      focusZone,
-      parentLot:lot,
-      closed:[lot],
-      obst:allObst.filter(o=>zoneBelongsToLot(o,lot))
-    };
-  }
-  const parentLot=allClosed.find(l=>zoneBelongsToLot(focusZone,l))||null;
-  if(!parentLot)return {focusZone,parentLot:null,closed:allClosed,obst:allObst};
-  return{
-    focusZone,
-    parentLot,
-    closed:[parentLot],
-    obst:allObst.filter(o=>zoneBelongsToLot(o,parentLot))
-  };
-}
 function calcTons(sqft,d,c){return sqft*(d/12)*145/2000*c}
 function calcBase(sqft,d){return sqft*(d/12)*110/2000}
 
@@ -3247,7 +3199,12 @@ function calcBase(sqft,d){return sqft*(d/12)*110/2000}
 function updateStats(){
   const sc=getScale(),u=document.getElementById('scale-unit').value;
   if(focusedZoneId&&!zones.some(z=>z.id===focusedZoneId&&z.closed))focusedZoneId=null;
-  const {closed,obst}=resolveFocusedLotAndObstructions();
+  const focusedZone=focusedZoneId?zones.find(z=>z.id===focusedZoneId&&z.closed):null;
+  const allClosed=zones.filter(z=>z.closed&&!z.obstruct);
+  const allObst=zones.filter(z=>z.closed&&z.obstruct);
+  // Simple/explicit focused math: selected zone only.
+  const closed=focusedZone?(focusedZone.obstruct?[]:[focusedZone]):allClosed;
+  const obst=focusedZone?(focusedZone.obstruct?[focusedZone]:[]):allObst;
   let area=0,perim=0,obArea=0;
   closed.forEach(z=>{area+=polyArea(z.pts)*sc*sc;perim+=polyPerim(z.pts)*sc});
   obst.forEach(z=>{obArea+=polyArea(z.pts)*sc*sc});
@@ -3300,9 +3257,8 @@ function renderZones(){
   dCtx.clearRect(0,0,dc.width,dc.height);
   const sc=getScale();
   const focusedZone=focusedZoneId?zones.find(z=>z.id===focusedZoneId):null;
-  const {parentLot,obst:focusedObst}=resolveFocusedLotAndObstructions();
   const hasZoneFocus=!!focusedZone;
-  const visibleZoneIds=hasZoneFocus?new Set([parentLot?.id||focusedZone.id,...focusedObst.map(o=>o.id)]):null;
+  const visibleZoneIds=hasZoneFocus?new Set([focusedZone.id]):null;
   // Hatch zones
   if(!hasZoneFocus)hatchZones.forEach(h=>{
     if(h.pts.length<3)return;
