@@ -1510,6 +1510,8 @@ let mapRenderReqId=0;
 let mapDetections=[]; // [{x,y,width,height,class,confidence,points?}]
 let mapDetectionRenderSize={w:0,h:0};
 let mapReviewState={active:false,scale:1,tx:0,ty:0,image:null}; // freeze-and-review state after AI detect
+let aiDetectionsForTransfer=[]; // frozen copy used when "Use Imagery" is clicked
+let pendingDetectionTransfer=false;
 
 function setImportStatus(msg,isError=false){
   if(!mapImportStatus)return;
@@ -1520,6 +1522,8 @@ function clearMapDetections(){
   mapDetections=[];
   mapDetectionRenderSize={w:0,h:0};
   mapReviewState={active:false,scale:1,tx:0,ty:0,image:null};
+  aiDetectionsForTransfer=[];
+  pendingDetectionTransfer=false;
 }
 function detKind(p){
   const c=String(p?.class||'').toLowerCase();
@@ -1527,7 +1531,6 @@ function detKind(p){
   if(c.includes('lot')||c.includes('obstruction')||c.includes('obstruct'))return 'seg';
   return (Array.isArray(p?.points)&&p.points.length>=3)?'seg':'box';
 }
-
 function renderDetectionReview(){
   if(!mapReviewState.active||!mapReviewState.image)return;
   mapPreviewCtx.save();
@@ -1545,9 +1548,116 @@ async function enableDetectionReviewMode(){
     const snap=mapPreviewCanvas.toDataURL('image/png');
     const img=await loadImageFromUrl(snap);
     mapReviewState={active:true,scale:1,tx:0,ty:0,image:img};
+    aiDetectionsForTransfer=JSON.parse(JSON.stringify(mapDetections||[]));
     renderDetectionReview();
   }catch(e){
     console.warn('Unable to start review mode:',e);
+  }
+}
+
+function classToMarkerType(cls){
+  const c=String(cls||'').toLowerCase();
+  if(c.includes('handicap')||c==='ada')return 'ada';
+  if(c.includes('arrow'))return 'stencil';
+  if(c.includes('stall'))return 'stall';
+  return null;
+}
+function classIsObstruction(cls){
+  const c=String(cls||'').toLowerCase();
+  return c.includes('obstruction')||c.includes('obstruct');
+}
+function classIsLot(cls){
+  const c=String(cls||'').toLowerCase();
+  return c.includes('lot');
+}
+function detectionToZone(det){
+  const pts=Array.isArray(det?.points)&&det.points.length>=3
+    ? det.points.map(pt=>({x:pt.x,y:pt.y}))
+    : [
+        {x:det.x-det.width/2,y:det.y-det.height/2},
+        {x:det.x+det.width/2,y:det.y-det.height/2},
+        {x:det.x+det.width/2,y:det.y+det.height/2},
+        {x:det.x-det.width/2,y:det.y+det.height/2}
+      ];
+  if(pts.length<3)return null;
+  const isObs=classIsObstruction(det.class);
+  const idx=isObs?zones.filter(z=>z.obstruct).length+1:zones.filter(z=>!z.obstruct).length+1;
+  const id='z'+Date.now()+Math.floor(Math.random()*10000);
+  const color=isObs?'#ef4444':COLORS[(zones.filter(z=>!z.obstruct).length)%COLORS.length];
+  return{
+    id,
+    name:isObs?`Obstruction ${idx}`:`Lot ${idx}`,
+    color,
+    pts,
+    closed:true,
+    locked:false,
+    showFill:true,
+    obstruct:isObs,
+    labelSize:12,
+    opacity:15,
+    lineWidth:2,
+    lineDashed:false
+  };
+}
+function detectionToMarker(det){
+  const t=classToMarkerType(det.class);
+  if(!t)return null;
+  const m={type:t,x:det.x,y:det.y,label:''};
+  if(t==='stencil')m.label='ARROW';
+  return m;
+}
+function transferDetectionsToEditableObjects(){
+  const src=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
+  if(!Array.isArray(src)||!src.length)return {zonesAdded:0,markersAdded:0};
+  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  const rs=mapReviewState;
+  const rsScale=(rs&&rs.active&&Number.isFinite(rs.scale)&&rs.scale!==0)?rs.scale:1;
+  const rsTx=(rs&&rs.active&&Number.isFinite(rs.tx))?rs.tx:0;
+  const rsTy=(rs&&rs.active&&Number.isFinite(rs.ty))?rs.ty:0;
+  const toCapturedPoint=(x,y)=>({x:(x*rsScale+rsTx),y:(y*rsScale+rsTy)});
+  const mapped=src.map(det=>{
+    const cp={...det};
+    cp.x=(det.x||0)*sx;
+    cp.y=(det.y||0)*sy;
+    cp.width=(det.width||0)*sx;
+    cp.height=(det.height||0)*sy;
+    if(Array.isArray(det.points))cp.points=det.points.map(pt=>({x:(pt.x||0)*sx,y:(pt.y||0)*sy}));
+    const center=toCapturedPoint(cp.x,cp.y);
+    cp.x=center.x;cp.y=center.y;
+    cp.width=cp.width*rsScale;
+    cp.height=cp.height*rsScale;
+    if(Array.isArray(cp.points))cp.points=cp.points.map(pt=>toCapturedPoint(pt.x,pt.y));
+    return cp;
+  });
+  let zonesAdded=0,markersAdded=0;
+  mapped.forEach(det=>{
+    if(classIsLot(det.class)||classIsObstruction(det.class)){
+      const z=detectionToZone(det);
+      if(z){zones.push(z);zonesAdded++;}
+      return;
+    }
+    const m=detectionToMarker(det);
+    if(m){markers.push(m);markersAdded++;}
+  });
+  if(zonesAdded||markersAdded){
+    activeZone=zones.filter(z=>z.closed).slice(-1)[0]||zones.slice(-1)[0]||activeZone;
+    undoHistory.push({type:'ai-import',zonesAdded,markersAdded});
+    renderZoneList();updateStats();renderAll();savePlanData();
+  }
+  aiDetectionsForTransfer=[];
+  pendingDetectionTransfer=false;
+  return {zonesAdded,markersAdded};
+}
+
+function transferDetectionsWhenPlanReady(tries=0){
+  if(_switchingPlan&&tries<60){
+    setTimeout(()=>transferDetectionsWhenPlanReady(tries+1),40);
+    return;
+  }
+  const moved=transferDetectionsToEditableObjects();
+  if((moved.zonesAdded||0)+(moved.markersAdded||0)>0){
+    setImportStatus(`Transferred AI detections: ${moved.zonesAdded} zones, ${moved.markersAdded} markers. Edit them, then finish/report.`);
   }
 }
 
@@ -1891,8 +2001,10 @@ async function captureMapImageryIntoPlan(){
   oc.getContext('2d').drawImage(mapPreviewCanvas,0,0);
   const feetPerPx=metersPerPixel(mapViewState.lat,mapViewState.zoom)*3.28084;
   pendingAutoScaleFeetPerPx=feetPerPx;
+  pendingDetectionTransfer=!!((aiDetectionsForTransfer&&aiDetectionsForTransfer.length)||(mapDetections&&mapDetections.length));
   closeModal('page-modal');
   addCanvasAsPlan(oc,label,false,{autoScaleFeetPerPx:feetPerPx,skipCalibration:true});
+  if(pendingDetectionTransfer)transferDetectionsWhenPlanReady();
 }
 
 async function runRoboflowDetection(){
