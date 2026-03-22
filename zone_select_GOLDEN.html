@@ -32,6 +32,7 @@ body{background:#000;color:var(--txt);font-family:"JetBrains Mono",monospace;hei
 .ci:focus{border-color:var(--adim)}
 #cal-out{font-size:8px;color:var(--acc);line-height:1.5}
 #cal-meta{font-size:7px;color:var(--t2);line-height:1.5}
+#learn{padding:7px 10px;border-bottom:1px solid var(--bdr);font-size:7px;color:var(--t2);line-height:1.5}
 #zl{flex:1;overflow-y:auto;padding:7px;}
 .zi{display:flex;align-items:center;gap:7px;padding:6px 8px;border:1px solid var(--bdr);margin-bottom:4px;position:relative;}
 .zd{width:8px;height:8px;border-radius:50%;flex-shrink:0;}.zn{font-size:8px;color:var(--txt);}.zm{font-size:7px;color:var(--t3);margin-top:1px;}
@@ -91,6 +92,7 @@ body{background:#000;color:var(--txt);font-family:"JetBrains Mono",monospace;hei
       <div id="cal-out">Inside lot area: —</div>
       <div id="cal-meta">Select lot perimeter. Green fill shows measured interior.</div>
     </div>
+    <div id="learn"><span style="color:var(--acc)">Learning (Preview):</span> Bootstrap mode is next — this confirms edits are live.</div>
     <div id="zl"><div id="noz">Hover a line to see its connected group glow white, click to select it.</div></div>
     <div id="bb"><button class="bbb" onclick="clearAll()">Clear</button><span id="zi">100%</span></div>
   </div>
