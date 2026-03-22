@@ -418,7 +418,7 @@ select.sc-inp{cursor:pointer;width:40px}
 
 /* page picker */
 #page-modal .mbox{width:780px}
-#page-thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;padding:14px}
+#page-thumbs{display:none;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;padding:14px}
 .pthumb{
   cursor:pointer;border:2px solid var(--border);background:var(--surface2);
   display:flex;flex-direction:column;transition:all .15s;position:relative;
@@ -434,6 +434,35 @@ select.sc-inp{cursor:pointer;width:40px}
 .pthumb-lbl{padding:4px 6px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);border-top:1px solid var(--border)}
 .pthumb.sel .pthumb-lbl{color:var(--accent)}
 .ploading{aspect-ratio:8.5/11;display:flex;align-items:center;justify-content:center;color:var(--text3);font-family:'JetBrains Mono',monospace;font-size:10px}
+.import-source{padding:16px 14px 10px}
+.import-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.import-choice{
+  border:1px solid var(--border);background:var(--surface2);color:var(--text);
+  text-align:left;padding:12px 12px;cursor:pointer;transition:all .15s;
+}
+.import-choice:hover{border-color:var(--accent);background:var(--accent-bg)}
+.import-choice .t{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.import-choice .d{font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5}
+.import-hint{margin-top:10px;font-size:10px;color:var(--text3)}
+#import-map-panel{display:none;padding:12px 14px}
+.map-row{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.map-row label{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3)}
+.map-row input,.map-row select{
+  background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  font-family:'JetBrains Mono',monospace;font-size:10px;padding:5px 7px;outline:none;
+}
+.map-row input:focus,.map-row select:focus{border-color:var(--accent)}
+#map-search{min-width:220px;flex:1}
+#map-lat,#map-lng{width:136px}
+#map-zoom{width:66px}
+#map-import-status{
+  font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);
+  border:1px solid var(--border);background:var(--surface2);padding:6px 8px;margin-bottom:8px;min-height:30px;
+}
+#map-preview{
+  width:100%;height:420px;border:1px solid var(--border);background:var(--canvas);
+}
+.hist-only{display:none}
 
 /* settings */
 #settings-modal .mbox{width:700px;max-width:98vw}
@@ -802,10 +831,8 @@ select.sc-inp{cursor:pointer;width:40px}
 <!-- PLAN TABS -->
 <div id="plan-tabs" style="background:var(--surface2);border-bottom:1px solid var(--border);height:30px;display:flex;align-items:center;padding:0 8px;gap:0;overflow-x:auto;flex-shrink:0">
   <div id="plan-tab-list" style="display:flex;gap:0;align-items:center;flex:1;overflow-x:auto"></div>
-  <button id="btn-add-plan" title="Add another file" style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 10px;border:1px solid var(--accent);background:var(--accent-bg);color:var(--accent);cursor:pointer;flex-shrink:0;position:relative;transition:all .15s;font-weight:600">
-    + Add File
-    <input type="file" id="file-input-extra" accept=".pdf,image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
-  </button>
+  <button id="btn-add-plan" title="Add another file" style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 10px;border:1px solid var(--accent);background:var(--accent-bg);color:var(--accent);cursor:pointer;flex-shrink:0;position:relative;transition:all .15s;font-weight:600">+ Add File</button>
+  <input type="file" id="import-file-input" accept=".pdf,image/*" style="display:none">
 </div>
 
 <!-- MAIN -->
@@ -817,14 +844,12 @@ select.sc-inp{cursor:pointer;width:40px}
 
     <!-- Upload -->
     <div class="sb-sec" style="padding:6px 6px">
-      <div class="upload-btn-collapsed" title="Upload PDF or image">
-        <input type="file" id="file-input" accept=".pdf,image/*">
+      <div class="upload-btn-collapsed" title="Import PDF or map imagery" id="btn-open-import-collapsed">
         ▦
       </div>
-      <div class="upload-zone-full">
-        <input type="file" accept=".pdf,image/*" tabindex="-1">
+      <div class="upload-zone-full" id="btn-open-import-full">
         <div class="uz-icon">▦</div>
-        <div class="uz-text"><strong>Drop PDF or image</strong><br>or click to browse</div>
+        <div class="uz-text"><strong>Import plan</strong><br>PDF/image or maps imagery</div>
       </div>
     </div>
 
@@ -854,10 +879,10 @@ select.sc-inp{cursor:pointer;width:40px}
 
   <!-- CANVAS -->
   <div id="cview">
-    <div id="drop-overlay" style="cursor:pointer" onclick="document.getElementById('file-input').click()">
+    <div id="drop-overlay" style="cursor:pointer">
       <div class="do-icon">▦</div>
       <div class="do-title">PaveView Takeoff</div>
-      <div class="do-sub">Drop a PDF or image to begin</div>
+      <div class="do-sub">Import PDF/image or maps imagery to begin</div>
     </div>
     <div id="cwrap">
       <canvas id="bgc"></canvas>
@@ -994,18 +1019,63 @@ select.sc-inp{cursor:pointer;width:40px}
 <div class="modal" id="page-modal">
   <div class="mbox" style="width:780px">
     <div class="mhdr no-print">
-      <div class="mtitle">Select Pages</div>
+      <div class="mtitle" id="page-modal-title">Import Plan</div>
       <span id="page-filename" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)"></span>
       <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn" id="btn-import-back" style="display:none">← Back</button>
         <button class="btn" id="btn-page-all">All</button>
         <button class="btn" id="btn-page-none">Clear</button>
         <button class="btn" id="btn-page-cancel">✕</button>
       </div>
     </div>
-    <div class="mbody"><div id="page-thumbs"></div></div>
+    <div class="mbody">
+      <div class="import-source" id="import-source-panel">
+        <div class="import-grid">
+          <button class="import-choice" id="btn-import-source-file">
+            <div class="t">Upload PDF / Image</div>
+            <div class="d">Select plan sheets from a PDF, or upload a single image file.</div>
+          </button>
+          <button class="import-choice" id="btn-import-source-map">
+            <div class="t">Maps Imagery</div>
+            <div class="d">Search an address or use lat/lng, then capture satellite imagery as a takeoff plan.</div>
+          </button>
+        </div>
+        <div class="import-hint">Tip: drag-and-drop PDF/image directly onto the canvas at any time.</div>
+      </div>
+      <div id="import-map-panel">
+        <div class="map-row">
+          <label>Search</label>
+          <input id="map-search" type="text" placeholder="Address or place">
+          <button class="btn" id="btn-map-search">Find</button>
+        </div>
+        <div class="map-row">
+          <label>Lat</label>
+          <input id="map-lat" type="number" step="any" value="37.4219999">
+          <label>Lng</label>
+          <input id="map-lng" type="number" step="any" value="-122.0840575">
+          <label>Zoom</label>
+          <input id="map-zoom" type="number" min="14" max="22" step="1" value="20">
+        </div>
+        <div class="map-row">
+          <label>Imagery</label>
+          <select id="map-imagery-mode">
+            <option value="google" selected>Google Satellite (current)</option>
+            <option value="historical">Historical Satellite (year)</option>
+          </select>
+          <label class="hist-only">Year</label>
+          <select id="map-historical-year" class="hist-only"></select>
+          <button class="btn" id="btn-map-refresh">Refresh</button>
+        </div>
+        <div id="map-import-status">Pick a location and click Refresh.</div>
+        <canvas id="map-preview" width="1024" height="1024"></canvas>
+      </div>
+      <div id="page-thumbs"></div>
+    </div>
     <div class="mfooter no-print">
-      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)"><strong id="page-sel-count" style="color:var(--stripe)">0</strong> selected</span>
+      <span id="page-footer-text" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)"><strong id="page-sel-count" style="color:var(--stripe)">0</strong> selected</span>
+      <span id="map-footer-text" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);display:none">Capture current map imagery into takeoff</span>
       <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn y" id="btn-map-capture" style="display:none">Use Imagery →</button>
         <button class="btn y" id="btn-page-load">Load Selected →</button>
       </div>
     </div>
@@ -1389,19 +1459,222 @@ function renderPlanTabs(){
   });
 }
 
-// ── FILE LOADING ──
-document.getElementById('file-input').addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0])});
-document.getElementById('file-input-extra').addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0]);e.target.value='';});
-// Upload zone drag-drop — attach to upload-zone-full (expanded) and cview
-const uz=document.getElementById('upload-zone-full-wrap');
-const uzFull=document.querySelector('.upload-zone-full');
-if(uzFull){
-  uzFull.addEventListener('dragover',e=>{e.preventDefault();uzFull.style.borderColor='var(--accent)'});
-  uzFull.addEventListener('dragleave',()=>{uzFull.style.borderColor=''});
-  uzFull.addEventListener('drop',e=>{e.preventDefault();uzFull.style.borderColor='';if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0])});
+// ── FILE LOADING / IMPORT MODAL ──
+const GOOGLE_MAPS_API_KEY='AIzaSyDmfG4UZGYNEE6vlPEBiD8b6YT624eGZK0';
+const WAYBACK_SELECTION_URL='https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer?f=pjson';
+const importFileInput=document.getElementById('import-file-input');
+const pageModalTitle=document.getElementById('page-modal-title');
+const pageFilename=document.getElementById('page-filename');
+const importSourcePanel=document.getElementById('import-source-panel');
+const importMapPanel=document.getElementById('import-map-panel');
+const pageThumbs=document.getElementById('page-thumbs');
+const pageFooterText=document.getElementById('page-footer-text');
+const mapFooterText=document.getElementById('map-footer-text');
+const btnImportBack=document.getElementById('btn-import-back');
+const btnPageAll=document.getElementById('btn-page-all');
+const btnPageNone=document.getElementById('btn-page-none');
+const btnPageLoad=document.getElementById('btn-page-load');
+const btnMapCapture=document.getElementById('btn-map-capture');
+const mapPreviewCanvas=document.getElementById('map-preview');
+const mapPreviewCtx=mapPreviewCanvas.getContext('2d');
+const mapImportStatus=document.getElementById('map-import-status');
+const mapImageryModeSel=document.getElementById('map-imagery-mode');
+const mapHistoricalYearSel=document.getElementById('map-historical-year');
+let pageModalView='source'; // source | pdf | map
+let waybackByYear=null; // { [year]: {m, date, label} }
+
+function setImportStatus(msg,isError=false){
+  if(!mapImportStatus)return;
+  mapImportStatus.style.color=isError?'var(--red)':'var(--text3)';
+  mapImportStatus.textContent=msg;
 }
-cview.addEventListener('dragover',e=>e.preventDefault());
-cview.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0])});
+
+function setPageModalView(view){
+  pageModalView=view;
+  const source=view==='source';
+  const pdf=view==='pdf';
+  const map=view==='map';
+  if(pageModalTitle)pageModalTitle.textContent=source?'Import Plan':(pdf?'Select Pages':'Maps Imagery');
+  if(pageFilename)pageFilename.style.display=pdf?'':'none';
+  importSourcePanel.style.display=source?'block':'none';
+  importMapPanel.style.display=map?'block':'none';
+  pageThumbs.style.display=pdf?'grid':'none';
+  btnImportBack.style.display=source?'none':'inline-block';
+  btnPageAll.style.display=pdf?'inline-block':'none';
+  btnPageNone.style.display=pdf?'inline-block':'none';
+  btnPageLoad.style.display=pdf?'inline-block':'none';
+  btnMapCapture.style.display=map?'inline-block':'none';
+  pageFooterText.style.display=map?'none':'';
+  mapFooterText.style.display=map?'':'none';
+}
+
+function openImportSourceChooser(){
+  setPageModalView('source');
+  openModal('page-modal');
+}
+
+function addCanvasAsPlan(oc,label,isPdf){
+  const dataURL=oc.toDataURL('image/jpeg',0.85);
+  if(plans.length===0){
+    bgc.width=oc.width;bgc.height=oc.height;
+    bgCtx.clearRect(0,0,oc.width,oc.height);
+    bgCtx.drawImage(oc,0,0);
+    const pid='plan'+Date.now();
+    plans=[{id:pid,label,dataURL,imgW:oc.width,imgH:oc.height}];
+    planData[pid]={zones:[],markers:[],measurements:[],linearSegs:[],hatchZones:[]};
+    currentPlanIdx=0;
+    onPlanLoaded(isPdf);
+    document.getElementById('plan-tabs').classList.add('visible');
+    renderPlanTabs();
+  }else{
+    addPlan(dataURL,oc.width,oc.height,label);
+    openModal('calib-modal');
+  }
+}
+
+function latLngToWorldPixel(lat,lng,zoomLv){
+  const clamped=Math.max(-85.05112878,Math.min(85.05112878,lat));
+  const sin=Math.sin(clamped*Math.PI/180);
+  const scale=256*Math.pow(2,zoomLv);
+  return{
+    x:(lng+180)/360*scale,
+    y:(0.5-Math.log((1+sin)/(1-sin))/(4*Math.PI))*scale
+  };
+}
+function loadImageFromUrl(url){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.crossOrigin='anonymous';
+    img.onload=()=>resolve(img);
+    img.onerror=()=>reject(new Error('Image load failed'));
+    img.src=url;
+  });
+}
+async function ensureWaybackYears(){
+  if(waybackByYear)return;
+  const res=await fetch(WAYBACK_SELECTION_URL);
+  const data=await res.json();
+  const byYear={};
+  (data.Selection||[]).forEach(row=>{
+    const m=String(row.M||'').trim();
+    const name=String(row.Name||'');
+    const dateMatch=name.match(/(\d{4}-\d{2}-\d{2})/);
+    if(!m||!dateMatch)return;
+    const date=dateMatch[1];
+    const year=date.slice(0,4);
+    if(!byYear[year]||date>byYear[year].date)byYear[year]={m,date,label:name};
+  });
+  waybackByYear=byYear;
+  const years=Object.keys(byYear).sort((a,b)=>b.localeCompare(a));
+  mapHistoricalYearSel.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join('');
+}
+
+async function renderGooglePreview(lat,lng,zoomLv){
+  const url='https://maps.googleapis.com/maps/api/staticmap'
+    +`?center=${encodeURIComponent(lat+','+lng)}`
+    +`&zoom=${zoomLv}&size=640x640&scale=2&maptype=satellite&key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`;
+  const img=await loadImageFromUrl(url);
+  mapPreviewCtx.clearRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  mapPreviewCtx.drawImage(img,0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+}
+
+async function renderHistoricalPreview(lat,lng,zoomLv){
+  await ensureWaybackYears();
+  const year=mapHistoricalYearSel.value||Object.keys(waybackByYear||{})[0];
+  const rel=waybackByYear?.[year];
+  if(!rel)throw new Error('No historical imagery release found');
+  const m=rel.m;
+  const tileSize=256;
+  const world=latLngToWorldPixel(lat,lng,zoomLv);
+  const startX=world.x-mapPreviewCanvas.width/2;
+  const startY=world.y-mapPreviewCanvas.height/2;
+  const endX=startX+mapPreviewCanvas.width;
+  const endY=startY+mapPreviewCanvas.height;
+  const minTx=Math.floor(startX/tileSize),maxTx=Math.floor((endX-1)/tileSize);
+  const minTy=Math.floor(startY/tileSize),maxTy=Math.floor((endY-1)/tileSize);
+  const n=Math.pow(2,zoomLv);
+  mapPreviewCtx.fillStyle='#151515';
+  mapPreviewCtx.fillRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  const tiles=[];
+  for(let ty=minTy;ty<=maxTy;ty++){
+    if(ty<0||ty>=n)continue;
+    for(let tx=minTx;tx<=maxTx;tx++){
+      const wrapped=((tx%n)+n)%n;
+      const dx=tx*tileSize-startX;
+      const dy=ty*tileSize-startY;
+      const url=`https://wayback.maptiles.arcgis.com/arcgis/rest/services/world_imagery/mapserver/tile/${m}/${zoomLv}/${ty}/${wrapped}`;
+      tiles.push(loadImageFromUrl(url).then(img=>mapPreviewCtx.drawImage(img,dx,dy,tileSize,tileSize)).catch(()=>{}));
+    }
+  }
+  await Promise.all(tiles);
+  mapPreviewCtx.fillStyle='rgba(0,0,0,.5)';
+  mapPreviewCtx.fillRect(8,8,300,22);
+  mapPreviewCtx.fillStyle='#fff';
+  mapPreviewCtx.font='11px JetBrains Mono,monospace';
+  mapPreviewCtx.fillText(`Historical ${year} · ${rel.date}`,14,23);
+}
+
+async function loadMapPreview(){
+  const lat=parseFloat(document.getElementById('map-lat').value);
+  const lng=parseFloat(document.getElementById('map-lng').value);
+  const zoomLv=Math.max(14,Math.min(22,parseInt(document.getElementById('map-zoom').value,10)||20));
+  if(!Number.isFinite(lat)||!Number.isFinite(lng)){setImportStatus('Enter valid latitude and longitude.',true);return;}
+  setImportStatus('Loading map imagery…');
+  try{
+    if(mapImageryModeSel.value==='historical')await renderHistoricalPreview(lat,lng,zoomLv);
+    else await renderGooglePreview(lat,lng,zoomLv);
+    setImportStatus('Preview ready. Click "Use Imagery" to add this as a plan.');
+  }catch(e){
+    console.error(e);
+    setImportStatus('Unable to load imagery. Check API key, coordinates, or zoom.',true);
+  }
+}
+
+async function geocodeMapSearch(){
+  const q=(document.getElementById('map-search').value||'').trim();
+  if(!q)return;
+  setImportStatus('Searching location…');
+  try{
+    const url='https://maps.googleapis.com/maps/api/geocode/json?address='+encodeURIComponent(q)+'&key='+encodeURIComponent(GOOGLE_MAPS_API_KEY);
+    const res=await fetch(url);
+    const data=await res.json();
+    const loc=data?.results?.[0]?.geometry?.location;
+    if(!loc)throw new Error('No location found');
+    document.getElementById('map-lat').value=loc.lat.toFixed(7);
+    document.getElementById('map-lng').value=loc.lng.toFixed(7);
+    await loadMapPreview();
+  }catch(e){
+    console.error(e);
+    setImportStatus('Location search failed. Try a full address.',true);
+  }
+}
+
+function updateHistoricalControls(){
+  const on=mapImageryModeSel.value==='historical';
+  document.querySelectorAll('.hist-only').forEach(el=>el.style.display=on?'':'none');
+}
+
+async function captureMapImageryIntoPlan(){
+  const lat=(parseFloat(document.getElementById('map-lat').value)||0).toFixed(5);
+  const lng=(parseFloat(document.getElementById('map-lng').value)||0).toFixed(5);
+  const mode=mapImageryModeSel.value;
+  const year=mapHistoricalYearSel.value;
+  const label=(mode==='historical'?`Map ${year}`:'Map Current')+` ${lat},${lng}`;
+  const oc=document.createElement('canvas');
+  oc.width=mapPreviewCanvas.width;oc.height=mapPreviewCanvas.height;
+  oc.getContext('2d').drawImage(mapPreviewCanvas,0,0);
+  closeModal('page-modal');
+  addCanvasAsPlan(oc,label,false);
+}
+
+function startImportFromFile(f){
+  if(!f)return;
+  if(f.type==='application/pdf')openPagePicker(f);
+  else{
+    closeModal('page-modal');
+    loadImg(f);
+  }
+}
 
 async function loadFile(f){
   if(f.type==='application/pdf') await openPagePicker(f);
@@ -1409,19 +1682,20 @@ async function loadFile(f){
 }
 
 async function openPagePicker(f){
+  setPageModalView('pdf');
   const ab=await f.arrayBuffer();
   currentPdf=await pdfjsLib.getDocument({data:ab}).promise;
   selPages=new Set();
+  document.getElementById('page-filename').style.display='';
   document.getElementById('page-filename').textContent=f.name+' · '+currentPdf.numPages+' pages';
   document.getElementById('page-sel-count').textContent='0';
-  const thumbs=document.getElementById('page-thumbs');
-  thumbs.innerHTML='';
+  pageThumbs.innerHTML='';
   openModal('page-modal');
   for(let i=1;i<=currentPdf.numPages;i++){
     const wrap=document.createElement('div');
     wrap.className='pthumb';
     wrap.innerHTML=`<div class="ploading">Loading…</div><div class="pthumb-lbl">Page ${i}</div>`;
-    thumbs.appendChild(wrap);
+    pageThumbs.appendChild(wrap);
     (async(pn,el)=>{
       const pg=await currentPdf.getPage(pn);
       const vp=pg.getViewport({scale:.28});
@@ -1449,10 +1723,10 @@ document.getElementById('btn-page-none').onclick=()=>{
   document.querySelectorAll('.pthumb').forEach(el=>el.classList.remove('sel'));
   document.getElementById('page-sel-count').textContent='0';
 };
-document.getElementById('btn-page-cancel').onclick=()=>closeModal('page-modal');
 document.getElementById('btn-page-load').onclick=async()=>{
   if(!selPages.size)return;
   closeModal('page-modal');
+  setPageModalView('source');
   const pages=Array.from(selPages).sort((a,b)=>a-b);
   const rendered=[];
   for(const pn of pages){
@@ -1474,22 +1748,7 @@ document.getElementById('btn-page-load').onclick=async()=>{
   let y=0;
   for(const c of rendered){octx.drawImage(c,Math.floor((tw-c.width)/2),y);y+=c.height+GAP}
   const label=(document.getElementById('page-filename').textContent||'PDF').split('·')[0].trim().replace(/\.[^.]+$/,'').substring(0,24);
-  if(plans.length===0){
-    bgc.width=tw;bgc.height=th;
-    bgCtx.fillStyle='#fff';bgCtx.fillRect(0,0,tw,th);
-    let y2=0;
-    for(const c of rendered){bgCtx.drawImage(c,Math.floor((tw-c.width)/2),y2);y2+=c.height+GAP}
-    const pid='plan'+Date.now();
-    plans=[{id:pid,label,dataURL:oc.toDataURL('image/jpeg',0.85),imgW:tw,imgH:th}];
-    planData[pid]={zones:[],markers:[],measurements:[],linearSegs:[],hatchZones:[]};
-    currentPlanIdx=0;
-    onPlanLoaded(true);
-    document.getElementById('plan-tabs').classList.add('visible');
-    renderPlanTabs();
-  }else{
-    addPlan(oc.toDataURL('image/jpeg',0.85),tw,th,label);
-    openModal('calib-modal');
-  }
+  addCanvasAsPlan(oc,label,true);
 };
 
 async function loadImg(f){
@@ -1502,24 +1761,46 @@ async function loadImg(f){
     oc.width=img.naturalWidth;oc.height=img.naturalHeight;
     oc.getContext('2d').drawImage(img,0,0);
     const label=f.name.replace(/\.[^.]+$/,'').substring(0,24);
-    if(plans.length===0){
-      // First file - draw directly and set up plan
-      bgc.width=oc.width;bgc.height=oc.height;
-      bgCtx.drawImage(oc,0,0);
-      const pid='plan'+Date.now();
-      plans=[{id:pid,label,dataURL:oc.toDataURL('image/jpeg',0.85),imgW:oc.width,imgH:oc.height}];
-      planData[pid]={zones:[],markers:[],measurements:[],linearSegs:[],hatchZones:[]};
-      currentPlanIdx=0;
-      onPlanLoaded(false);
-      document.getElementById('plan-tabs').classList.add('visible');
-      renderPlanTabs();
-    }else{
-      addPlan(oc.toDataURL('image/jpeg',0.85),oc.width,oc.height,label);
-      openModal('calib-modal');
-    }
+    addCanvasAsPlan(oc,label,false);
   };
   img.src=url;
 }
+
+// Import modal handlers
+document.getElementById('btn-open-import-collapsed').addEventListener('click',openImportSourceChooser);
+document.getElementById('btn-open-import-full').addEventListener('click',openImportSourceChooser);
+document.getElementById('btn-add-plan').addEventListener('click',openImportSourceChooser);
+document.getElementById('drop-overlay').addEventListener('click',openImportSourceChooser);
+document.getElementById('btn-import-source-file').addEventListener('click',()=>importFileInput.click());
+document.getElementById('btn-import-source-map').addEventListener('click',async()=>{
+  setPageModalView('map');
+  updateHistoricalControls();
+  if(mapImageryModeSel.value==='historical'){try{await ensureWaybackYears();}catch(e){console.warn(e);}}
+  await loadMapPreview();
+});
+importFileInput.addEventListener('change',e=>{if(e.target.files[0])startImportFromFile(e.target.files[0]);e.target.value='';});
+btnImportBack.addEventListener('click',()=>setPageModalView('source'));
+document.getElementById('btn-page-cancel').onclick=()=>{closeModal('page-modal');setPageModalView('source');};
+document.getElementById('btn-map-search').addEventListener('click',geocodeMapSearch);
+document.getElementById('btn-map-refresh').addEventListener('click',loadMapPreview);
+document.getElementById('map-search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();geocodeMapSearch();}});
+mapImageryModeSel.addEventListener('change',async()=>{
+  updateHistoricalControls();
+  if(mapImageryModeSel.value==='historical'){try{await ensureWaybackYears();}catch(e){console.warn(e);}}
+  await loadMapPreview();
+});
+mapHistoricalYearSel.addEventListener('change',loadMapPreview);
+btnMapCapture.addEventListener('click',captureMapImageryIntoPlan);
+
+// Upload zone drag/drop and canvas drop
+const uzFull=document.querySelector('.upload-zone-full');
+if(uzFull){
+  uzFull.addEventListener('dragover',e=>{e.preventDefault();uzFull.style.borderColor='var(--accent)'});
+  uzFull.addEventListener('dragleave',()=>{uzFull.style.borderColor=''});
+  uzFull.addEventListener('drop',e=>{e.preventDefault();uzFull.style.borderColor='';if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0])});
+}
+cview.addEventListener('dragover',e=>e.preventDefault());
+cview.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0])});
 
 function onPlanLoaded(isPdf){
   loadedAsPdf=isPdf;
