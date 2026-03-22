@@ -4,16 +4,43 @@ function sendJson(res, statusCode, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function pickFirstNonEmpty(values) {
+  for (const v of values) {
+    const t = String(v || '').trim();
+    if (t) return t;
+  }
+  return '';
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     sendJson(res, 405, { error: 'Method not allowed.' });
     return;
   }
 
-  const apiKey = process.env.ROBOFLOW_API_KEY || '';
-  const modelId = process.env.ROBOFLOW_MODEL_ID || 'my-first-project-ug0a7/4';
+  const apiKey = pickFirstNonEmpty([
+    process.env.ROBOFLOW_API_KEY,
+    process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY,
+    process.env.ROBOFLOW_KEY,
+    process.env.RF_API_KEY
+  ]);
+  const modelId = pickFirstNonEmpty([
+    process.env.ROBOFLOW_MODEL_ID,
+    process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
+    'my-first-project-ug0a7/4'
+  ]);
   if (!apiKey) {
-    sendJson(res, 500, { error: 'Missing ROBOFLOW_API_KEY environment variable.' });
+    sendJson(res, 500, {
+      error: 'Missing Roboflow API key environment variable.',
+      diagnostics: {
+        vercelEnv: process.env.VERCEL_ENV || null,
+        nodeEnv: process.env.NODE_ENV || null,
+        has_ROBOFLOW_API_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_API_KEY])),
+        has_NEXT_PUBLIC_ROBOFLOW_API_KEY: Boolean(pickFirstNonEmpty([process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY])),
+        has_ROBOFLOW_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_KEY])),
+        has_RF_API_KEY: Boolean(pickFirstNonEmpty([process.env.RF_API_KEY]))
+      }
+    });
     return;
   }
 
