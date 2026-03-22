@@ -32,7 +32,11 @@ body{background:#000;color:var(--txt);font-family:"JetBrains Mono",monospace;hei
 .ci:focus{border-color:var(--adim)}
 #cal-out{font-size:8px;color:var(--acc);line-height:1.5}
 #cal-meta{font-size:7px;color:var(--t2);line-height:1.5}
-#learn{padding:7px 10px;border-bottom:1px solid var(--bdr);font-size:7px;color:var(--t2);line-height:1.5}
+#learn{padding:7px 10px;border-bottom:1px solid var(--bdr);display:flex;flex-direction:column;gap:6px}
+.lr{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ls{min-width:92px;padding:3px 5px;font-size:8px;background:var(--surf2);border:1px solid var(--bdr);color:var(--txt);outline:none}
+.ls:focus{border-color:var(--adim)}
+#learn-msg{font-size:7px;color:var(--t2);line-height:1.5}
 #zl{flex:1;overflow-y:auto;padding:7px;}
 .zi{display:flex;align-items:center;gap:7px;padding:6px 8px;border:1px solid var(--bdr);margin-bottom:4px;position:relative;}
 .zd{width:8px;height:8px;border-radius:50%;flex-shrink:0;}.zn{font-size:8px;color:var(--txt);}.zm{font-size:7px;color:var(--t3);margin-top:1px;}
@@ -92,7 +96,23 @@ body{background:#000;color:var(--txt);font-family:"JetBrains Mono",monospace;hei
       <div id="cal-out">Inside lot area: —</div>
       <div id="cal-meta">Select lot perimeter. Green fill shows measured interior.</div>
     </div>
-    <div id="learn"><span style="color:var(--acc)">Learning (Preview):</span> Bootstrap mode is next — this confirms edits are live.</div>
+    <div id="learn">
+      <div style="color:var(--acc)">Learning Bootstrap (local)</div>
+      <div class="lr">
+        <select id="learn-type" class="ls">
+          <option value="line">Line</option>
+          <option value="stencil">Stencil</option>
+          <option value="crosswalk">Crosswalk</option>
+          <option value="lot_perimeter">Lot Perimeter</option>
+        </select>
+        <button class="bbb" onclick="labelSelected()">Label Selected</button>
+      </div>
+      <div class="lr">
+        <button class="bbb" onclick="autoClassifyFromLearning()">Auto Classify</button>
+        <button class="bbb" onclick="clearLearning()">Reset Learning</button>
+      </div>
+      <div id="learn-msg">No saved samples yet.</div>
+    </div>
     <div id="zl"><div id="noz">Hover a line to see its connected group glow white, click to select it.</div></div>
     <div id="bb"><button class="bbb" onclick="clearAll()">Clear</button><span id="zi">100%</span></div>
   </div>
@@ -120,6 +140,120 @@ let page='c4',zoom=1,pan={x:0,y:0},panning=false,panStart=null;
 let els=[],gmeta=[],swVis={},hovG=-1,selGroups=[],expData=null;
 let gById={},elMeta=[],keyMembers={},keyBounds={},keyTypes={},keyInfo={},bridgeMap={};
 let measureOverlay=null;
+const LEARN_STORAGE_KEY='paveview_learning_v1';
+const LEARNABLE_TYPES=['line','stencil','crosswalk','lot_perimeter'];
+let learningDb={version:1,samples:[]};
+
+function saveLearning(){
+  try{localStorage.setItem(LEARN_STORAGE_KEY,JSON.stringify(learningDb));}catch(_e){}
+}
+function loadLearning(){
+  try{
+    const raw=localStorage.getItem(LEARN_STORAGE_KEY);
+    if(!raw)return;
+    const parsed=JSON.parse(raw);
+    if(parsed&&Array.isArray(parsed.samples))learningDb={version:1,samples:parsed.samples};
+  }catch(_e){learningDb={version:1,samples:[]};}
+}
+function learningCounts(){
+  const c={line:0,stencil:0,crosswalk:0,lot_perimeter:0};
+  (learningDb.samples||[]).forEach(s=>{if(c[s.type]!==undefined)c[s.type]++;});
+  return c;
+}
+function updateLearningMsg(extra){
+  const el=document.getElementById('learn-msg');
+  if(!el)return;
+  const c=learningCounts(),total=(learningDb.samples||[]).length;
+  let txt=total?('Samples: '+total+' (L '+c.line+', S '+c.stencil+', X '+c.crosswalk+', P '+c.lot_perimeter+')'):'No saved samples yet.';
+  if(extra)txt+=' '+extra;
+  el.textContent=txt;
+}
+function featureForKey(key){
+  const b=keyBounds[key];if(!b)return null;
+  const info=keyInfo[key]||{},sw=Number(info.sw||0);
+  const w=Math.max(0,b.maxX-b.minX),h=Math.max(0,b.maxY-b.minY),area=w*h;
+  const major=Math.max(w,h),minor=Math.max(1e-6,Math.min(w,h)),aspect=major/minor;
+  let segCt=0,ptCt=0;
+  (keyMembers[key]||[]).forEach(idx=>{
+    const pts=(els[idx]||[])[2]||[];
+    const p=Math.floor(pts.length/2);
+    ptCt+=p;
+    if(p>1)segCt+=(p-1);
+  });
+  const g=gById[(info.gi)]||{n:0};
+  const n=Number(g.n||0);
+  return{sw,n,w,h,area,aspect,segCt,ptCt};
+}
+function featureDistance(a,b){
+  if(!a||!b)return 1e9;
+  let d=0;
+  d+=Math.abs(a.sw-b.sw)/20*1.3;
+  d+=Math.abs(a.n-b.n)/200*0.9;
+  d+=Math.abs(a.w-b.w)/0.25*1.0;
+  d+=Math.abs(a.h-b.h)/0.25*1.0;
+  d+=Math.abs(a.area-b.area)/0.05*1.2;
+  d+=Math.abs(a.aspect-b.aspect)/12*0.8;
+  d+=Math.abs(a.segCt-b.segCt)/260*0.8;
+  return d;
+}
+function predictTypeFromLearning(feat){
+  const samples=(learningDb.samples||[]).filter(s=>LEARNABLE_TYPES.includes(s.type)&&s.feat);
+  if(samples.length<3)return null;
+  const ranked=samples.map(s=>({type:s.type,d:featureDistance(feat,s.feat)})).sort((a,b)=>a.d-b.d);
+  const k=Math.min(9,ranked.length);
+  const sums={line:0,stencil:0,crosswalk:0,lot_perimeter:0};
+  let total=0;
+  for(let i=0;i<k;i++){
+    const r=ranked[i],w=1/(r.d+0.05);
+    sums[r.type]=(sums[r.type]||0)+w;total+=w;
+  }
+  let best='line',bestW=-1;
+  Object.keys(sums).forEach(t=>{if(sums[t]>bestW){bestW=sums[t];best=t;}});
+  return{type:best,conf:total>0?bestW/total:0};
+}
+function applyTypeToKey(key,type){
+  keyTypes[key]=type;
+  (keyMembers[key]||[]).forEach(idx=>{if(elMeta[idx])elMeta[idx].type=type;});
+  const sg=selGroups.find(s=>s.key===key);
+  if(sg){sg.type=type;sg.color=TYPE_COLORS[type]||sg.color;}
+}
+function labelSelected(){
+  const target=document.getElementById('learn-type')?.value||'line';
+  if(!LEARNABLE_TYPES.includes(target))return;
+  if(!selGroups.length){updateLearningMsg('Select one or more groups first.');return;}
+  let added=0;
+  selGroups.forEach(sg=>{
+    const feat=featureForKey(sg.key);if(!feat)return;
+    learningDb.samples.push({type:target,feat});
+    applyTypeToKey(sg.key,target);
+    added++;
+  });
+  if(learningDb.samples.length>3000)learningDb.samples=learningDb.samples.slice(-3000);
+  saveLearning();
+  normalizeSelectionLabels();
+  updatePanel();render();
+  updateLearningMsg('Added '+added+' sample'+(added===1?'':'s')+'.');
+}
+function autoClassifyFromLearning(){
+  if(!(learningDb.samples||[]).length){updateLearningMsg('No samples yet. Label some groups first.');return;}
+  let changed=0;
+  Object.keys(keyTypes).forEach(key=>{
+    const feat=featureForKey(key);if(!feat)return;
+    const pred=predictTypeFromLearning(feat);if(!pred||pred.conf<0.62)return;
+    if(pred.type==='lot_perimeter'&&feat.sw<12)return;
+    if(pred.type==='crosswalk'&&feat.sw<8)return;
+    if(pred.type==='stencil'&&feat.sw<6)return;
+    if(keyTypes[key]!==pred.type){applyTypeToKey(key,pred.type);changed++;}
+  });
+  if(changed)normalizeSelectionLabels();
+  updatePanel();render();
+  updateLearningMsg(changed?('Auto-classified '+changed+' group'+(changed===1?'':'s')+'.'):'No high-confidence matches.');
+}
+function clearLearning(){
+  learningDb={version:1,samples:[]};
+  saveLearning();
+  updateLearningMsg('Learning reset.');
+}
 
 document.querySelectorAll('.lwbtn').forEach(b=>{swVis[b.dataset.sw]=b.classList.contains('on');});
 
