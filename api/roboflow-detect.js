@@ -52,9 +52,11 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const imageBase64 = String(body.imageBase64 || '').trim();
+  const rawBase64 = String(body.imageBase64 || '').trim();
+  const imageDataUrl = String(body.imageDataUrl || '').trim();
+  const imageBase64 = rawBase64 || (imageDataUrl.includes(',') ? imageDataUrl.split(',')[1].trim() : '');
   if (!imageBase64) {
-    sendJson(res, 400, { error: 'imageBase64 is required.' });
+    sendJson(res, 400, { error: 'imageBase64 (or imageDataUrl) is required.' });
     return;
   }
 
