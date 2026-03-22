@@ -3207,6 +3207,39 @@ function polygonContainsAnyPoint(containerPoly,testPts){
   if(!Array.isArray(containerPoly)||containerPoly.length<3||!Array.isArray(testPts)||!testPts.length)return false;
   return testPts.some(pt=>pointInPolygon(pt,containerPoly));
 }
+function zoneBelongsToLot(zone,lot){
+  if(!zone||!Array.isArray(zone.pts)||zone.pts.length<3||!lot||!Array.isArray(lot.pts)||lot.pts.length<3)return false;
+  const ctr=polyCentroid(zone.pts);
+  if(pointInPolygon(ctr,lot.pts))return true;
+  if(polygonContainsAnyPoint(lot.pts,zone.pts))return true;
+  // Also catch cases where lot vertices fall within the obstruction polygon.
+  if(polygonContainsAnyPoint(zone.pts,lot.pts))return true;
+  return false;
+}
+function resolveFocusedLotAndObstructions(){
+  const allClosed=zones.filter(z=>z.closed&&!z.obstruct);
+  const allObst=zones.filter(z=>z.closed&&z.obstruct);
+  if(!focusedZoneId)return {focusZone:null,parentLot:null,closed:allClosed,obst:allObst};
+  const focusZone=zones.find(z=>z.id===focusedZoneId&&z.closed);
+  if(!focusZone)return {focusZone:null,parentLot:null,closed:allClosed,obst:allObst};
+  if(!focusZone.obstruct){
+    const lot=focusZone;
+    return{
+      focusZone,
+      parentLot:lot,
+      closed:[lot],
+      obst:allObst.filter(o=>zoneBelongsToLot(o,lot))
+    };
+  }
+  const parentLot=allClosed.find(l=>zoneBelongsToLot(focusZone,l))||null;
+  if(!parentLot)return {focusZone,parentLot:null,closed:allClosed,obst:allObst};
+  return{
+    focusZone,
+    parentLot,
+    closed:[parentLot],
+    obst:allObst.filter(o=>zoneBelongsToLot(o,parentLot))
+  };
+}
 function calcTons(sqft,d,c){return sqft*(d/12)*145/2000*c}
 function calcBase(sqft,d){return sqft*(d/12)*110/2000}
 
@@ -3214,35 +3247,7 @@ function calcBase(sqft,d){return sqft*(d/12)*110/2000}
 function updateStats(){
   const sc=getScale(),u=document.getElementById('scale-unit').value;
   if(focusedZoneId&&!zones.some(z=>z.id===focusedZoneId&&z.closed))focusedZoneId=null;
-  const focusZone=focusedZoneId?zones.find(z=>z.id===focusedZoneId&&z.closed):null;
-  const allClosed=zones.filter(z=>z.closed&&!z.obstruct);
-  const allObst=zones.filter(z=>z.closed&&z.obstruct);
-  let closed=allClosed;
-  let obst=allObst;
-  if(focusZone){
-    if(!focusZone.obstruct){
-      // Focused lot: show that lot minus obstructions that fall inside it.
-      closed=[focusZone];
-      obst=allObst.filter(o=>
-        pointInPolygon(polyCentroid(o.pts),focusZone.pts)||
-        polygonContainsAnyPoint(focusZone.pts,o.pts)
-      );
-    }else{
-      // Focused obstruction: resolve containing lot and report lot minus obstructions.
-      const ctr=polyCentroid(focusZone.pts);
-      const parentLot=allClosed.find(l=>
-        pointInPolygon(ctr,l.pts)||
-        polygonContainsAnyPoint(l.pts,focusZone.pts)
-      );
-      if(parentLot){
-        closed=[parentLot];
-        obst=allObst.filter(o=>
-          pointInPolygon(polyCentroid(o.pts),parentLot.pts)||
-          polygonContainsAnyPoint(parentLot.pts,o.pts)
-        );
-      }
-    }
-  }
+  const {closed,obst}=resolveFocusedLotAndObstructions();
   let area=0,perim=0,obArea=0;
   closed.forEach(z=>{area+=polyArea(z.pts)*sc*sc;perim+=polyPerim(z.pts)*sc});
   obst.forEach(z=>{obArea+=polyArea(z.pts)*sc*sc});
@@ -3295,7 +3300,9 @@ function renderZones(){
   dCtx.clearRect(0,0,dc.width,dc.height);
   const sc=getScale();
   const focusedZone=focusedZoneId?zones.find(z=>z.id===focusedZoneId):null;
+  const {parentLot,obst:focusedObst}=resolveFocusedLotAndObstructions();
   const hasZoneFocus=!!focusedZone;
+  const visibleZoneIds=hasZoneFocus?new Set([parentLot?.id||focusedZone.id,...focusedObst.map(o=>o.id)]):null;
   // Hatch zones
   if(!hasZoneFocus)hatchZones.forEach(h=>{
     if(h.pts.length<3)return;
@@ -3342,7 +3349,7 @@ function renderZones(){
   // Zones
   if(_layerOn('zones')) zones.forEach(z=>{
     if(z.pts.length<3)return;
-    if(hasZoneFocus&&z.id!==focusedZoneId)return;
+    if(hasZoneFocus&&!visibleZoneIds.has(z.id))return;
     // Search: if searching, dim non-matching zones
     const _searching=searchTerm&&searchMatches.length>=0;
     const _zMatch=!_searching||!searchTerm||searchMatches.some(m=>m.type==='zone'&&m.id===z.id);
