@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PaveView — 24-Hour Free Access</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.12em;color:#f5c842;text-align:center;margin-bottom:4px}
+.logo-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6e6a63;letter-spacing:.2em;text-transform:uppercase;text-align:center;margin-bottom:32px}
+.card{background:#141414;border:1px solid #242424;border-top:2px solid #f5c842;width:100%;max-width:460px;padding:30px}
+.title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.04em;color:#fff;line-height:1.05;margin-bottom:8px}
+.sub{font-size:14px;color:#6e6a63;line-height:1.65;margin-bottom:20px}
+.field{margin-bottom:14px}
+.field label{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6e6a63;margin-bottom:6px}
+.field input{width:100%;background:#0d0d0d;border:1px solid #242424;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;font-size:14px;padding:10px 12px;outline:none;transition:border-color .15s}
+.field input:focus{border-color:#f5c842}
+.btn{width:100%;border:1px solid #2a2a2a;background:transparent;color:#6e6a63;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.08em;padding:12px 14px;cursor:pointer;text-transform:uppercase;transition:all .2s}
+.btn:hover{border-color:#e8e4dc;color:#e8e4dc}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.y{background:#f5c842;border-color:#f5c842;color:#000}
+.btn.y:hover{background:#fff;border-color:#fff;color:#000}
+.btn + .btn{margin-top:8px}
+.timer-wrap{background:#0d0d0d;border:1px solid #242424;padding:14px;margin-bottom:14px}
+.timer-lbl{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6e6a63;margin-bottom:6px}
+.timer{font-family:'IBM Plex Mono',monospace;font-size:28px;color:#f5c842;letter-spacing:.04em}
+.timer-sub{font-size:12px;color:#6e6a63;margin-top:6px}
+.email{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#f5c842;word-break:break-all;background:#0d0d0d;border:1px solid #242424;padding:8px 10px;margin-bottom:14px}
+.msg{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:10px 12px;margin-top:12px;display:none}
+.msg.error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#ef4444}
+.msg.success{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);color:#22c55e}
+.muted{font-size:12px;color:#6e6a63;line-height:1.7;margin-bottom:14px}
+.footer-link{margin-top:16px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6e6a63}
+.footer-link a{color:#f5c842;text-decoration:none}
+</style>
+</head>
+<body>
+
+<div class="logo">PaveView</div>
+<div class="logo-sub">24-Hour Free Access</div>
+
+<div class="card" id="signup-card" style="display:none">
+  <div class="title">Create Free Account</div>
+  <div class="sub">Start your full-access 24-hour trial now. No subscription required.</div>
+  <div class="field">
+    <label>Full Name (optional)</label>
+    <input type="text" id="name" placeholder="Your name">
+  </div>
+  <div class="field">
+    <label>Email</label>
+    <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+  </div>
+  <div class="field">
+    <label>Password</label>
+    <input type="password" id="password" placeholder="Min 6 characters" autocomplete="new-password">
+  </div>
+  <button class="btn y" id="btn-create" onclick="createTrialAccount()">Create 24-Hour Free Account →</button>
+  <div class="msg" id="signup-msg"></div>
+  <div class="footer-link">Already have an account? <a href="/login.html">Sign in</a></div>
+</div>
+
+<div class="card" id="trial-card" style="display:none">
+  <div class="title">Trial is Active</div>
+  <div class="sub">You have full access right now. When you're ready, upgrade to lifetime access.</div>
+  <div class="email" id="active-email">—</div>
+  <div class="timer-wrap">
+    <div class="timer-lbl">Time Remaining</div>
+    <div class="timer" id="countdown">24:00:00</div>
+    <div class="timer-sub" id="countdown-sub">Full access ends automatically when timer reaches 0.</div>
+  </div>
+  <a class="btn y" id="upgrade-link" href="https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z">Upgrade to Lifetime Access →</a>
+  <button class="btn" id="btn-activate-paid" onclick="activatePaidAccess(false)">I Already Paid — Activate Lifetime</button>
+  <button class="btn" onclick="goToDashboard()">Open Dashboard</button>
+  <button class="btn" onclick="signOut()">Sign Out</button>
+  <div class="msg" id="trial-msg"></div>
+</div>
+
+<div class="card" id="paid-card" style="display:none">
+  <div class="title">Lifetime Access Active</div>
+  <div class="sub">Your account is upgraded and marked as paid lifetime member.</div>
+  <div class="email" id="paid-email">—</div>
+  <button class="btn y" onclick="goToDashboard()">Open Dashboard</button>
+  <button class="btn" onclick="signOut()">Sign Out</button>
+  <div class="msg success" style="display:block">Paid status is synced to your admin center.</div>
+</div>
+
+<div class="card" id="expired-card" style="display:none">
+  <div class="title">Trial Expired</div>
+  <div class="sub">Your 24-hour free access ended. Upgrade now to continue with lifetime access.</div>
+  <div class="email" id="expired-email">—</div>
+  <div class="timer-wrap">
+    <div class="timer-lbl">Trial Status</div>
+    <div class="timer" style="color:#ef4444">00:00:00</div>
+    <div class="timer-sub">Upgrade to restore full access instantly.</div>
+  </div>
+  <a class="btn y" id="upgrade-link-expired" href="https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z">Upgrade to Lifetime Access →</a>
+  <button class="btn" id="btn-activate-paid-expired" onclick="activatePaidAccess(false)">I Already Paid — Activate Lifetime</button>
+  <button class="btn" onclick="signOut()">Sign Out</button>
+  <div class="msg" id="expired-msg"></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
+const STRIPE_LINK = 'https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z';
+const TRIAL_DURATION_MS = 24 * 60 * 60 * 1000;
+const PENDING_UPGRADE_KEY = 'paveview_trial_upgrade_pending_v1';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+let countdownInterval = null;
+let upgradePollInterval = null;
+let upgradePollAttempts = 0;
+
+function normalizeEmail(v) {
+  return String(v || '').trim().toLowerCase();
+}
+
+function showCard(id) {
+  ['signup-card', 'trial-card', 'paid-card', 'expired-card'].forEach((cardId) => {
+    const card = document.getElementById(cardId);
+    if (card) card.style.display = cardId === id ? 'block' : 'none';
+  });
+}
+
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'msg ' + type;
+  el.style.display = 'block';
+}
+
+function hideMsg(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = 'none';
+}
+
+function isTrialPurchase(purchase) {
+  const product = String(purchase?.product || '').toLowerCase();
+  const hasExplicitFreeAmount = purchase?.amount_paid !== null && purchase?.amount_paid !== undefined && Number(purchase?.amount_paid) === 0;
+  return product.includes('trial') || hasExplicitFreeAmount;
+}
+
+function trialExpiryMs(purchase) {
+  const createdAt = new Date(purchase?.created_at || 0).getTime();
+  if (!createdAt) return 0;
+  return createdAt + TRIAL_DURATION_MS;
+}
+
+function formatCountdown(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function setPendingUpgrade(email) {
+  localStorage.setItem(PENDING_UPGRADE_KEY, JSON.stringify({
+    email: normalizeEmail(email),
+    started_at: Date.now()
+  }));
+}
+
+function getPendingUpgrade() {
+  try {
+    const raw = localStorage.getItem(PENDING_UPGRADE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.email || !parsed?.started_at) return null;
+    return parsed;
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearPendingUpgrade() {
+  localStorage.removeItem(PENDING_UPGRADE_KEY);
+}
+
+function updateUpgradeLinks(email) {
+  let link = STRIPE_LINK;
+  try {
+    const url = new URL(STRIPE_LINK);
+    if (email) url.searchParams.set('prefilled_email', normalizeEmail(email));
+    link = url.toString();
+  } catch (e) {}
+  const activeLink = document.getElementById('upgrade-link');
+  const expiredLink = document.getElementById('upgrade-link-expired');
+  if (activeLink) activeLink.href = link;
+  if (expiredLink) expiredLink.href = link;
+  [activeLink, expiredLink].forEach((el) => {
+    if (!el) return;
+    el.onclick = () => {
+      if (email) setPendingUpgrade(email);
+    };
+  });
+}
+
+function startCountdown(expiresAtMs) {
+  if (countdownInterval) clearInterval(countdownInterval);
+  const timerEl = document.getElementById('countdown');
+  const subEl = document.getElementById('countdown-sub');
+  const tick = () => {
+    const remaining = expiresAtMs - Date.now();
+    if (timerEl) timerEl.textContent = formatCountdown(remaining);
+    if (remaining <= 0) {
+      if (subEl) subEl.textContent = 'Trial expired. Upgrade to continue.';
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      loadAccessState();
+    }
+  };
+  tick();
+  countdownInterval = setInterval(tick, 1000);
+}
+
+async function goToDashboard() {
+  window.location.href = '/dashboard.html';
+}
+
+async function signOut() {
+  if (countdownInterval) clearInterval(countdownInterval);
+  if (upgradePollInterval) clearInterval(upgradePollInterval);
+  await sb.auth.signOut();
+  clearPendingUpgrade();
+  window.location.href = '/trial.html';
+}
+
+async function createTrialAccount() {
+  hideMsg('signup-msg');
+  const name = document.getElementById('name').value.trim();
+  const email = normalizeEmail(document.getElementById('email').value);
+  const password = document.getElementById('password').value;
+  if (!email || !password) {
+    showMsg('signup-msg', 'Email and password are required.', 'error');
+    return;
+  }
+  if (password.length < 6) {
+    showMsg('signup-msg', 'Password must be at least 6 characters.', 'error');
+    return;
+  }
+  const btn = document.getElementById('btn-create');
+  btn.disabled = true;
+  btn.textContent = 'Creating account…';
+  try {
+    const resp = await fetch('/api/trial-signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password })
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      throw new Error(payload.error || 'Failed to create trial account.');
+    }
+    const signIn = await sb.auth.signInWithPassword({ email, password });
+    if (signIn.error) {
+      throw new Error(signIn.error.message || 'Account created, but sign in failed.');
+    }
+    showMsg('signup-msg', 'Trial account created. Loading your full access…', 'success');
+    await loadAccessState();
+  } catch (err) {
+    showMsg('signup-msg', err.message || 'Failed to create account.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create 24-Hour Free Account →';
+  }
+}
+
+function getStripeSessionIdFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return (
+    params.get('session_id') ||
+    params.get('stripe_session_id') ||
+    params.get('checkout_session_id') ||
+    ''
+  );
+}
+
+async function activatePaidAccess(silent) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return false;
+  const targetMsgId = document.getElementById('trial-card').style.display === 'block' ? 'trial-msg' : 'expired-msg';
+  if (!silent) hideMsg(targetMsgId);
+  try {
+    const resp = await fetch('/api/trial-upgrade', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({
+        userId: session.user.id,
+        email: session.user.email || '',
+        stripeSessionId: getStripeSessionIdFromUrl()
+      })
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      if (!silent) showMsg(targetMsgId, payload.error || 'Payment not verified yet. Complete checkout first.', 'error');
+      return false;
+    }
+    clearPendingUpgrade();
+    if (!silent) showMsg(targetMsgId, 'Payment verified. Lifetime access is now active.', 'success');
+    await loadAccessState();
+    return true;
+  } catch (e) {
+    if (!silent) showMsg(targetMsgId, 'Unable to verify payment right now.', 'error');
+    return false;
+  }
+}
+
+function startUpgradePolling(email) {
+  if (upgradePollInterval) clearInterval(upgradePollInterval);
+  const pending = getPendingUpgrade();
+  if (!pending) return;
+  if (normalizeEmail(pending.email) !== normalizeEmail(email)) return;
+  if (Date.now() - Number(pending.started_at || 0) > 6 * 60 * 60 * 1000) {
+    clearPendingUpgrade();
+    return;
+  }
+  upgradePollAttempts = 0;
+  upgradePollInterval = setInterval(async () => {
+    if (document.hidden) return;
+    upgradePollAttempts += 1;
+    const upgraded = await activatePaidAccess(true);
+    if (upgraded || upgradePollAttempts >= 30) {
+      clearInterval(upgradePollInterval);
+      upgradePollInterval = null;
+      if (upgradePollAttempts >= 30) clearPendingUpgrade();
+    }
+  }, 20000);
+}
+
+async function loadAccessState() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    if (countdownInterval) clearInterval(countdownInterval);
+    showCard('signup-card');
+    const prefilled = new URLSearchParams(window.location.search).get('prefilled_email') || '';
+    if (prefilled) document.getElementById('email').value = normalizeEmail(prefilled);
+    return;
+  }
+
+  const userEmail = normalizeEmail(session.user.email || '');
+  updateUpgradeLinks(userEmail);
+
+  const { data: purchases, error } = await sb
+    .from('purchases')
+    .select('id,product,status,amount_paid,created_at')
+    .eq('user_id', session.user.id)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (error) {
+    showCard('signup-card');
+    showMsg('signup-msg', error.message || 'Unable to load access.', 'error');
+    return;
+  }
+
+  const activePurchases = Array.isArray(purchases) ? purchases : [];
+  const paid = activePurchases.find((p) => !isTrialPurchase(p));
+  const trial = activePurchases.find((p) => isTrialPurchase(p));
+
+  if (paid) {
+    if (countdownInterval) clearInterval(countdownInterval);
+    document.getElementById('paid-email').textContent = userEmail || '—';
+    showCard('paid-card');
+    return;
+  }
+
+  if (trial) {
+    const expiresAt = trialExpiryMs(trial);
+    const now = Date.now();
+    const isActive = expiresAt > now;
+    if (isActive) {
+      document.getElementById('active-email').textContent = userEmail || '—';
+      showCard('trial-card');
+      startCountdown(expiresAt);
+    } else {
+      if (countdownInterval) clearInterval(countdownInterval);
+      document.getElementById('expired-email').textContent = userEmail || '—';
+      showCard('expired-card');
+    }
+    startUpgradePolling(userEmail);
+    return;
+  }
+
+  showCard('expired-card');
+  document.getElementById('expired-email').textContent = userEmail || '—';
+  showMsg('expired-msg', 'No active trial record was found. Contact support if this is unexpected.', 'error');
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && document.getElementById('signup-card').style.display === 'block') {
+    createTrialAccount();
+  }
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) activatePaidAccess(true);
+});
+
+(async () => {
+  await loadAccessState();
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('activate_paid') === '1' || getStripeSessionIdFromUrl()) {
+    await activatePaidAccess(true);
+  }
+})();
+</script>
+</body>
+</html>
