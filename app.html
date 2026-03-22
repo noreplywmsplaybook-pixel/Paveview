@@ -1295,6 +1295,7 @@ let imgW=0, imgH=0;
 let mode='draw';
 let calibState=0, calibPt1=null, measuredPx=null;
 let calibrated=false, loadedAsPdf=false;
+let pendingAutoScaleFeetPerPx=null; // one-shot auto-scale for imagery capture
 let currentStencil='NO PARKING';
 let currentBollardSign='ADA';
 let zones=[], activeZone=null, inProg=[];
@@ -1527,6 +1528,13 @@ function applyAutoImageryScale(feetPerPx){
   updateCalibBadge();
   savePlanData();
 }
+function applyAutoImageryScaleWhenReady(feetPerPx,tries=0){
+  if(_switchingPlan&&tries<30){
+    setTimeout(()=>applyAutoImageryScaleWhenReady(feetPerPx,tries+1),35);
+    return;
+  }
+  applyAutoImageryScale(feetPerPx);
+}
 
 function addCanvasAsPlan(oc,label,isPdf,opts={}){
   const dataURL=oc.toDataURL('image/jpeg',0.85);
@@ -1544,7 +1552,7 @@ function addCanvasAsPlan(oc,label,isPdf,opts={}){
   }else{
     addPlan(dataURL,oc.width,oc.height,label);
     if(opts.autoScaleFeetPerPx){
-      applyAutoImageryScale(opts.autoScaleFeetPerPx);
+      applyAutoImageryScaleWhenReady(opts.autoScaleFeetPerPx);
     }else{
       openModal('calib-modal');
     }
@@ -1603,6 +1611,9 @@ function syncMapInputsFromState(){
   document.getElementById('map-lng').value=mapViewState.lng.toFixed(7);
   document.getElementById('map-zoom').value=String(mapViewState.zoom);
 }
+function listWaybackYears(){
+  return Object.keys(waybackByYear||{}).sort((a,b)=>b.localeCompare(a));
+}
 async function ensureWaybackYears(){
   if(waybackByYear)return;
   const res=await fetch(WAYBACK_SELECTION_URL);
@@ -1618,7 +1629,7 @@ async function ensureWaybackYears(){
     if(!byYear[year]||date>byYear[year].date)byYear[year]={m,date,label:name};
   });
   waybackByYear=byYear;
-  const years=Object.keys(byYear).sort((a,b)=>b.localeCompare(a));
+  const years=listWaybackYears();
   mapHistoricalYearSel.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join('');
 }
 
@@ -1660,9 +1671,17 @@ function drawMapOverlay(){
   const feetPerPx=mpp*3.28084;
   const barFeet=feetPerPx<0.5?20:feetPerPx<1?50:feetPerPx<2?100:feetPerPx<5?200:500;
   const barPx=Math.max(30,Math.min(240,barFeet/feetPerPx));
+  const years=listWaybackYears();
+  const yearLines=[];
+  if(years.length){
+    for(let i=0;i<years.length;i+=6){
+      yearLines.push(years.slice(i,i+6).join(', '));
+    }
+  }
+  const topH=24+(yearLines.length?14+yearLines.length*12:0);
   const y=mapPreviewCanvas.height-18;
   mapPreviewCtx.fillStyle='rgba(0,0,0,.55)';
-  mapPreviewCtx.fillRect(8,8,360,24);
+  mapPreviewCtx.fillRect(8,8,Math.min(690,mapPreviewCanvas.width-16),topH);
   mapPreviewCtx.fillRect(8,mapPreviewCanvas.height-30,Math.ceil(barPx)+16,20);
   mapPreviewCtx.strokeStyle='#fff';
   mapPreviewCtx.lineWidth=2;
@@ -1678,6 +1697,10 @@ function drawMapOverlay(){
   mapPreviewCtx.font='11px JetBrains Mono,monospace';
   const modeLabel=mapViewState.mode==='historical'?`Historical ${mapViewState.year||''}`:'Google Current';
   mapPreviewCtx.fillText(`${modeLabel} · z${mapViewState.zoom} · ${mapViewState.lat.toFixed(5)}, ${mapViewState.lng.toFixed(5)}`,14,24);
+  if(yearLines.length){
+    mapPreviewCtx.fillText('Available historical years:',14,38);
+    yearLines.forEach((ln,i)=>mapPreviewCtx.fillText(ln,14,50+i*12));
+  }
   mapPreviewCtx.fillText(`${Math.round(barFeet)} ft`,18+barPx, y+4);
 }
 
@@ -1688,10 +1711,12 @@ async function loadMapPreview(opts={}){
   if(!Number.isFinite(lat)||!Number.isFinite(lng)){setImportStatus('Enter valid latitude and longitude.',true);return;}
   setImportStatus(opts.reason||'Loading map imagery…');
   try{
+    if(!waybackByYear){
+      try{await ensureWaybackYears();}catch(e){console.warn('Wayback year list unavailable:',e);}
+    }
     if(mapViewState.mode==='historical'){
-      await ensureWaybackYears();
       if(!mapViewState.year){
-        const first=Object.keys(waybackByYear||{}).sort((a,b)=>b.localeCompare(a))[0];
+        const first=listWaybackYears()[0];
         mapViewState.year=first||'';
       }
       if(mapHistoricalYearSel.value!==mapViewState.year)mapHistoricalYearSel.value=mapViewState.year;
@@ -1745,6 +1770,7 @@ async function captureMapImageryIntoPlan(){
   oc.width=mapPreviewCanvas.width;oc.height=mapPreviewCanvas.height;
   oc.getContext('2d').drawImage(mapPreviewCanvas,0,0);
   const feetPerPx=metersPerPixel(mapViewState.lat,mapViewState.zoom)*3.28084;
+  pendingAutoScaleFeetPerPx=feetPerPx;
   closeModal('page-modal');
   addCanvasAsPlan(oc,label,false,{autoScaleFeetPerPx:feetPerPx,skipCalibration:true});
 }
@@ -1960,8 +1986,10 @@ function onPlanLoaded(isPdf,opts={}){
   activeZone=zones.length>0?zones[zones.length-1]:null;
   calibrated=false;rulerPos=null;
   fitZoom();renderAll();
-  if(opts.skipCalibration&&opts.autoScaleFeetPerPx){
-    applyAutoImageryScale(opts.autoScaleFeetPerPx);
+  const autoScaleFeet=opts.autoScaleFeetPerPx||pendingAutoScaleFeetPerPx;
+  if((opts.skipCalibration||pendingAutoScaleFeetPerPx!=null)&&autoScaleFeet){
+    pendingAutoScaleFeetPerPx=null;
+    applyAutoImageryScale(autoScaleFeet);
     return;
   }
   updateCalibBadge();
