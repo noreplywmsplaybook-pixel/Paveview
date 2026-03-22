@@ -109,13 +109,19 @@ module.exports = async (req, res) => {
         const normalized = (s) => String(s || '').trim().toLowerCase();
         const keepSeg = segPred.filter((p) => SEG_CLASSES.has(normalized(p.class)));
         const keepDet = detPred.filter((p) => DET_CLASSES.has(normalized(p.class)));
-        const merged = [...keepSeg, ...keepDet];
+        const segKeys = new Set(keepSeg.map((p) => normalized(p.class)));
+        const areaFallbackFromDet = detPred.filter((p) => {
+          const cls = normalized(p.class);
+          return SEG_CLASSES.has(cls) && !segKeys.has(cls);
+        });
+        const merged = [...keepSeg, ...areaFallbackFromDet, ...keepDet];
         sendJson(res, 200, {
           predictions: merged,
           image,
           meta: {
             mode: 'hybrid',
             segmentation_count: keepSeg.length,
+            area_fallback_count: areaFallbackFromDet.length,
             detection_count: keepDet.length,
             seg_ok: seg.ok,
             det_ok: det.ok
