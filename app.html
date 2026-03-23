@@ -1881,6 +1881,32 @@ function classIsLot(cls){
   const c=String(cls||'').toLowerCase();
   return c.includes('lot');
 }
+function detectionArea(det){
+  if(!det)return 0;
+  const pts=Array.isArray(det.points)&&det.points.length>=3
+    ? det.points.map(pt=>({x:pt.x,y:pt.y}))
+    : [
+        {x:(det.x||0)-(det.width||0)/2,y:(det.y||0)-(det.height||0)/2},
+        {x:(det.x||0)+(det.width||0)/2,y:(det.y||0)-(det.height||0)/2},
+        {x:(det.x||0)+(det.width||0)/2,y:(det.y||0)+(det.height||0)/2},
+        {x:(det.x||0)-(det.width||0)/2,y:(det.y||0)+(det.height||0)/2}
+      ];
+  const area=polygonArea(pts);
+  if(area>0)return area;
+  return Math.abs((det.width||0)*(det.height||0));
+}
+function keepSinglePrimaryLotDetections(detections){
+  if(!Array.isArray(detections)||!detections.length)return [];
+  const lotCandidates=[];
+  detections.forEach((det,idx)=>{
+    if(!classIsLot(det?.class))return;
+    lotCandidates.push({idx,area:detectionArea(det)});
+  });
+  if(lotCandidates.length<=1)return detections.slice();
+  lotCandidates.sort((a,b)=>b.area-a.area);
+  const keepIdx=lotCandidates[0].idx;
+  return detections.filter((det,idx)=>!classIsLot(det?.class)||idx===keepIdx);
+}
 function polygonArea(pts){
   if(!Array.isArray(pts)||pts.length<3)return 0;
   let s=0;
@@ -2008,7 +2034,8 @@ function detectionToMarker(det){
   return m;
 }
 function transferDetectionsToEditableObjects(){
-  const src=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
+  const srcRaw=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
+  const src=keepSinglePrimaryLotDetections(srcRaw);
   if(!Array.isArray(src)||!src.length)return {zonesAdded:0,markersAdded:0};
   const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
   const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
@@ -2516,7 +2543,7 @@ async function runRoboflowDetection(){
     });
     const data=await res.json();
     if(!res.ok)throw new Error(data?.error||'Detection failed');
-    mapDetections=Array.isArray(data?.predictions)?data.predictions:[];
+    mapDetections=keepSinglePrimaryLotDetections(Array.isArray(data?.predictions)?data.predictions:[]);
     mapVectorDetections=mapDetections.map((p,idx)=>{
       const cls=String(p.class||'lot_boundary');
       const rawPts=normalizeRoboflowPredictionToPolygon(p);
