@@ -1963,6 +1963,89 @@ function zoneGeometryLikelyDuplicate(a,b){
   const aa=polygonArea(a.pts),ba=polygonArea(b.pts);
   return areaSimilarity(aa,ba)>=0.9;
 }
+function markerKey(m){
+  const t=String(m?.type||'').toLowerCase();
+  const lbl=String(m?.label||'').trim().toUpperCase();
+  const x=Math.round(Number(m?.x)||0);
+  const y=Math.round(Number(m?.y)||0);
+  return `${t}|${lbl}|${x}|${y}`;
+}
+function markerLikelyDuplicate(a,b,pxTol=12){
+  if(!a||!b)return false;
+  const ta=String(a.type||'').toLowerCase();
+  const tb=String(b.type||'').toLowerCase();
+  if(ta!==tb)return false;
+  const la=String(a.label||'').trim().toUpperCase();
+  const lb=String(b.label||'').trim().toUpperCase();
+  if(la!==lb)return false;
+  const tol=Number.isFinite(pxTol)&&pxTol>0
+    ? pxTol
+    : ((ta==='stall'||ta==='ada')?22:(ta==='stencil'?18:14));
+  return Math.hypot((a.x||0)-(b.x||0),(a.y||0)-(b.y||0))<=tol;
+}
+function confidenceThresholdForClass(cls){
+  const c=String(cls||'').toLowerCase();
+  // Keep stall-like detections visible while filtering low-confidence noise.
+  if(c.includes('stall'))return 0.22;
+  if(c.includes('ada')||c.includes('handicap'))return 0.2;
+  if(c.includes('arrow')||c.includes('stencil'))return 0.18;
+  return 0.25;
+}
+function filterDetectionsByClassConfidence(detections){
+  if(!Array.isArray(detections)||!detections.length)return [];
+  return detections.filter(det=>{
+    const conf=Number(det?.confidence||0);
+    return conf>=confidenceThresholdForClass(det?.class);
+  });
+}
+function detectionCenterPoint(det){
+  if(Array.isArray(det?.points)&&det.points.length){
+    const s=det.points.reduce((acc,p)=>({x:acc.x+(p.x||0),y:acc.y+(p.y||0)}),{x:0,y:0});
+    return {x:s.x/det.points.length,y:s.y/det.points.length};
+  }
+  return {x:Number(det?.x)||0,y:Number(det?.y)||0};
+}
+function dedupeStallLikeDetections(detections){
+  if(!Array.isArray(detections)||!detections.length)return [];
+  const stallLike=(c)=>{
+    const s=String(c||'').toLowerCase();
+    return s.includes('stall')||s.includes('ada')||s.includes('handicap')||s.includes('arrow')||s.includes('stencil');
+  };
+  const kept=[];
+  detections.forEach(det=>{
+    if(!stallLike(det?.class)){
+      kept.push(det);
+      return;
+    }
+    const center=detectionCenterPoint(det);
+    const markerType=classToMarkerType(det?.class)||String(det?.class||'').toLowerCase();
+    const dupIdx=kept.findIndex(prev=>{
+      if(!stallLike(prev?.class))return false;
+      const prevType=classToMarkerType(prev?.class)||String(prev?.class||'').toLowerCase();
+      if(prevType!==markerType)return false;
+      const pc=detectionCenterPoint(prev);
+      return Math.hypot(center.x-pc.x,center.y-pc.y)<=18;
+    });
+    if(dupIdx<0){
+      kept.push(det);
+      return;
+    }
+    // Keep the strongest confidence if detections overlap.
+    const prevConf=Number(kept[dupIdx]?.confidence||0);
+    const curConf=Number(det?.confidence||0);
+    if(curConf>prevConf)kept[dupIdx]=det;
+  });
+  return kept;
+}
+function dedupeImportedMarkers(markersIn){
+  if(!Array.isArray(markersIn)||!markersIn.length)return [];
+  const kept=[];
+  markersIn.forEach(m=>{
+    const dup=kept.some(k=>markerLikelyDuplicate(k,m));
+    if(!dup)kept.push(m);
+  });
+  return kept;
+}
 function polygonArea(pts){
   if(!Array.isArray(pts)||pts.length<3)return 0;
   let s=0;
@@ -2120,7 +2203,13 @@ function detectionToMarker(det){
 }
 function transferDetectionsToEditableObjects(){
   const srcRaw=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
-  const src=dedupeZoneDetections(keepSinglePrimaryLotDetections(srcRaw));
+  const src=dedupeStallLikeDetections(
+    dedupeZoneDetections(
+      keepSinglePrimaryLotDetections(
+        filterDetectionsByClassConfidence(srcRaw)
+      )
+    )
+  );
   if(!Array.isArray(src)||!src.length)return {zonesAdded:0,markersAdded:0};
   const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
   const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
@@ -2157,7 +2246,13 @@ function transferDetectionsToEditableObjects(){
       return;
     }
     const m=detectionToMarker(det);
-    if(m){markers.push(m);markersAdded++;}
+    if(m){
+      const isMarkerDup=markers.some(existing=>markerLikelyDuplicate(existing,m,14));
+      if(!isMarkerDup){
+        markers.push(m);
+        markersAdded++;
+      }
+    }
   });
   if(zonesAdded||markersAdded){
     activeZone=zones.filter(z=>z.closed).slice(-1)[0]||zones.slice(-1)[0]||activeZone;
@@ -2609,9 +2704,9 @@ async function captureMapImageryIntoPlan(){
   oc.getContext('2d').drawImage(mapPreviewCanvas,0,0);
   const feetPerPx=metersPerPixel(mapViewState.lat,mapViewState.zoom)*3.28084;
   pendingAutoScaleFeetPerPx=feetPerPx;
-  const activeDetections=dedupeZoneDetections(keepSinglePrimaryLotDetections(
-    (aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections
-  ));
+  const activeDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
+    filterDetectionsByClassConfidence((aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections)
+  )));
   aiDetectionsForTransfer=JSON.parse(JSON.stringify(activeDetections||[]));
   pendingDetectionTransfer=!!(activeDetections&&activeDetections.length);
   closeModal('page-modal');
@@ -2638,7 +2733,9 @@ async function runRoboflowDetection(){
     });
     const data=await res.json();
     if(!res.ok)throw new Error(data?.error||'Detection failed');
-    mapDetections=keepSinglePrimaryLotDetections(Array.isArray(data?.predictions)?data.predictions:[]);
+    mapDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
+      filterDetectionsByClassConfidence(Array.isArray(data?.predictions)?data.predictions:[])
+    )));
     mapVectorDetections=mapDetections.map((p,idx)=>{
       const cls=String(p.class||'lot_boundary');
       const rawPts=normalizeRoboflowPredictionToPolygon(p);
@@ -3277,6 +3374,20 @@ ic.addEventListener('mousedown',e=>{
     return;
   }
   const p=getPos(e);
+  // Edge drag should win over vertex drag when clicking near a line.
+  const nearEdgeOnly=findNearEdge(p.x,p.y);
+  if(nearEdgeOnly&&nearEdgeOnly.type==='zone-edge'&&!(e.ctrlKey||e.metaKey)){
+    const zo=zones.find(z=>z.id===nearEdgeOnly.id);
+    let moveIdxs=[nearEdgeOnly.afterIdx,(nearEdgeOnly.afterIdx+1)%((zo?.pts?.length)||1)];
+    if(zo&&Array.isArray(zo.pts)&&zo.pts.length>=3){
+      moveIdxs=collectCollinearChainIndices(zo.pts,nearEdgeOnly.afterIdx);
+    }
+    dragging={type:'zone-edge-move',id:nearEdgeOnly.id,afterIdx:nearEdgeOnly.afterIdx,moveIdxs,lastX:p.x,lastY:p.y};
+    if(zo){activeZone=zo;setFocusedZone(zo.id);}
+    ic.style.cursor='grabbing';
+    renderAll();
+    return;
+  }
   const now=Date.now();
   const isDbl=now-lastClick<280;
   lastClick=now;
