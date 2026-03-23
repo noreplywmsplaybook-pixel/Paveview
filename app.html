@@ -1817,6 +1817,12 @@ function classUsesBoundarySnapPriority(cls){
   const c=String(cls||'').toLowerCase();
   return c.includes('lot')||c.includes('obstruct')||c.includes('island');
 }
+function boundaryPrioritySnapRadius(cls){
+  const c=String(cls||'').toLowerCase();
+  if(c.includes('lot'))return 44;
+  if(c.includes('obstruct')||c.includes('island'))return 34;
+  return Math.max(classSnapRadius(cls)+10,24);
+}
 function snapPriorityBoundaryPolygon(points,bw,cls){
   const base=snapPolygonPointsToBw(points,bw,cls);
   if(!Array.isArray(points)||points.length<3||!bw)return base;
@@ -1824,7 +1830,7 @@ function snapPriorityBoundaryPolygon(points,bw,cls){
   const denseStep=c.includes('lot')?5:4;
   const dense=resampleClosedPolygon(points,denseStep);
   if(!dense.length)return base;
-  const radius=Math.max(classSnapRadius(cls)+8,22);
+  const radius=boundaryPrioritySnapRadius(cls);
   let moved=0;
   const snappedDense=dense.map(pt=>{
     const hit=nearestWhiteClusterCenter(bw,pt.x,pt.y,radius);
@@ -3426,13 +3432,19 @@ async function runRoboflowDetection(){
     })();
     // Snap-priority seed detections: refine area boundaries first, then use those
     // refined boundaries as the lot gate for stall filtering and zoom scans.
-    const seededDetections=filterDetectionsByClassConfidence(rawPredictions).map((pred,idx)=>{
+    const seededBase=rawPredictions.filter(pred=>(
+      classUsesBoundarySnapPriority(pred?.class) || Number(pred?.confidence||0)>=confidenceThresholdForClass(pred?.class)
+    ));
+    let boundaryPriorityAreas=0;
+    const seededDetections=seededBase.map((pred,idx)=>{
       const cls=String(pred?.class||'');
       if(!classUsesBoundarySnapPriority(cls))return pred;
       const rawPts=normalizeRoboflowPredictionToPolygon(pred);
       if(!Array.isArray(rawPts)||rawPts.length<3)return pred;
-      const refined=refineAreaBoundaryByBw(rawPts,bwAligned,cls);
-      if(!Array.isArray(refined)||refined.length<3)return pred;
+      const refinedRes=snapPriorityBoundaryPolygon(rawPts,bwAligned,cls);
+      const refined=Array.isArray(refinedRes?.points)?refinedRes.points:[];
+      if(!refined.length||refined.length<3)return pred;
+      boundaryPriorityAreas++;
       const ctr=detectionCenterPoint({points:refined});
       const bb=polygonBounds(refined);
       return{
@@ -3508,10 +3520,12 @@ async function runRoboflowDetection(){
       let workingPts=snapRes.points;
       // Snap-priority refinement for area boundaries: after vertex snap,
       // densify + resnap along edges so the final perimeter hugs painted lines.
-      if((classIsLot(cls)||classIsObstruction(cls))&&Array.isArray(workingPts)&&workingPts.length>=3){
+      if(classUsesBoundarySnapPriority(cls)&&Array.isArray(workingPts)&&workingPts.length>=3){
         workingPts=refineAreaBoundaryByBw(workingPts,bwAligned,cls);
       }
-      const simpPts=simplifyClosedPolygon(workingPts,mapVectorSimplifyTarget(cls));
+      const simpPts=classUsesBoundarySnapPriority(cls)
+        ? workingPts
+        : simplifyClosedPolygon(workingPts,mapVectorSimplifyTarget(cls));
       return{
         id:p.id||('rf-'+idx+'-'+Date.now()),
         className:cls,
@@ -3548,7 +3562,8 @@ async function runRoboflowDetection(){
     const zoomLabel=tileStats.tilesPlanned
       ? ` Zoom scan ${tileStats.tilesRan}/${tileStats.tilesPlanned} tiles, +${tileStats.added} merged stalls.`
       : '';
-    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%).${zoomLabel} ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
+    const boundaryLabel=boundaryPriorityAreas>0?` Boundary-priority refined ${boundaryPriorityAreas} area zones.`:'';
+    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%).${zoomLabel}${boundaryLabel} ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
   }catch(e){
     console.error(e);
     setImportStatus(`Detection failed: ${e.message}`,true);
