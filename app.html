@@ -1069,6 +1069,24 @@ select.sc-inp{cursor:pointer;width:40px}
           <button class="btn" id="btn-map-refresh">Refresh</button>
           <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
         </div>
+        <div class="map-row">
+          <label>Render</label>
+          <select id="map-render-style">
+            <option value="satellite" selected>Satellite</option>
+            <option value="blueprint">Blueprint</option>
+          </select>
+          <label>Draw class</label>
+          <select id="map-draw-class">
+            <option value="lot_boundary" selected>lot_boundary</option>
+            <option value="parking_stall">parking_stall</option>
+            <option value="fire_lane">fire_lane</option>
+            <option value="island">island</option>
+            <option value="building_footprint">building_footprint</option>
+          </select>
+          <button class="btn" id="btn-map-draw-start">Draw Zone</button>
+          <button class="btn" id="btn-map-draw-finish">Finish</button>
+          <button class="btn" id="btn-map-draw-cancel">Cancel</button>
+        </div>
         <div id="map-import-status">Pick a location and click Refresh.</div>
         <canvas id="map-preview" width="1024" height="1024"></canvas>
       </div>
@@ -1508,6 +1526,11 @@ const mapPreviewCtx=mapPreviewCanvas.getContext('2d');
 const mapImportStatus=document.getElementById('map-import-status');
 const mapImageryModeSel=document.getElementById('map-imagery-mode');
 const mapHistoricalYearSel=document.getElementById('map-historical-year');
+const mapRenderStyleSel=document.getElementById('map-render-style');
+const mapDrawClassSel=document.getElementById('map-draw-class');
+const btnMapDrawStart=document.getElementById('btn-map-draw-start');
+const btnMapDrawFinish=document.getElementById('btn-map-draw-finish');
+const btnMapDrawCancel=document.getElementById('btn-map-draw-cancel');
 let pageModalView='source'; // source | pdf | map
 let waybackByYear={...WAYBACK_FALLBACK_BY_YEAR}; // { [year]: {m, date, label} }
 let mapViewState={lat:37.4219999,lng:-122.0840575,zoom:20,mode:'google',year:''};
@@ -1518,6 +1541,163 @@ let mapDetectionRenderSize={w:0,h:0};
 let mapReviewState={active:false,scale:1,tx:0,ty:0,image:null}; // freeze-and-review state after AI detect
 let aiDetectionsForTransfer=[]; // frozen copy used when "Use Imagery" is clicked
 let pendingDetectionTransfer=false;
+let mapBaseRawImage=null;
+let mapBaseProcessedImage=null;
+let mapRenderStyle='satellite'; // satellite | blueprint
+let mapVectorDetections=[]; // normalized polygons for map preview editing
+let mapSelectedVectorIdx=-1;
+let mapVectorDrag=null; // {idx,ptIdx}
+let mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
+let mapOverlayEditingActive=false; // disable review-only pan/zoom when editing vectors
+
+function classStyleForVector(cls){
+  const c=String(cls||'').toLowerCase();
+  if(c.includes('lot'))return {stroke:'#111',lineWidth:2.8,dash:[],fill:'rgba(15,15,15,0.08)'};
+  if(c.includes('parking_stall')||c.includes('stall'))return {stroke:'#f5d44b',lineWidth:1,dash:[],fill:'rgba(245,212,75,0.06)'};
+  if(c.includes('fire_lane')||c.includes('fire'))return {stroke:'#ef4444',lineWidth:2,dash:[8,5],fill:'rgba(239,68,68,0.08)'};
+  if(c.includes('island')||c.includes('obstruct'))return {stroke:'#6b7280',lineWidth:1.8,dash:[6,4],fill:'rgba(107,114,128,0.08)'};
+  if(c.includes('building'))return {stroke:'#fff',lineWidth:1.5,dash:[],fill:'rgba(55,65,81,0.35)'};
+  return {stroke:'#111',lineWidth:1.8,dash:[],fill:'rgba(17,17,17,0.06)'};
+}
+
+function normalizeRoboflowPredictionToPolygon(p){
+  if(Array.isArray(p?.points)&&p.points.length>=3){
+    return p.points.map(pt=>({x:pt.x||0,y:pt.y||0}));
+  }
+  const x=p?.x||0,y=p?.y||0,w=p?.width||0,h=p?.height||0;
+  if(!w||!h)return [];
+  return[
+    {x:x-w/2,y:y-h/2},
+    {x:x+w/2,y:y-h/2},
+    {x:x+w/2,y:y+h/2},
+    {x:x-w/2,y:y+h/2},
+  ];
+}
+
+function preprocessImageDataForBlueprint(srcCanvas){
+  const w=srcCanvas.width,h=srcCanvas.height;
+  const out=document.createElement('canvas');
+  out.width=w;out.height=h;
+  const octx=out.getContext('2d');
+  octx.drawImage(srcCanvas,0,0);
+  const id=octx.getImageData(0,0,w,h);
+  const d=id.data;
+  // grayscale + contrast + hard edge emphasis
+  const gray=new Float32Array(w*h);
+  for(let i=0,j=0;i<d.length;i+=4,j++){
+    const g=(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]);
+    const c=Math.max(0,Math.min(255,(g-128)*1.75+128));
+    gray[j]=c;
+  }
+  const edge=new Float32Array(w*h);
+  const gx=[-1,0,1,-2,0,2,-1,0,1];
+  const gy=[-1,-2,-1,0,0,0,1,2,1];
+  for(let y=1;y<h-1;y++){
+    for(let x=1;x<w-1;x++){
+      let sx=0,sy=0,k=0;
+      for(let yy=-1;yy<=1;yy++){
+        for(let xx=-1;xx<=1;xx++){
+          const v=gray[(y+yy)*w+(x+xx)];
+          sx+=v*gx[k];sy+=v*gy[k];k++;
+        }
+      }
+      const mag=Math.min(255,Math.hypot(sx,sy));
+      edge[y*w+x]=mag;
+    }
+  }
+  // blueprint base: white background with dark lines
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i=(y*w+x),bi=i*4;
+      const g=gray[i];
+      const e=edge[i];
+      const darkAsphalt=g<78;
+      const lightLine=g>185;
+      const curbMid=g>=95&&g<=150;
+      const dark=darkAsphalt?26:lightLine?36:curbMid?72:Math.max(70,190-g);
+      const lineBoost=Math.max(0,e-28)*1.35;
+      const v=Math.max(0,Math.min(255,255-(dark+lineBoost)));
+      d[bi]=v;d[bi+1]=v;d[bi+2]=v;d[bi+3]=255;
+    }
+  }
+  octx.putImageData(id,0,0);
+  return out;
+}
+
+function drawMapVectorOverlay(){
+  if(!Array.isArray(mapVectorDetections)||!mapVectorDetections.length)return;
+  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  mapPreviewCtx.save();
+  mapVectorDetections.forEach((z,idx)=>{
+    if(!Array.isArray(z.points)||z.points.length<3)return;
+    const st=classStyleForVector(z.className);
+    mapPreviewCtx.beginPath();
+    z.points.forEach((pt,i)=>{
+      const x=(pt.x||0)*sx,y=(pt.y||0)*sy;
+      if(i===0)mapPreviewCtx.moveTo(x,y);else mapPreviewCtx.lineTo(x,y);
+    });
+    mapPreviewCtx.closePath();
+    mapPreviewCtx.fillStyle=st.fill;
+    mapPreviewCtx.fill();
+    mapPreviewCtx.strokeStyle=st.stroke;
+    mapPreviewCtx.lineWidth=st.lineWidth;
+    mapPreviewCtx.setLineDash(st.dash);
+    mapPreviewCtx.stroke();
+    mapPreviewCtx.setLineDash([]);
+    if(idx===mapSelectedVectorIdx){
+      mapPreviewCtx.strokeStyle='#38bdf8';
+      mapPreviewCtx.lineWidth=2;
+      mapPreviewCtx.stroke();
+      z.points.forEach(pt=>{
+        const x=(pt.x||0)*sx,y=(pt.y||0)*sy;
+        mapPreviewCtx.beginPath();
+        mapPreviewCtx.arc(x,y,4,0,Math.PI*2);
+        mapPreviewCtx.fillStyle='#fff';
+        mapPreviewCtx.fill();
+        mapPreviewCtx.strokeStyle='#111';
+        mapPreviewCtx.lineWidth=1;
+        mapPreviewCtx.stroke();
+      });
+    }
+  });
+  if(mapVectorDrawState.active&&mapVectorDrawState.pts.length){
+    const st=classStyleForVector(mapVectorDrawState.cls);
+    mapPreviewCtx.beginPath();
+    mapVectorDrawState.pts.forEach((pt,i)=>{
+      const x=(pt.x||0)*sx,y=(pt.y||0)*sy;
+      if(i===0)mapPreviewCtx.moveTo(x,y);else mapPreviewCtx.lineTo(x,y);
+    });
+    mapPreviewCtx.strokeStyle=st.stroke;
+    mapPreviewCtx.lineWidth=Math.max(1,st.lineWidth);
+    mapPreviewCtx.setLineDash([5,4]);
+    mapPreviewCtx.stroke();
+    mapPreviewCtx.setLineDash([]);
+  }
+  mapPreviewCtx.restore();
+}
+function syncMapVectorDetectionsToRaw(){
+  mapDetections=mapVectorDetections.map(v=>({
+    class:v.className,
+    confidence:v.confidence,
+    points:Array.isArray(v.points)?v.points.map(p=>({x:p.x,y:p.y})):[]
+  }));
+  aiDetectionsForTransfer=JSON.parse(JSON.stringify(mapDetections));
+}
+function syncMapVectorDetectionsForTransfer(){
+  syncMapVectorDetectionsToRaw();
+}
+
+function mapVectorToZoneType(cls){
+  const c=String(cls||'').toLowerCase();
+  if(c.includes('lot'))return 'lot';
+  if(c.includes('island')||c.includes('obstruct'))return 'obstruction';
+  if(c.includes('fire'))return 'fire_lane';
+  if(c.includes('building'))return 'building_footprint';
+  if(c.includes('stall'))return 'parking_stall';
+  if(c.includes('ada'))return 'ada';
+  return 'lot';
+}
 
 function setImportStatus(msg,isError=false){
   if(!mapImportStatus)return;
@@ -1530,6 +1710,10 @@ function clearMapDetections(){
   mapReviewState={active:false,scale:1,tx:0,ty:0,image:null};
   aiDetectionsForTransfer=[];
   pendingDetectionTransfer=false;
+  mapVectorDetections=[];
+  mapSelectedVectorIdx=-1;
+  mapVectorDrag=null;
+  mapVectorDrawState={active:false,cls:mapDrawClassSel?.value||'lot_boundary',pts:[]};
 }
 function detKind(p){
   const c=String(p?.class||'').toLowerCase();
@@ -1570,7 +1754,7 @@ function classToMarkerType(cls){
 }
 function classIsObstruction(cls){
   const c=String(cls||'').toLowerCase();
-  return c.includes('obstruction')||c.includes('obstruct');
+  return c.includes('obstruction')||c.includes('obstruct')||c.includes('island')||c.includes('building')||c.includes('fire_lane')||c.includes('fire');
 }
 function classIsLot(cls){
   const c=String(cls||'').toLowerCase();
@@ -1928,9 +2112,22 @@ async function drawTilePreview(mode,lat,lng,zoomLv,year){
   }
   await Promise.all(tasks);
   mapDetectionRenderSize={w:mapPreviewCanvas.width,h:mapPreviewCanvas.height};
+  // Capture raw tile render for preprocess/blueprint rendering.
+  const rawCanvas=document.createElement('canvas');
+  rawCanvas.width=mapPreviewCanvas.width;rawCanvas.height=mapPreviewCanvas.height;
+  rawCanvas.getContext('2d').drawImage(mapPreviewCanvas,0,0);
+  mapBaseRawImage=rawCanvas;
+  mapBaseProcessedImage=preprocessImageDataForBlueprint(rawCanvas);
 }
 
 function drawMapOverlay(){
+  // Re-render base depending on selected render style.
+  const base=(mapRenderStyle==='blueprint'&&mapBaseProcessedImage)?mapBaseProcessedImage:mapBaseRawImage;
+  if(base){
+    mapPreviewCtx.setTransform(1,0,0,1,0,0);
+    mapPreviewCtx.clearRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+    mapPreviewCtx.drawImage(base,0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  }
   const mpp=metersPerPixel(mapViewState.lat,mapViewState.zoom);
   const feetPerPx=mpp*3.28084;
   const barFeet=feetPerPx<0.5?20:feetPerPx<1?50:feetPerPx<2?100:feetPerPx<5?200:500;
@@ -1966,7 +2163,9 @@ function drawMapOverlay(){
     yearLines.forEach((ln,i)=>mapPreviewCtx.fillText(ln,14,50+i*12));
   }
   mapPreviewCtx.fillText(`${Math.round(barFeet)} ft`,18+barPx, y+4);
-  if(mapDetections.length){
+  if(mapVectorDetections.length){
+    drawMapVectorOverlay();
+  }else if(mapDetections.length){
     const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
     const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
     mapPreviewCtx.save();
@@ -2007,6 +2206,51 @@ function drawMapOverlay(){
     });
     mapPreviewCtx.restore();
   }
+}
+
+function mapCanvasToDetectionPt(canvasX,canvasY){
+  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  return{x:canvasX/sx,y:canvasY/sy};
+}
+function mapDetectionToCanvasPt(dx,dy){
+  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  return{x:dx*sx,y:dy*sy};
+}
+function nearestVectorVertex(canvasX,canvasY,maxPx=12){
+  if(mapSelectedVectorIdx<0||!mapVectorDetections[mapSelectedVectorIdx])return null;
+  const z=mapVectorDetections[mapSelectedVectorIdx];
+  let best=null;
+  z.points.forEach((pt,ptIdx)=>{
+    const cp=mapDetectionToCanvasPt(pt.x,pt.y);
+    const d=Math.hypot(cp.x-canvasX,cp.y-canvasY);
+    if(d<=maxPx&&(!best||d<best.d))best={ptIdx,d};
+  });
+  return best;
+}
+function nearestPolygonEdgeInsert(poly,canvasX,canvasY,maxPx=14){
+  if(!Array.isArray(poly)||poly.length<2)return null;
+  const dp=mapCanvasToDetectionPt(canvasX,canvasY);
+  let best=null;
+  for(let i=0;i<poly.length;i++){
+    const a=poly[i],b=poly[(i+1)%poly.length];
+    const pr=ptOnSeg(dp.x,dp.y,a.x,a.y,b.x,b.y);
+    const cp=mapDetectionToCanvasPt(pr.x,pr.y);
+    const d=Math.hypot(cp.x-canvasX,cp.y-canvasY);
+    if(d<=maxPx&&(!best||d<best.d))best={afterIdx:i,pt:{x:pr.x,y:pr.y},d};
+  }
+  return best;
+}
+function pointInPolygon(pt,poly){
+  if(!pt||!Array.isArray(poly)||poly.length<3)return false;
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const a=poly[i],b=poly[j];
+    const hit=((a.y>pt.y)!==(b.y>pt.y))&&(pt.x<((b.x-a.x)*(pt.y-a.y))/((b.y-a.y)||1e-9)+a.x);
+    if(hit)inside=!inside;
+  }
+  return inside;
 }
 
 async function loadMapPreview(opts={}){
@@ -2090,7 +2334,12 @@ async function runRoboflowDetection(){
     setImportStatus('Running Roboflow detection…');
     mapReviewState.active=false;
     mapInteraction.dragging=false;
-    const payload={imageDataUrl:mapPreviewCanvas.toDataURL('image/jpeg',0.9),mode:'hybrid'};
+    const inferSrc=(mapRenderStyle==='blueprint'&&mapBaseProcessedImage)?mapBaseProcessedImage:mapBaseRawImage;
+    const inferCanvas=document.createElement('canvas');
+    inferCanvas.width=mapPreviewCanvas.width;
+    inferCanvas.height=mapPreviewCanvas.height;
+    inferCanvas.getContext('2d').drawImage(inferSrc||mapPreviewCanvas,0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+    const payload={imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),mode:'hybrid'};
     const res=await fetch('/api/roboflow-detect',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -2099,12 +2348,21 @@ async function runRoboflowDetection(){
     const data=await res.json();
     if(!res.ok)throw new Error(data?.error||'Detection failed');
     mapDetections=Array.isArray(data?.predictions)?data.predictions:[];
+    mapVectorDetections=mapDetections.map((p,idx)=>({
+      id:p.id||('rf-'+idx+'-'+Date.now()),
+      className:String(p.class||'lot_boundary'),
+      confidence:Number(p.confidence||0),
+      points:normalizeRoboflowPredictionToPolygon(p),
+    })).filter(z=>Array.isArray(z.points)&&z.points.length>=3);
+    mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
     mapDetectionRenderSize={w:data?.image?.width||mapPreviewCanvas.width,h:data?.image?.height||mapPreviewCanvas.height};
     await loadMapPreview({fromInputs:false,preserveDetections:true,reason:`Detections: ${mapDetections.length}`});
-    const segCount=mapDetections.filter(p=>detKind(p)==='seg').length;
-    const boxCount=mapDetections.filter(p=>detKind(p)==='box').length;
-    await enableDetectionReviewMode();
-    setImportStatus(`Detected ${mapDetections.length} objects (${boxCount} boxed, ${segCount} segmented). Drag/scroll now review detections only.`);
+    const clsCounts={};
+    mapVectorDetections.forEach(z=>{clsCounts[z.className]=(clsCounts[z.className]||0)+1;});
+    const classSummary=Object.entries(clsCounts).map(([k,v])=>`${k}:${v}`).join(', ');
+    mapReviewState.active=false;
+    drawMapOverlay();
+    setImportStatus(`Detected ${mapVectorDetections.length} zones. ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
   }catch(e){
     console.error(e);
     setImportStatus(`Detection failed: ${e.message}`,true);
@@ -2218,6 +2476,8 @@ document.getElementById('drop-overlay').addEventListener('click',openImportSourc
 document.getElementById('btn-import-source-file').addEventListener('click',()=>importFileInput.click());
 document.getElementById('btn-import-source-map').addEventListener('click',async()=>{
   setPageModalView('map');
+  mapRenderStyle='satellite';
+  if(mapRenderStyleSel)mapRenderStyleSel.value='satellite';
   updateHistoricalControls();
   readMapInputsIntoState();
   if(mapViewState.mode==='historical'){try{await ensureWaybackYears();}catch(e){console.warn(e);}}
@@ -2229,6 +2489,49 @@ document.getElementById('btn-page-cancel').onclick=()=>{closeModal('page-modal')
 document.getElementById('btn-map-search').addEventListener('click',geocodeMapSearch);
 document.getElementById('btn-map-refresh').addEventListener('click',()=>loadMapPreview({fromInputs:true,reason:'Refreshing imagery…'}));
 document.getElementById('map-search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();geocodeMapSearch();}});
+if(mapRenderStyleSel){
+  mapRenderStyleSel.addEventListener('change',()=>{
+    mapRenderStyle=mapRenderStyleSel.value||'satellite';
+    drawMapOverlay();
+  });
+}
+if(mapDrawClassSel){
+  mapDrawClassSel.addEventListener('change',()=>{
+    mapVectorDrawState.cls=mapDrawClassSel.value||'lot_boundary';
+  });
+}
+if(btnMapDrawStart){
+  btnMapDrawStart.addEventListener('click',()=>{
+    mapVectorDrawState.active=true;
+    mapVectorDrawState.cls=mapDrawClassSel?.value||mapVectorDrawState.cls||'lot_boundary';
+    mapVectorDrawState.pts=[];
+    setImportStatus(`Draw ${mapVectorDrawState.cls}: click to add vertices, Finish to close.`);
+    drawMapOverlay();
+  });
+}
+if(btnMapDrawFinish){
+  btnMapDrawFinish.addEventListener('click',()=>{
+    if(!mapVectorDrawState.active||mapVectorDrawState.pts.length<3)return;
+    mapVectorDetections.push({
+      id:'manual-'+Date.now(),
+      className:mapVectorDrawState.cls||'lot_boundary',
+      confidence:1,
+      points:mapVectorDrawState.pts.map(p=>({x:p.x,y:p.y}))
+    });
+    mapSelectedVectorIdx=mapVectorDetections.length-1;
+    mapVectorDrawState={active:false,cls:mapDrawClassSel?.value||'lot_boundary',pts:[]};
+    syncMapVectorDetectionsToRaw();
+    setImportStatus(`Added ${mapVectorDetections[mapSelectedVectorIdx].className}.`);
+    drawMapOverlay();
+  });
+}
+if(btnMapDrawCancel){
+  btnMapDrawCancel.addEventListener('click',()=>{
+    mapVectorDrawState={active:false,cls:mapDrawClassSel?.value||'lot_boundary',pts:[]};
+    setImportStatus('Manual draw cancelled.');
+    drawMapOverlay();
+  });
+}
 mapImageryModeSel.addEventListener('change',async()=>{
   mapViewState.mode=mapImageryModeSel.value;
   updateHistoricalControls();
@@ -2242,6 +2545,7 @@ if(btnMapAiDetect)btnMapAiDetect.addEventListener('click',runRoboflowDetection);
 
 mapPreviewCanvas.addEventListener('wheel',e=>{
   if(pageModalView!=='map')return;
+  if(mapVectorDrawState.active)return;
   e.preventDefault();
   if(mapReviewState.active){
     const rect=mapPreviewCanvas.getBoundingClientRect();
@@ -2278,6 +2582,66 @@ mapPreviewCanvas.addEventListener('wheel',e=>{
 },{passive:false});
 mapPreviewCanvas.addEventListener('mousedown',e=>{
   if(pageModalView!=='map')return;
+  const rect=mapPreviewCanvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  const toDet=(x,y)=>({x:x/sx,y:y/sy});
+  const local=toDet(mx,my);
+  if(mapVectorDrawState.active){
+    mapVectorDrawState.pts.push(local);
+    drawMapOverlay();
+    return;
+  }
+  if(e.button===2)return;
+  mapVectorDrag=null;
+  let hitVertex=false;
+  for(let zi=mapVectorDetections.length-1;zi>=0;zi--){
+    const z=mapVectorDetections[zi];
+    if(!Array.isArray(z.points))continue;
+    for(let pi=0;pi<z.points.length;pi++){
+      const pt=z.points[pi];
+      const dx=(pt.x-local.x),dy=(pt.y-local.y);
+      if((dx*dx+dy*dy)<=36){
+        mapSelectedVectorIdx=zi;
+        mapVectorDrag={idx:zi,ptIdx:pi};
+        hitVertex=true;
+        break;
+      }
+    }
+    if(hitVertex)break;
+  }
+  if(hitVertex){
+    drawMapOverlay();
+    return;
+  }
+  // polygon pick
+  for(let zi=mapVectorDetections.length-1;zi>=0;zi--){
+    const z=mapVectorDetections[zi];
+    if(!Array.isArray(z.points)||z.points.length<3)continue;
+    let inside=false;
+    for(let i=0,j=z.points.length-1;i<z.points.length;j=i++){
+      const a=z.points[i],b=z.points[j];
+      if(((a.y>local.y)!==(b.y>local.y))&&(local.x<((b.x-a.x)*(local.y-a.y))/((b.y-a.y)||1e-9)+a.x))inside=!inside;
+    }
+    if(inside){
+      if(e.detail>=2){
+        let minD=Infinity,insIdx=0;
+        for(let i=0;i<z.points.length;i++){
+          const a=z.points[i],b=z.points[(i+1)%z.points.length];
+          const pr=ptOnSeg(local.x,local.y,a.x,a.y,b.x,b.y);
+          const d=(pr.x-local.x)*(pr.x-local.x)+(pr.y-local.y)*(pr.y-local.y);
+          if(d<minD){minD=d;insIdx=i+1;}
+        }
+        z.points.splice(insIdx,0,{x:local.x,y:local.y});
+      }
+      mapSelectedVectorIdx=zi;
+      syncMapVectorDetectionsToRaw();
+      drawMapOverlay();
+      return;
+    }
+  }
+  // fall through to map pan
   mapInteraction.dragging=true;
   mapInteraction.startX=e.clientX;
   mapInteraction.startY=e.clientY;
@@ -2292,7 +2656,36 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
   mapInteraction.startWorld=latLngToWorldPixel(mapViewState.lat,mapViewState.lng,mapViewState.zoom);
   mapPreviewCanvas.style.cursor='grabbing';
 });
+mapPreviewCanvas.addEventListener('contextmenu',e=>{
+  if(pageModalView!=='map')return;
+  e.preventDefault();
+  if(mapSelectedVectorIdx<0||!mapVectorDetections[mapSelectedVectorIdx])return;
+  const z=mapVectorDetections[mapSelectedVectorIdx];
+  const nextClass=prompt('Reassign class or type DELETE:',z?.className||'')||'';
+  if(nextClass.toUpperCase()==='DELETE'){
+    mapVectorDetections.splice(mapSelectedVectorIdx,1);
+    mapSelectedVectorIdx=Math.min(mapSelectedVectorIdx,mapVectorDetections.length-1);
+  }else if(nextClass.trim()){
+    z.className=nextClass.trim();
+  }
+  syncMapVectorDetectionsToRaw();
+  drawMapOverlay();
+});
 window.addEventListener('mousemove',e=>{
+  if(mapVectorDrag){
+    const rect=mapPreviewCanvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+    const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+    const local={x:mx/sx,y:my/sy};
+    const z=mapVectorDetections[mapVectorDrag.idx];
+    if(z&&Array.isArray(z.points)&&z.points[mapVectorDrag.ptIdx]){
+      z.points[mapVectorDrag.ptIdx]=local;
+      syncMapVectorDetectionsToRaw();
+      drawMapOverlay();
+    }
+    return;
+  }
   if(!mapInteraction.dragging)return;
   if(mapReviewState.active){
     const dx=e.clientX-mapInteraction.startX;
@@ -2317,6 +2710,7 @@ window.addEventListener('mousemove',e=>{
   setImportStatus('Panning map…');
 });
 window.addEventListener('mouseup',()=>{
+  if(mapVectorDrag){mapVectorDrag=null;return;}
   if(!mapInteraction.dragging)return;
   mapInteraction.dragging=false;
   mapPreviewCanvas.style.cursor='grab';
@@ -2327,6 +2721,8 @@ window.addEventListener('mouseup',()=>{
   loadMapPreview({fromInputs:false,reason:'Loading panned imagery…'});
 });
 mapPreviewCanvas.style.cursor='grab';
+if(mapRenderStyleSel)mapRenderStyleSel.value=mapRenderStyle;
+if(mapDrawClassSel)mapVectorDrawState.cls=mapDrawClassSel.value||mapVectorDrawState.cls;
 populateWaybackYearsDropdown();
 updateHistoricalControls();
 
