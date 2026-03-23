@@ -1551,7 +1551,7 @@ let mapRenderStyle='satellite'; // satellite | blueprint
 let mapVectorDetections=[]; // normalized polygons for map preview editing
 let mapSelectedVectorIdx=-1;
 let mapVectorDrag=null; // {idx,ptIdx}
-let mapVectorDragEdge=null; // {idx,aIdx,bIdx,lastX,lastY}
+let mapVectorDragEdge=null; // {idx,chainIdxs,lastX,lastY}
 let mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
 
 function classStyleForVector(cls){
@@ -1915,6 +1915,35 @@ function polygonArea(pts){
     s+=(a.x*b.y)-(b.x*a.y);
   }
   return Math.abs(s)/2;
+}
+function angleBetweenSegments(a,b,c){
+  const v1={x:b.x-a.x,y:b.y-a.y};
+  const v2={x:c.x-b.x,y:c.y-b.y};
+  const l1=Math.hypot(v1.x,v1.y),l2=Math.hypot(v2.x,v2.y);
+  if(l1<=1e-9||l2<=1e-9)return 0;
+  const dot=(v1.x*v2.x+v1.y*v2.y)/(l1*l2);
+  const clamped=Math.max(-1,Math.min(1,dot));
+  return Math.acos(clamped);
+}
+function collectCollinearChainIndices(pts,afterIdx,angleTolRad=Math.PI/48){
+  if(!Array.isArray(pts)||pts.length<3)return [];
+  const n=pts.length;
+  const norm=(i)=>((i%n)+n)%n;
+  let a=norm(afterIdx),b=norm(afterIdx+1);
+  const chain=[a,b];
+  const inChain=(idx)=>chain.includes(norm(idx));
+  while(chain.length<n){
+    const leftCand=norm(chain[0]-1);
+    const angL=angleBetweenSegments(pts[leftCand],pts[chain[0]],pts[chain[1]]);
+    if(Math.abs(Math.PI-angL)<=angleTolRad&&!inChain(leftCand))chain.unshift(leftCand); else break;
+  }
+  while(chain.length<n){
+    const m=chain.length;
+    const rightCand=norm(chain[m-1]+1);
+    const angR=angleBetweenSegments(pts[chain[m-2]],pts[chain[m-1]],pts[rightCand]);
+    if(Math.abs(Math.PI-angR)<=angleTolRad&&!inChain(rightCand))chain.push(rightCand); else break;
+  }
+  return chain;
 }
 function perpendicularDistanceToSegment(p,a,b){
   const dx=b.x-a.x,dy=b.y-a.y;
@@ -2827,10 +2856,12 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
     const zSel=mapVectorDetections[mapSelectedVectorIdx];
     const edgeHit=nearestPolygonEdgeInsert(zSel.points,mx,my,10);
     if(edgeHit){
+      const chainIdxs=collectCollinearChainIndices(zSel.points,edgeHit.afterIdx);
       mapVectorDragEdge={
         idx:mapSelectedVectorIdx,
         aIdx:edgeHit.afterIdx,
         bIdx:(edgeHit.afterIdx+1)%zSel.points.length,
+        chainIdxs:chainIdxs.length?chainIdxs:[edgeHit.afterIdx,(edgeHit.afterIdx+1)%zSel.points.length],
         lastX:local.x,
         lastY:local.y
       };
@@ -2916,10 +2947,15 @@ window.addEventListener('mousemove',e=>{
     const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
     const local={x:mx/sx,y:my/sy};
     const z=mapVectorDetections[mapVectorDragEdge.idx];
-    if(z&&Array.isArray(z.points)&&z.points[mapVectorDragEdge.aIdx]&&z.points[mapVectorDragEdge.bIdx]){
+    const moveIdxs=(Array.isArray(mapVectorDragEdge.chainIdxs)&&mapVectorDragEdge.chainIdxs.length)
+      ? mapVectorDragEdge.chainIdxs
+      : [mapVectorDragEdge.aIdx,mapVectorDragEdge.bIdx];
+    const canMove=!!(z&&Array.isArray(z.points)&&moveIdxs.every(i=>z.points[i]));
+    if(canMove){
       const dx=local.x-mapVectorDragEdge.lastX,dy=local.y-mapVectorDragEdge.lastY;
-      z.points[mapVectorDragEdge.aIdx]={x:z.points[mapVectorDragEdge.aIdx].x+dx,y:z.points[mapVectorDragEdge.aIdx].y+dy};
-      z.points[mapVectorDragEdge.bIdx]={x:z.points[mapVectorDragEdge.bIdx].x+dx,y:z.points[mapVectorDragEdge.bIdx].y+dy};
+      moveIdxs.forEach(i=>{
+        z.points[i]={x:z.points[i].x+dx,y:z.points[i].y+dy};
+      });
       mapVectorDragEdge.lastX=local.x;mapVectorDragEdge.lastY=local.y;
       syncMapVectorDetectionsToRaw();
       drawMapOverlay();
@@ -3091,12 +3127,14 @@ ic.addEventListener('mousemove',e=>{
     if(dragging.type==='zone'){zones.find(z=>z.id===dragging.id).pts[dragging.idx]={x:p.x,y:p.y}}
     else if(dragging.type==='zone-edge-move'){
       const z=zones.find(zo=>zo.id===dragging.id);
-      const aIdx=((dragging.afterIdx% (z?.pts?.length||1))+ (z?.pts?.length||1))%(z?.pts?.length||1);
-      const bIdx=(aIdx+1)% (z?.pts?.length||1);
-      if(z&&Array.isArray(z.pts)&&z.pts[aIdx]&&z.pts[bIdx]){
+      const moveIdxs=(Array.isArray(dragging.chainIdxs)&&dragging.chainIdxs.length)
+        ? dragging.chainIdxs
+        : [((dragging.afterIdx% (z?.pts?.length||1))+ (z?.pts?.length||1))%(z?.pts?.length||1),((((dragging.afterIdx% (z?.pts?.length||1))+ (z?.pts?.length||1))%(z?.pts?.length||1))+1)% (z?.pts?.length||1)];
+      if(z&&Array.isArray(z.pts)&&moveIdxs.every(i=>z.pts[i])){
         const dx=p.x-dragging.lastX,dy=p.y-dragging.lastY;
-        z.pts[aIdx]={x:z.pts[aIdx].x+dx,y:z.pts[aIdx].y+dy};
-        z.pts[bIdx]={x:z.pts[bIdx].x+dx,y:z.pts[bIdx].y+dy};
+        moveIdxs.forEach(i=>{
+          z.pts[i]={x:z.pts[i].x+dx,y:z.pts[i].y+dy};
+        });
         dragging.lastX=p.x;dragging.lastY=p.y;
       }
     }
@@ -3211,9 +3249,13 @@ ic.addEventListener('mousedown',e=>{
       return;
     }
     if(near.type==='zone-edge'){
-      // Plain click-drag on an edge moves the whole line segment (both endpoints).
-      dragging={type:'zone-edge-move',id:near.id,afterIdx:near.afterIdx,lastX:p.x,lastY:p.y};
+      // Plain click-drag on an edge moves the whole straight perimeter segment.
       const zo=zones.find(z=>z.id===near.id);
+      let moveIdxs=[near.afterIdx,(near.afterIdx+1)%((zo?.pts?.length)||1)];
+      if(zo&&Array.isArray(zo.pts)&&zo.pts.length>=3){
+        moveIdxs=collectCollinearChainIndices(zo.pts,near.afterIdx);
+      }
+      dragging={type:'zone-edge-move',id:near.id,afterIdx:near.afterIdx,moveIdxs,lastX:p.x,lastY:p.y};
       if(zo){activeZone=zo;setFocusedZone(zo.id);}
       ic.style.cursor='grabbing';
       renderAll();
