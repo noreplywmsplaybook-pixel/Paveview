@@ -1086,6 +1086,8 @@ select.sc-inp{cursor:pointer;width:40px}
           <button class="btn" id="btn-map-draw-start">Draw Zone</button>
           <button class="btn" id="btn-map-draw-finish">Finish</button>
           <button class="btn" id="btn-map-draw-cancel">Cancel</button>
+          <button class="btn" id="btn-map-export-svg">Export SVG</button>
+          <button class="btn" id="btn-map-export-pdf">Vector PDF</button>
         </div>
         <div id="map-import-status">Pick a location and click Refresh.</div>
         <canvas id="map-preview" width="1024" height="1024"></canvas>
@@ -1531,6 +1533,8 @@ const mapDrawClassSel=document.getElementById('map-draw-class');
 const btnMapDrawStart=document.getElementById('btn-map-draw-start');
 const btnMapDrawFinish=document.getElementById('btn-map-draw-finish');
 const btnMapDrawCancel=document.getElementById('btn-map-draw-cancel');
+const btnMapExportSvg=document.getElementById('btn-map-export-svg');
+const btnMapExportPdf=document.getElementById('btn-map-export-pdf');
 let pageModalView='source'; // source | pdf | map
 let waybackByYear={...WAYBACK_FALLBACK_BY_YEAR}; // { [year]: {m, date, label} }
 let mapViewState={lat:37.4219999,lng:-122.0840575,zoom:20,mode:'google',year:''};
@@ -1638,6 +1642,97 @@ function preprocessImageDataForBlueprint(srcCanvas){
   return out;
 }
 
+function escXml(v){
+  return String(v??'')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&apos;');
+}
+function classStyleForSvg(cls){
+  const st=classStyleForVector(cls);
+  return{
+    stroke:st.stroke||'#111',
+    strokeWidth:Number(st.lineWidth||1.5),
+    fill:st.fill||'none',
+    dash:Array.isArray(st.dash)&&st.dash.length?st.dash.join(','):'',
+  };
+}
+function buildMapVectorSvgDocument(opts={}){
+  const w=mapDetectionRenderSize.w||mapPreviewCanvas.width||1024;
+  const h=mapDetectionRenderSize.h||mapPreviewCanvas.height||1024;
+  const includeBase=opts.includeBase!==false;
+  const baseSrc=(mapRenderStyle==='blueprint'&&mapBaseProcessedImage)?mapBaseProcessedImage:mapBaseRawImage;
+  let baseDataUrl='';
+  if(includeBase&&baseSrc){
+    const c=document.createElement('canvas');
+    c.width=w;c.height=h;
+    c.getContext('2d').drawImage(baseSrc,0,0,w,h);
+    baseDataUrl=c.toDataURL('image/png');
+  }
+  const polys=(mapVectorDetections||[]).filter(z=>Array.isArray(z.points)&&z.points.length>=3);
+  const parts=[];
+  parts.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
+  parts.push(`<rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"/>`);
+  if(baseDataUrl)parts.push(`<image x="0" y="0" width="${w}" height="${h}" href="${escXml(baseDataUrl)}" opacity="${mapRenderStyle==='blueprint'?'0.96':'1'}"/>`);
+  parts.push(`<g id="rf-vectors">`);
+  polys.forEach((z,idx)=>{
+    const pts=z.points.map(pt=>`${Number(pt.x||0).toFixed(2)},${Number(pt.y||0).toFixed(2)}`).join(' ');
+    const st=classStyleForSvg(z.className);
+    const cls=escXml(z.className||`zone_${idx+1}`);
+    const dash=st.dash?` stroke-dasharray="${st.dash}"`:'';
+    parts.push(`<polygon points="${pts}" fill="${escXml(st.fill)}" stroke="${escXml(st.stroke)}" stroke-width="${st.strokeWidth}"${dash} vector-effect="non-scaling-stroke" data-class="${cls}"/>`);
+    const p0=z.points[0]||{x:0,y:0};
+    parts.push(`<text x="${Number(p0.x||0)+4}" y="${Number(p0.y||0)-4}" font-family="Arial, sans-serif" font-size="10" fill="#111">${cls}</text>`);
+  });
+  parts.push(`</g>`);
+  parts.push(`</svg>`);
+  return parts.join('');
+}
+function downloadTextFile(filename,text,mime='image/svg+xml'){
+  const blob=new Blob([text],{type:mime});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=filename;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+function exportMapVectorsAsSvg(){
+  if(!mapVectorDetections.length){
+    setImportStatus('No vector zones to export yet. Run AI Detect first.',true);
+    return;
+  }
+  const svg=buildMapVectorSvgDocument({includeBase:true});
+  const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+  downloadTextFile(`paveview-vector-${stamp}.svg`,svg,'image/svg+xml');
+  setImportStatus('Exported vector SVG.');
+}
+function openVectorPrintWindow(){
+  if(!mapVectorDetections.length){
+    setImportStatus('No vector zones to print. Run AI Detect first.',true);
+    return;
+  }
+  const svg=buildMapVectorSvgDocument({includeBase:true});
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>PaveView Vector</title><style>
+  html,body{margin:0;padding:0;background:#fff}
+  .page{width:11in;height:8.5in;display:flex;align-items:center;justify-content:center}
+  img,object{max-width:10.5in;max-height:8in}
+  @media print{.hint{display:none}}
+  .hint{position:fixed;top:10px;left:10px;font:12px Arial,sans-serif;background:#000;color:#fff;padding:6px 8px;border-radius:4px}
+  </style></head><body><div class="hint">Print → Save as PDF for vector page</div><div class="page"><object type="image/svg+xml" data="data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}"></object></div></body></html>`;
+  const win=window.open('','_blank','width=1200,height=800');
+  if(!win){setImportStatus('Popup blocked. Allow popups to print vector PDF.',true);return;}
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  setTimeout(()=>{try{win.focus();win.print();}catch(_){/* noop */}},350);
+}
+function exportMapVectorsAsPdf(){
+  openVectorPrintWindow();
+}
+
 function drawMapVectorOverlay(){
   if(!Array.isArray(mapVectorDetections)||!mapVectorDetections.length)return;
   const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
@@ -1701,6 +1796,8 @@ function syncMapVectorDetectionsToRaw(){
 function syncMapVectorDetectionsForTransfer(){
   syncMapVectorDetectionsToRaw();
 }
+
+// legacy duplicate export helpers removed
 
 function mapVectorToZoneType(cls){
   const c=String(cls||'').toLowerCase();
@@ -2267,6 +2364,34 @@ function pointInPolygon(pt,poly){
   return inside;
 }
 
+function mapVectorDetectionsToSvgMarkup(opts={}){
+  const w=mapPreviewCanvas.width;
+  const h=mapPreviewCanvas.height;
+  const base=(opts.baseStyle==='blueprint'&&mapBaseProcessedImage)?mapBaseProcessedImage:mapBaseRawImage;
+  const baseDataUrl=base?base.toDataURL('image/png'):'';
+  const esc=(s)=>String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const sx=mapDetectionRenderSize.w?w/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?h/mapDetectionRenderSize.h:1;
+  const polys=(mapVectorDetections||[]).map((z,idx)=>{
+    if(!Array.isArray(z.points)||z.points.length<3)return '';
+    const st=classStyleForVector(z.className);
+    const pts=z.points.map(p=>`${(p.x||0)*sx},${(p.y||0)*sy}`).join(' ');
+    const dash=(Array.isArray(st.dash)&&st.dash.length)?` stroke-dasharray="${st.dash.join(' ')}"`:'';
+    const selected=idx===mapSelectedVectorIdx?` stroke="#38bdf8" stroke-width="${Math.max(2,st.lineWidth+0.8)}"`:'';
+    const basePoly=`<polygon points="${pts}" fill="${st.fill}" stroke="${st.stroke}" stroke-width="${st.lineWidth}"${dash} data-class="${esc(z.className)}"/>`;
+    return selected?`${basePoly}<polygon points="${pts}" fill="none"${selected}/>`:basePoly;
+  }).join('');
+  const bg=baseDataUrl?`<image href="${baseDataUrl}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none"/>`:`<rect x="0" y="0" width="${w}" height="${h}" fill="#fff"/>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <title>PaveView Vector Export</title>
+  ${bg}
+  <g id="paveview-vectors">
+    ${polys}
+  </g>
+</svg>`;
+}
+
 async function loadMapPreview(opts={}){
   if(opts.fromInputs!==false)readMapInputsIntoState();
   const reqId=++mapRenderReqId;
@@ -2546,6 +2671,12 @@ if(btnMapDrawCancel){
     setImportStatus('Manual draw cancelled.');
     drawMapOverlay();
   });
+}
+if(btnMapExportSvg){
+  btnMapExportSvg.addEventListener('click',exportMapVectorsAsSvg);
+}
+if(btnMapExportPdf){
+  btnMapExportPdf.addEventListener('click',exportMapVectorsAsPdf);
 }
 mapImageryModeSel.addEventListener('change',async()=>{
   mapViewState.mode=mapImageryModeSel.value;
