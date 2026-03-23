@@ -1522,6 +1522,7 @@ let aiDetectionsForTransfer=[]; // frozen copy used when "Use Imagery" is clicke
 let pendingDetectionTransfer=false;
 let mapBaseRawImage=null;
 let mapBaseProcessedImage=null;
+let mapSnapBwImage=null; // strict B/W preprocessing layer used for pass-2 snapping
 let mapRenderStyle='satellite'; // satellite | blueprint
 let mapVectorDetections=[]; // normalized polygons for map preview editing
 let mapSelectedVectorIdx=-1;
@@ -1622,6 +1623,149 @@ function preprocessImageDataForBlueprint(srcCanvas){
   }
   octx.putImageData(id,0,0);
   return out;
+}
+function preprocessImageDataForSnapBw(srcCanvas){
+  const w=srcCanvas.width,h=srcCanvas.height;
+  const out=document.createElement('canvas');
+  out.width=w;out.height=h;
+  const octx=out.getContext('2d');
+  // slight blur to reduce high-frequency noise before threshold
+  octx.filter='blur(1px)';
+  octx.drawImage(srcCanvas,0,0,w,h);
+  octx.filter='none';
+  const id=octx.getImageData(0,0,w,h);
+  const d=id.data;
+  for(let i=0;i<d.length;i+=4){
+    const lum=(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]);
+    // contrast 200%, brightness 110%
+    const boosted=Math.max(0,Math.min(255,((lum-128)*2.0)+128*1.1));
+    const bw=boosted<80?0:255;
+    d[i]=bw;d[i+1]=bw;d[i+2]=bw;d[i+3]=255;
+  }
+  octx.putImageData(id,0,0);
+  return out;
+}
+function readBwMask(canvas){
+  if(!canvas)return null;
+  const w=canvas.width,h=canvas.height;
+  const id=canvas.getContext('2d').getImageData(0,0,w,h);
+  const d=id.data;
+  const mask=new Uint8Array(w*h);
+  for(let i=0,j=0;i<d.length;i+=4,j++){
+    mask[j]=d[i]>=250?1:0;
+  }
+  return{w,h,mask};
+}
+function nearestWhiteClusterCenter(bw,x,y,radius=18){
+  if(!bw||!bw.mask||!Number.isFinite(x)||!Number.isFinite(y))return null;
+  const w=bw.w,h=bw.h,m=bw.mask;
+  const cx=Math.round(x),cy=Math.round(y);
+  const r=Math.max(1,Math.round(radius));
+  let best=null;
+  for(let yy=Math.max(0,cy-r);yy<=Math.min(h-1,cy+r);yy++){
+    const dy=yy-cy;
+    for(let xx=Math.max(0,cx-r);xx<=Math.min(w-1,cx+r);xx++){
+      const dx=xx-cx;
+      const d2=dx*dx+dy*dy;
+      if(d2>r*r)continue;
+      const idx=yy*w+xx;
+      if(!m[idx])continue;
+      if(!best||d2<best.d2)best={x:xx,y:yy,d2};
+    }
+  }
+  if(!best)return null;
+  // local cluster centroid around nearest white hit
+  const cr=2;
+  let sx=0,sy=0,cnt=0;
+  for(let yy=Math.max(0,best.y-cr);yy<=Math.min(h-1,best.y+cr);yy++){
+    for(let xx=Math.max(0,best.x-cr);xx<=Math.min(w-1,best.x+cr);xx++){
+      if(!m[yy*w+xx])continue;
+      sx+=xx;sy+=yy;cnt++;
+    }
+  }
+  if(cnt>0)return{x:sx/cnt,y:sy/cnt};
+  return{x:best.x,y:best.y};
+}
+function classSnapRadius(cls){
+  const c=String(cls||'').toLowerCase();
+  if(c.includes('lot'))return 20;
+  if(c.includes('stall'))return 16;
+  return 15;
+}
+function snapPolygonPointsToBw(points,bw,cls){
+  if(!Array.isArray(points)||points.length<3||!bw)return Array.isArray(points)?points.slice():[];
+  const r=classSnapRadius(cls);
+  return points.map(pt=>{
+    const hit=nearestWhiteClusterCenter(bw,pt.x,pt.y,r);
+    return hit?{x:hit.x,y:hit.y}:{x:pt.x,y:pt.y};
+  });
+}
+function distPointToSegment(px,py,ax,ay,bx,by){
+  const dx=bx-ax,dy=by-ay;
+  const len2=dx*dx+dy*dy;
+  if(len2<=1e-9)return Math.hypot(px-ax,py-ay);
+  const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/len2));
+  const sx=ax+t*dx,sy=ay+t*dy;
+  return Math.hypot(px-sx,py-sy);
+}
+function stallCoveredByExisting(ptA,ptB,stallPolys,tol=12){
+  if(!Array.isArray(stallPolys)||!stallPolys.length)return false;
+  const mx=(ptA.x+ptB.x)/2,my=(ptA.y+ptB.y)/2;
+  return stallPolys.some(poly=>{
+    if(!Array.isArray(poly)||poly.length<2)return false;
+    for(let i=0;i<poly.length;i++){
+      const a=poly[i],b=poly[(i+1)%poly.length];
+      if(distPointToSegment(mx,my,a.x,a.y,b.x,b.y)<=tol)return true;
+    }
+    return false;
+  });
+}
+function detectStallAssistSegmentsFromBw(bw,existingStallPolys=[]){
+  if(!bw||!bw.mask)return [];
+  const {w,h,mask}=bw;
+  const minRun=24;
+  const segments=[];
+  // Horizontal runs (cheap Hough-like line extraction)
+  for(let y=0;y<h;y++){
+    let x=0;
+    while(x<w){
+      while(x<w&&!mask[y*w+x])x++;
+      const s=x;
+      while(x<w&&mask[y*w+x])x++;
+      const e=x-1;
+      if(e-s+1>=minRun){
+        const a={x:s,y},b={x:e,y};
+        if(!stallCoveredByExisting(a,b,existingStallPolys,10))segments.push({a,b});
+      }
+    }
+  }
+  // Vertical runs
+  for(let x=0;x<w;x++){
+    let y=0;
+    while(y<h){
+      while(y<h&&!mask[y*w+x])y++;
+      const s=y;
+      while(y<h&&mask[y*w+x])y++;
+      const e=y-1;
+      if(e-s+1>=minRun){
+        const a={x,y:s},b={x,y:e};
+        if(!stallCoveredByExisting(a,b,existingStallPolys,10))segments.push({a,b});
+      }
+    }
+  }
+  return segments.slice(0,120);
+}
+function segmentToThinStallPolygon(seg,widthPx=2){
+  const dx=seg.b.x-seg.a.x,dy=seg.b.y-seg.a.y;
+  const len=Math.hypot(dx,dy)||1;
+  const nx=-dy/len,ny=dx/len;
+  const hw=Math.max(1,widthPx/2);
+  return[
+    {x:seg.a.x+nx*hw,y:seg.a.y+ny*hw},
+    {x:seg.b.x+nx*hw,y:seg.b.y+ny*hw},
+    {x:seg.b.x-nx*hw,y:seg.b.y-ny*hw},
+    {x:seg.a.x-nx*hw,y:seg.a.y-ny*hw},
+  ];
 }
 
 function escXml(v){
@@ -2472,6 +2616,7 @@ async function drawTilePreview(mode,lat,lng,zoomLv,year){
   rawCanvas.getContext('2d').drawImage(mapPreviewCanvas,0,0);
   mapBaseRawImage=rawCanvas;
   mapBaseProcessedImage=preprocessImageDataForBlueprint(rawCanvas);
+  mapSnapBwImage=preprocessImageDataForSnapBw(rawCanvas);
 }
 
 function drawMapOverlay(){
@@ -2720,7 +2865,7 @@ async function runRoboflowDetection(){
     setImportStatus('Running Roboflow detection…');
     mapReviewState.active=false;
     mapInteraction.dragging=false;
-    // Keep Roboflow tied to raw capture as the primary model input.
+    // PASS 1: Keep Roboflow tied to raw capture as the primary model input.
     const inferSrc=mapBaseRawImage||mapPreviewCanvas;
     const inferCanvas=document.createElement('canvas');
     inferCanvas.width=mapPreviewCanvas.width;
@@ -2734,21 +2879,48 @@ async function runRoboflowDetection(){
     });
     const data=await res.json();
     if(!res.ok)throw new Error(data?.error||'Detection failed');
-    mapDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
-      filterDetectionsByClassConfidence(Array.isArray(data?.predictions)?data.predictions:[])
+
+    const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
+    // Store draft detections from Roboflow pass 1 (do not render yet).
+    const draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
+      filterDetectionsByClassConfidence(rawPredictions)
     )));
-    mapVectorDetections=mapDetections.map((p,idx)=>{
+
+    // PASS 2: preprocess to strict B/W and snap draft vertices to nearest white clusters.
+    const bwCanvas=preprocessImageDataForSnapBw(inferCanvas);
+    mapSnapBwImage=bwCanvas;
+    // keep blueprint mode base coherent with correction pass while preserving existing toggle behavior.
+    mapBaseProcessedImage=bwCanvas;
+    const bw=readBwMask(bwCanvas);
+    const draftVectors=draftDetections.map((p,idx)=>{
       const cls=String(p.class||'lot_boundary');
       const rawPts=normalizeRoboflowPredictionToPolygon(p);
-      const simpPts=simplifyClosedPolygon(rawPts,mapVectorSimplifyTarget(cls));
+      const snapped=snapPolygonPointsToBw(rawPts,bw,cls);
+      const simpPts=simplifyClosedPolygon(snapped,mapVectorSimplifyTarget(cls));
       return{
-      id:p.id||('rf-'+idx+'-'+Date.now()),
-      className:cls,
-      confidence:Number(p.confidence||0),
-      points:simpPts,
-    }}).filter(z=>Array.isArray(z.points)&&z.points.length>=3);
+        id:p.id||('rf-'+idx+'-'+Date.now()),
+        className:cls,
+        confidence:Number(p.confidence||0),
+        points:simpPts,
+      };
+    }).filter(z=>Array.isArray(z.points)&&z.points.length>=3);
+
+    // Secondary stall line assist (lightweight Hough-like extraction on B/W layer).
+    const existingStallPolys=draftVectors
+      .filter(v=>String(v.className||'').toLowerCase().includes('stall'))
+      .map(v=>v.points);
+    const assistSegs=detectStallAssistSegmentsFromBw(bw,existingStallPolys);
+    const assistVectors=assistSegs.map((seg,i)=>({
+      id:'assist-stall-'+Date.now()+'-'+i,
+      className:'parking_stall',
+      confidence:0.35,
+      points:segmentToThinStallPolygon(seg,2)
+    }));
+
+    mapVectorDetections=draftVectors.concat(assistVectors);
     mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
     mapDetectionRenderSize={w:data?.image?.width||mapPreviewCanvas.width,h:data?.image?.height||mapPreviewCanvas.height};
+    syncMapVectorDetectionsToRaw();
     await loadMapPreview({fromInputs:false,preserveDetections:true,reason:`Detections: ${mapDetections.length}`});
     const clsCounts={};
     mapVectorDetections.forEach(z=>{clsCounts[z.className]=(clsCounts[z.className]||0)+1;});
