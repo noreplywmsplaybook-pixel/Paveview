@@ -3741,12 +3741,11 @@ function calcBase(sqft,d){return sqft*(d/12)*110/2000}
 function updateStats(){
   const sc=getScale(),u=document.getElementById('scale-unit').value;
   if(focusedZoneId&&!zones.some(z=>z.id===focusedZoneId&&z.closed))focusedZoneId=null;
-  const focusedZone=focusedZoneId?zones.find(z=>z.id===focusedZoneId&&z.closed):null;
   const allClosed=zones.filter(z=>z.closed&&!z.obstruct);
   const allObst=zones.filter(z=>z.closed&&z.obstruct);
-  // Simple/explicit focused math: selected zone only.
-  const closed=focusedZone?(focusedZone.obstruct?[]:[focusedZone]):allClosed;
-  const obst=focusedZone?(focusedZone.obstruct?[focusedZone]:[]):allObst;
+  // Always compute project total as: sum(lots) - sum(obstructions).
+  const closed=allClosed;
+  const obst=allObst;
   let area=0,perim=0,obArea=0;
   closed.forEach(z=>{area+=polyArea(z.pts)*sc*sc;perim+=polyPerim(z.pts)*sc});
   obst.forEach(z=>{obArea+=polyArea(z.pts)*sc*sc});
