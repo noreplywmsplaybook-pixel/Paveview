@@ -1946,6 +1946,25 @@ function simplifyClosedPolygon(rawPts,targetMax=80){
     const step=Math.max(1,Math.ceil(simplified.length/targetMax));
     simplified=simplified.filter((_,i)=>i%step===0);
   }
+  if(simplified.length<3)simplified=pts.slice(0,Math.min(pts.length,targetMax));
+  // second-stage cleanup: remove near-collinear jitter + very short edges
+  const cleaned=[];
+  const minEdge=Math.max(0.8,diag*0.0022);
+  for(let i=0;i<simplified.length;i++){
+    const prev=simplified[(i-1+simplified.length)%simplified.length];
+    const cur=simplified[i];
+    const next=simplified[(i+1)%simplified.length];
+    const v1={x:cur.x-prev.x,y:cur.y-prev.y};
+    const v2={x:next.x-cur.x,y:next.y-cur.y};
+    const l1=Math.hypot(v1.x,v1.y),l2=Math.hypot(v2.x,v2.y);
+    if(l1<minEdge||l2<minEdge)continue;
+    const dot=(v1.x*v2.x+v1.y*v2.y)/(l1*l2);
+    // keep corners; drop almost-straight micro points
+    const isNearStraight=Math.abs(dot)>0.992;
+    if(isNearStraight)continue;
+    cleaned.push(cur);
+  }
+  if(cleaned.length>=3)simplified=cleaned;
   return simplified.length>=3?simplified:pts.slice(0,Math.min(pts.length,targetMax));
 }
 function detectionToZone(det){
