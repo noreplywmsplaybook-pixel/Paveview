@@ -1058,6 +1058,7 @@ select.sc-inp{cursor:pointer;width:40px}
           <label>Year</label>
           <select id="map-historical-year"></select>
           <button class="btn" id="btn-map-debug-bw" title="Debug only: preview pass-2 snap layer">Preview B&W</button>
+          <button class="btn" id="btn-map-debug-snap" title="Debug only: show before/after vertex snap deltas">Show Snap Changes</button>
           <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
         </div>
         <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows) before running AI detect.</div>
@@ -1501,6 +1502,7 @@ const mapImportStatus=document.getElementById('map-import-status');
 const mapImageryModeSel=document.getElementById('map-imagery-mode');
 const mapHistoricalYearSel=document.getElementById('map-historical-year');
 const btnMapDebugBw=document.getElementById('btn-map-debug-bw');
+const btnMapDebugSnap=document.getElementById('btn-map-debug-snap');
 const mapRenderStyleSel=document.getElementById('map-render-style');
 const mapDrawClassSel=document.getElementById('map-draw-class');
 const btnMapDrawStart=document.getElementById('btn-map-draw-start');
@@ -1526,6 +1528,8 @@ let mapBaseRawImage=null;
 let mapBaseProcessedImage=null;
 let mapSnapBwImage=null; // strict B/W preprocessing layer used for pass-2 snapping
 let mapDebugBwPreview=false; // debug-only B/W preview toggle for validation
+let mapDebugSnapOverlay=false; // debug-only overlay of vertex snap deltas
+let mapSnapDebugMoves=[]; // [{from:{x,y},to:{x,y},className,dist}]
 let mapRenderStyle='satellite'; // satellite | blueprint
 let mapVectorDetections=[]; // normalized polygons for map preview editing
 let mapSelectedVectorIdx=-1;
@@ -1936,6 +1940,47 @@ function drawMapVectorOverlay(){
     mapPreviewCtx.stroke();
     mapPreviewCtx.setLineDash([]);
   }
+  drawSnapDebugOverlay();
+  mapPreviewCtx.restore();
+}
+function drawSnapDebugOverlay(){
+  if(!mapDebugSnapOverlay||!Array.isArray(mapSnapDebugMoves)||!mapSnapDebugMoves.length)return;
+  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  mapPreviewCtx.save();
+  mapPreviewCtx.setLineDash([4,3]);
+  mapPreviewCtx.lineWidth=1.4;
+  mapSnapDebugMoves.forEach(m=>{
+    if(!m||!m.from||!m.to)return;
+    const fx=(m.from.x||0)*sx,fy=(m.from.y||0)*sy;
+    const tx=(m.to.x||0)*sx,ty=(m.to.y||0)*sy;
+    mapPreviewCtx.strokeStyle='rgba(56,189,248,0.95)';
+    mapPreviewCtx.beginPath();
+    mapPreviewCtx.moveTo(fx,fy);
+    mapPreviewCtx.lineTo(tx,ty);
+    mapPreviewCtx.stroke();
+    mapPreviewCtx.setLineDash([]);
+    mapPreviewCtx.beginPath();
+    mapPreviewCtx.arc(fx,fy,2.2,0,Math.PI*2);
+    mapPreviewCtx.fillStyle='rgba(239,68,68,0.95)';
+    mapPreviewCtx.fill();
+    mapPreviewCtx.beginPath();
+    mapPreviewCtx.arc(tx,ty,2.2,0,Math.PI*2);
+    mapPreviewCtx.fillStyle='rgba(34,197,94,0.95)';
+    mapPreviewCtx.fill();
+    mapPreviewCtx.setLineDash([4,3]);
+  });
+  mapPreviewCtx.setLineDash([]);
+  const shown=Math.min(mapSnapDebugMoves.length,9999);
+  mapPreviewCtx.fillStyle='rgba(0,0,0,0.72)';
+  mapPreviewCtx.fillRect(10,mapPreviewCanvas.height-52,280,32);
+  mapPreviewCtx.fillStyle='#e5e7eb';
+  mapPreviewCtx.font='11px JetBrains Mono,monospace';
+  mapPreviewCtx.fillText(`Snap debug: ${shown} moved vertices`,16,mapPreviewCanvas.height-32);
+  mapPreviewCtx.fillStyle='#ef4444';
+  mapPreviewCtx.fillText('red=before',170,mapPreviewCanvas.height-16);
+  mapPreviewCtx.fillStyle='#22c55e';
+  mapPreviewCtx.fillText('green=after',232,mapPreviewCanvas.height-16);
   mapPreviewCtx.restore();
 }
 function syncMapVectorDetectionsToRaw(){
@@ -1987,6 +2032,11 @@ function syncMapDebugBwButton(){
   btnMapDebugBw.classList.toggle('y',mapDebugBwPreview);
   btnMapDebugBw.textContent=mapDebugBwPreview?'B&W Preview: ON':'Preview B&W';
 }
+function syncMapDebugSnapButton(){
+  if(!btnMapDebugSnap)return;
+  btnMapDebugSnap.classList.toggle('y',mapDebugSnapOverlay);
+  btnMapDebugSnap.textContent=mapDebugSnapOverlay?'Snap Changes: ON':'Show Snap Changes';
+}
 function clearMapDetections(){
   mapDetections=[];
   mapDetectionRenderSize={w:0,h:0};
@@ -1998,6 +2048,7 @@ function clearMapDetections(){
   mapVectorDrag=null;
   mapVectorDragEdge=null;
   mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
+  mapSnapDebugMoves=[];
 }
 function detKind(p){
   const c=String(p?.class||'').toLowerCase();
@@ -2935,11 +2986,26 @@ async function runRoboflowDetection(){
       return readBwMask(ac);
     })();
     let snapMoved=0,snapTotal=0;
+    mapSnapDebugMoves=[];
     const draftVectors=draftDetections.map((p,idx)=>{
       const cls=String(p.class||'lot_boundary');
       const rawPts=normalizeRoboflowPredictionToPolygon(p);
       const snapRes=snapPolygonPointsToBw(rawPts,bwAligned,cls);
       snapMoved+=snapRes.moved;snapTotal+=snapRes.total;
+      const n=Math.min(rawPts.length,snapRes.points.length);
+      for(let i=0;i<n;i++){
+        const a=rawPts[i],b=snapRes.points[i];
+        if(!a||!b)continue;
+        const d=Math.hypot((b.x||0)-(a.x||0),(b.y||0)-(a.y||0));
+        if(d>0.5){
+          mapSnapDebugMoves.push({
+            from:{x:a.x||0,y:a.y||0},
+            to:{x:b.x||0,y:b.y||0},
+            className:cls,
+            dist:d
+          });
+        }
+      }
       const simpPts=simplifyClosedPolygon(snapRes.points,mapVectorSimplifyTarget(cls));
       return{
         id:p.id||('rf-'+idx+'-'+Date.now()),
@@ -3088,7 +3154,9 @@ document.getElementById('btn-import-source-map').addEventListener('click',async(
   setPageModalView('map');
   mapRenderStyle='satellite';
   mapDebugBwPreview=false;
+  mapDebugSnapOverlay=false;
   syncMapDebugBwButton();
+  syncMapDebugSnapButton();
   if(mapRenderStyleSel)mapRenderStyleSel.value='satellite';
   updateHistoricalControls();
   readMapInputsIntoState();
@@ -3106,6 +3174,18 @@ if(btnMapDebugBw){
     syncMapDebugBwButton();
     drawMapOverlay();
     setImportStatus(mapDebugBwPreview?'Debug B&W preview ON (for validation only).':'Debug B&W preview OFF.');
+  });
+}
+if(btnMapDebugSnap){
+  btnMapDebugSnap.addEventListener('click',()=>{
+    mapDebugSnapOverlay=!mapDebugSnapOverlay;
+    syncMapDebugSnapButton();
+    drawMapOverlay();
+    if(mapDebugSnapOverlay&&!mapSnapDebugMoves.length){
+      setImportStatus('Snap change overlay ON. Run AI Detect to populate moved-vertex lines.');
+    }else{
+      setImportStatus(mapDebugSnapOverlay?'Snap change overlay ON.':'Snap change overlay OFF.');
+    }
   });
 }
 if(mapRenderStyleSel){
@@ -3391,6 +3471,7 @@ mapPreviewCanvas.style.cursor='grab';
 if(mapRenderStyleSel)mapRenderStyleSel.value=mapRenderStyle;
 if(mapDrawClassSel)mapVectorDrawState.cls=mapDrawClassSel.value||mapVectorDrawState.cls;
 syncMapDebugBwButton();
+syncMapDebugSnapButton();
 populateWaybackYearsDropdown();
 updateHistoricalControls();
 
