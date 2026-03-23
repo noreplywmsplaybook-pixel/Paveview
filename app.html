@@ -1868,7 +1868,7 @@ async function enableDetectionReviewMode(){
 
 function classToMarkerType(cls){
   const c=String(cls||'').toLowerCase();
-  if(c.includes('handicap')||c==='ada')return 'ada';
+  if(c.includes('handicap')||c==='ada'||c.includes('accessible'))return 'ada';
   if(c.includes('arrow'))return 'stencil';
   if(c.includes('stall'))return 'stall';
   return null;
@@ -2007,9 +2007,15 @@ function detectionCenterPoint(det){
 }
 function dedupeStallLikeDetections(detections){
   if(!Array.isArray(detections)||!detections.length)return [];
+  const dedupeRadiusByType=(type)=>{
+    const t=String(type||'').toLowerCase();
+    if(t==='stall'||t==='ada')return 30;
+    if(t==='stencil')return 24;
+    return 20;
+  };
   const stallLike=(c)=>{
     const s=String(c||'').toLowerCase();
-    return s.includes('stall')||s.includes('ada')||s.includes('handicap')||s.includes('arrow')||s.includes('stencil');
+    return s.includes('stall')||s.includes('ada')||s.includes('handicap')||s.includes('accessible')||s.includes('arrow')||s.includes('stencil');
   };
   const kept=[];
   detections.forEach(det=>{
@@ -2024,7 +2030,8 @@ function dedupeStallLikeDetections(detections){
       const prevType=classToMarkerType(prev?.class)||String(prev?.class||'').toLowerCase();
       if(prevType!==markerType)return false;
       const pc=detectionCenterPoint(prev);
-      return Math.hypot(center.x-pc.x,center.y-pc.y)<=18;
+      const tol=Math.max(dedupeRadiusByType(markerType),dedupeRadiusByType(prevType));
+      return Math.hypot(center.x-pc.x,center.y-pc.y)<=tol;
     });
     if(dupIdx<0){
       kept.push(det);
@@ -2198,7 +2205,17 @@ function detectionToMarker(det){
   const t=classToMarkerType(det.class);
   if(!t)return null;
   const m={type:t,x:det.x,y:det.y,label:''};
-  if(t==='stencil')m.label='ARROW';
+  const cls=String(det?.class||'').toLowerCase();
+  if(t==='stencil'){
+    m.label='ARROW';
+  }else if(t==='ada'){
+    m.label='ADA';
+  }else if(t==='stall'){
+    // Keep standard stall dots aligned with existing PaveView labeling.
+    m.label='STALL';
+  }
+  // Preserve explicit class hints that should map to current label conventions.
+  if(cls.includes('accessible')||cls.includes('handicap'))m.label='ADA';
   return m;
 }
 function transferDetectionsToEditableObjects(){
@@ -2247,7 +2264,7 @@ function transferDetectionsToEditableObjects(){
     }
     const m=detectionToMarker(det);
     if(m){
-      const isMarkerDup=markers.some(existing=>markerLikelyDuplicate(existing,m,14));
+      const isMarkerDup=markers.some(existing=>markerLikelyDuplicate(existing,m));
       if(!isMarkerDup){
         markers.push(m);
         markersAdded++;
