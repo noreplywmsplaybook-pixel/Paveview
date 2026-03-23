@@ -1636,7 +1636,7 @@ function preprocessImageDataForSnapBw(srcCanvas){
   const out=document.createElement('canvas');
   out.width=w;out.height=h;
   const octx=out.getContext('2d');
-  // slight blur to reduce high-frequency noise before threshold
+  // Slight blur to reduce high-frequency noise before threshold.
   octx.filter='blur(1px)';
   octx.drawImage(srcCanvas,0,0,w,h);
   octx.filter='none';
@@ -1645,8 +1645,10 @@ function preprocessImageDataForSnapBw(srcCanvas){
   for(let i=0;i<d.length;i+=4){
     const lum=(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]);
     // contrast 200%, brightness 110%
-    const boosted=Math.max(0,Math.min(255,((lum-128)*2.0)+128*1.1));
-    const bw=boosted<80?0:255;
+    const contrasted=((lum-128)*2.0)+128;
+    const boosted=Math.max(0,Math.min(255,contrasted*1.1));
+    // Small dead-band around threshold to reduce speckle and improve visual clarity.
+    const bw=boosted<76?0:(boosted>92?255:(lum<84?0:255));
     d[i]=bw;d[i+1]=bw;d[i+2]=bw;d[i+3]=255;
   }
   octx.putImageData(id,0,0);
@@ -2924,6 +2926,16 @@ function updateHistoricalControls(){
 }
 
 async function captureMapImageryIntoPlan(){
+  // Never capture debug overlays into plan imagery.
+  const prevDebugBw=mapDebugBwPreview;
+  const prevDebugSnap=mapDebugSnapOverlay;
+  if(prevDebugBw||prevDebugSnap){
+    mapDebugBwPreview=false;
+    mapDebugSnapOverlay=false;
+    syncMapDebugBwButton();
+    syncMapDebugSnapButton();
+    drawMapOverlay();
+  }
   const lat=(Number.isFinite(mapViewState.lat)?mapViewState.lat:0).toFixed(5);
   const lng=(Number.isFinite(mapViewState.lng)?mapViewState.lng:0).toFixed(5);
   const mode=mapImageryModeSel.value;
@@ -2942,6 +2954,10 @@ async function captureMapImageryIntoPlan(){
   closeModal('page-modal');
   addCanvasAsPlan(oc,label,false,{autoScaleFeetPerPx:feetPerPx,skipCalibration:true});
   if(pendingDetectionTransfer)transferDetectionsWhenPlanReady();
+  mapDebugBwPreview=prevDebugBw;
+  mapDebugSnapOverlay=prevDebugSnap;
+  syncMapDebugBwButton();
+  syncMapDebugSnapButton();
 }
 
 async function runRoboflowDetection(){
@@ -3287,6 +3303,10 @@ mapPreviewCanvas.addEventListener('wheel',e=>{
 },{passive:false});
 mapPreviewCanvas.addEventListener('mousedown',e=>{
   if(pageModalView!=='map')return;
+  if(mapDebugSnapOverlay){
+    mapDebugSnapOverlay=false;
+    syncMapDebugSnapButton();
+  }
   const rect=mapPreviewCanvas.getBoundingClientRect();
   const mx=e.clientX-rect.left,my=e.clientY-rect.top;
   const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
