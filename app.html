@@ -1686,19 +1686,41 @@ function nearestWhiteClusterCenter(bw,x,y,radius=18){
   if(cnt>0)return{x:sx/cnt,y:sy/cnt};
   return{x:best.x,y:best.y};
 }
+const SNAP_RADIUS_BY_CLASS={
+  lot:20,
+  stall:16,
+  obstruction:15,
+  island:15,
+  building:15,
+  fire:15,
+  default:15
+};
 function classSnapRadius(cls){
   const c=String(cls||'').toLowerCase();
-  if(c.includes('lot'))return 20;
-  if(c.includes('stall'))return 16;
-  return 15;
+  if(c.includes('lot'))return SNAP_RADIUS_BY_CLASS.lot;
+  if(c.includes('stall'))return SNAP_RADIUS_BY_CLASS.stall;
+  if(c.includes('obstruct'))return SNAP_RADIUS_BY_CLASS.obstruction;
+  if(c.includes('island'))return SNAP_RADIUS_BY_CLASS.island;
+  if(c.includes('building'))return SNAP_RADIUS_BY_CLASS.building;
+  if(c.includes('fire'))return SNAP_RADIUS_BY_CLASS.fire;
+  return SNAP_RADIUS_BY_CLASS.default;
 }
 function snapPolygonPointsToBw(points,bw,cls){
-  if(!Array.isArray(points)||points.length<3||!bw)return Array.isArray(points)?points.slice():[];
+  if(!Array.isArray(points)||points.length<3||!bw){
+    return{points:Array.isArray(points)?points.slice():[],moved:0,total:Array.isArray(points)?points.length:0};
+  }
   const r=classSnapRadius(cls);
-  return points.map(pt=>{
+  let moved=0;
+  const out=points.map(pt=>{
     const hit=nearestWhiteClusterCenter(bw,pt.x,pt.y,r);
-    return hit?{x:hit.x,y:hit.y}:{x:pt.x,y:pt.y};
+    if(hit){
+      const d=Math.hypot(hit.x-pt.x,hit.y-pt.y);
+      if(d>0.5)moved++;
+      return{x:hit.x,y:hit.y};
+    }
+    return{x:pt.x,y:pt.y};
   });
+  return{points:out,moved,total:points.length};
 }
 function distPointToSegment(px,py,ax,ay,bx,by){
   const dx=bx-ax,dy=by-ay;
@@ -2892,11 +2914,22 @@ async function runRoboflowDetection(){
     // keep blueprint mode base coherent with correction pass while preserving existing toggle behavior.
     mapBaseProcessedImage=bwCanvas;
     const bw=readBwMask(bwCanvas);
+    const detW=Number(data?.image?.width)||mapPreviewCanvas.width;
+    const detH=Number(data?.image?.height)||mapPreviewCanvas.height;
+    // Align pass-2 B/W mask to Roboflow coordinate space if dimensions differ.
+    const bwAligned=(bw&&bw.w===detW&&bw.h===detH)?bw:(()=>{
+      const ac=document.createElement('canvas');
+      ac.width=detW;ac.height=detH;
+      ac.getContext('2d').drawImage(bwCanvas,0,0,detW,detH);
+      return readBwMask(ac);
+    })();
+    let snapMoved=0,snapTotal=0;
     const draftVectors=draftDetections.map((p,idx)=>{
       const cls=String(p.class||'lot_boundary');
       const rawPts=normalizeRoboflowPredictionToPolygon(p);
-      const snapped=snapPolygonPointsToBw(rawPts,bw,cls);
-      const simpPts=simplifyClosedPolygon(snapped,mapVectorSimplifyTarget(cls));
+      const snapRes=snapPolygonPointsToBw(rawPts,bwAligned,cls);
+      snapMoved+=snapRes.moved;snapTotal+=snapRes.total;
+      const simpPts=simplifyClosedPolygon(snapRes.points,mapVectorSimplifyTarget(cls));
       return{
         id:p.id||('rf-'+idx+'-'+Date.now()),
         className:cls,
@@ -2909,7 +2942,7 @@ async function runRoboflowDetection(){
     const existingStallPolys=draftVectors
       .filter(v=>String(v.className||'').toLowerCase().includes('stall'))
       .map(v=>v.points);
-    const assistSegs=detectStallAssistSegmentsFromBw(bw,existingStallPolys);
+    const assistSegs=detectStallAssistSegmentsFromBw(bwAligned,existingStallPolys);
     const assistVectors=assistSegs.map((seg,i)=>({
       id:'assist-stall-'+Date.now()+'-'+i,
       className:'parking_stall',
@@ -2927,7 +2960,8 @@ async function runRoboflowDetection(){
     const classSummary=Object.entries(clsCounts).map(([k,v])=>`${k}:${v}`).join(', ');
     mapReviewState.active=false;
     drawMapOverlay();
-    setImportStatus(`Detected ${mapVectorDetections.length} zones. ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
+    const snapPct=snapTotal?Math.round((snapMoved/snapTotal)*100):0;
+    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%). ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
   }catch(e){
     console.error(e);
     setImportStatus(`Detection failed: ${e.message}`,true);
