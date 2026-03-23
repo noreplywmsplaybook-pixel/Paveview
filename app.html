@@ -1057,6 +1057,7 @@ select.sc-inp{cursor:pointer;width:40px}
           </select>
           <label>Year</label>
           <select id="map-historical-year"></select>
+          <button class="btn" id="btn-map-debug-bw" title="Debug only: preview pass-2 snap layer">Preview B&W</button>
           <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
         </div>
         <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows) before running AI detect.</div>
@@ -1499,6 +1500,7 @@ const mapPreviewCtx=mapPreviewCanvas.getContext('2d');
 const mapImportStatus=document.getElementById('map-import-status');
 const mapImageryModeSel=document.getElementById('map-imagery-mode');
 const mapHistoricalYearSel=document.getElementById('map-historical-year');
+const btnMapDebugBw=document.getElementById('btn-map-debug-bw');
 const mapRenderStyleSel=document.getElementById('map-render-style');
 const mapDrawClassSel=document.getElementById('map-draw-class');
 const btnMapDrawStart=document.getElementById('btn-map-draw-start');
@@ -1523,6 +1525,7 @@ let pendingDetectionTransfer=false;
 let mapBaseRawImage=null;
 let mapBaseProcessedImage=null;
 let mapSnapBwImage=null; // strict B/W preprocessing layer used for pass-2 snapping
+let mapDebugBwPreview=false; // debug-only B/W preview toggle for validation
 let mapRenderStyle='satellite'; // satellite | blueprint
 let mapVectorDetections=[]; // normalized polygons for map preview editing
 let mapSelectedVectorIdx=-1;
@@ -1979,6 +1982,11 @@ function setImportStatus(msg,isError=false){
   mapImportStatus.style.color=isError?'var(--red)':'var(--text3)';
   mapImportStatus.textContent=msg;
 }
+function syncMapDebugBwButton(){
+  if(!btnMapDebugBw)return;
+  btnMapDebugBw.classList.toggle('y',mapDebugBwPreview);
+  btnMapDebugBw.textContent=mapDebugBwPreview?'B&W Preview: ON':'Preview B&W';
+}
 function clearMapDetections(){
   mapDetections=[];
   mapDetectionRenderSize={w:0,h:0};
@@ -1989,7 +1997,7 @@ function clearMapDetections(){
   mapSelectedVectorIdx=-1;
   mapVectorDrag=null;
   mapVectorDragEdge=null;
-  mapVectorDrawState={active:false,cls:mapDrawClassSel?.value||'lot_boundary',pts:[]};
+  mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
 }
 function detKind(p){
   const c=String(p?.class||'').toLowerCase();
@@ -2643,7 +2651,8 @@ async function drawTilePreview(mode,lat,lng,zoomLv,year){
 
 function drawMapOverlay(){
   // Re-render base depending on selected render style.
-  const base=(mapRenderStyle==='blueprint'&&mapBaseProcessedImage)?mapBaseProcessedImage:mapBaseRawImage;
+  const debugBwMode=(mapDebugBwPreview&&mapSnapBwImage);
+  const base=debugBwMode?mapSnapBwImage:((mapRenderStyle==='blueprint'&&mapBaseProcessedImage)?mapBaseProcessedImage:mapBaseRawImage);
   if(base){
     mapPreviewCtx.setTransform(1,0,0,1,0,0);
     mapPreviewCtx.clearRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
@@ -2677,7 +2686,9 @@ function drawMapOverlay(){
   mapPreviewCtx.stroke();
   mapPreviewCtx.fillStyle='#fff';
   mapPreviewCtx.font='11px JetBrains Mono,monospace';
-  const modeLabel=mapViewState.mode==='historical'?`Historical ${mapViewState.year||''}`:'Google Current';
+  const modeLabel=debugBwMode
+    ? ((mapViewState.mode==='historical'?`Historical ${mapViewState.year||''}`:'Google Current')+' · DEBUG B/W')
+    : (mapViewState.mode==='historical'?`Historical ${mapViewState.year||''}`:'Google Current');
   mapPreviewCtx.fillText(`${modeLabel} · z${mapViewState.zoom} · ${mapViewState.lat.toFixed(5)}, ${mapViewState.lng.toFixed(5)}`,14,24);
   if(yearLines.length){
     mapPreviewCtx.fillText('Available historical years:',14,38);
@@ -3076,6 +3087,8 @@ document.getElementById('btn-import-source-file').addEventListener('click',()=>i
 document.getElementById('btn-import-source-map').addEventListener('click',async()=>{
   setPageModalView('map');
   mapRenderStyle='satellite';
+  mapDebugBwPreview=false;
+  syncMapDebugBwButton();
   if(mapRenderStyleSel)mapRenderStyleSel.value='satellite';
   updateHistoricalControls();
   readMapInputsIntoState();
@@ -3087,6 +3100,14 @@ btnImportBack.addEventListener('click',()=>setPageModalView('source'));
 document.getElementById('btn-page-cancel').onclick=()=>{closeModal('page-modal');setPageModalView('source');};
 document.getElementById('btn-map-search').addEventListener('click',geocodeMapSearch);
 document.getElementById('map-search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();geocodeMapSearch();}});
+if(btnMapDebugBw){
+  btnMapDebugBw.addEventListener('click',()=>{
+    mapDebugBwPreview=!mapDebugBwPreview;
+    syncMapDebugBwButton();
+    drawMapOverlay();
+    setImportStatus(mapDebugBwPreview?'Debug B&W preview ON (for validation only).':'Debug B&W preview OFF.');
+  });
+}
 if(mapRenderStyleSel){
   mapRenderStyleSel.addEventListener('change',()=>{
     mapRenderStyle=mapRenderStyleSel.value||'satellite';
@@ -3369,6 +3390,7 @@ window.addEventListener('mouseup',()=>{
 mapPreviewCanvas.style.cursor='grab';
 if(mapRenderStyleSel)mapRenderStyleSel.value=mapRenderStyle;
 if(mapDrawClassSel)mapVectorDrawState.cls=mapDrawClassSel.value||mapVectorDrawState.cls;
+syncMapDebugBwButton();
 populateWaybackYearsDropdown();
 updateHistoricalControls();
 
