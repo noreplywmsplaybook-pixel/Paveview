@@ -1548,16 +1548,15 @@ let mapVectorDetections=[]; // normalized polygons for map preview editing
 let mapSelectedVectorIdx=-1;
 let mapVectorDrag=null; // {idx,ptIdx}
 let mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
-let mapOverlayEditingActive=false; // disable review-only pan/zoom when editing vectors
 
 function classStyleForVector(cls){
   const c=String(cls||'').toLowerCase();
-  if(c.includes('lot'))return {stroke:'#111',lineWidth:2.8,dash:[],fill:'rgba(15,15,15,0.08)'};
-  if(c.includes('parking_stall')||c.includes('stall'))return {stroke:'#f5d44b',lineWidth:1,dash:[],fill:'rgba(245,212,75,0.06)'};
+  if(c.includes('lot'))return {stroke:'#000',lineWidth:3,dash:[],fill:'rgba(20,20,20,0.08)'};
+  if(c.includes('parking_stall')||c.includes('stall'))return {stroke:'#fff8b8',lineWidth:1.1,dash:[],fill:'rgba(255,255,255,0.02)'};
   if(c.includes('fire_lane')||c.includes('fire'))return {stroke:'#ef4444',lineWidth:2,dash:[8,5],fill:'rgba(239,68,68,0.08)'};
-  if(c.includes('island')||c.includes('obstruct'))return {stroke:'#6b7280',lineWidth:1.8,dash:[6,4],fill:'rgba(107,114,128,0.08)'};
+  if(c.includes('island')||c.includes('obstruct'))return {stroke:'#6b7280',lineWidth:1.8,dash:[6,4],fill:'rgba(107,114,128,0.12)'};
   if(c.includes('building'))return {stroke:'#fff',lineWidth:1.5,dash:[],fill:'rgba(55,65,81,0.35)'};
-  return {stroke:'#111',lineWidth:1.8,dash:[],fill:'rgba(17,17,17,0.06)'};
+  return {stroke:'#000',lineWidth:2,dash:[],fill:'rgba(17,17,17,0.06)'};
 }
 
 function normalizeRoboflowPredictionToPolygon(p){
@@ -1605,19 +1604,34 @@ function preprocessImageDataForBlueprint(srcCanvas){
       edge[y*w+x]=mag;
     }
   }
-  // blueprint base: white background with dark lines
+  // Blueprint color plane:
+  // asphalt = black/near-black
+  // markings/stencils = white
+  // islands/curbs = gray mid-tones
+  // everything else muted grayscale
   for(let y=0;y<h;y++){
     for(let x=0;x<w;x++){
       const i=(y*w+x),bi=i*4;
       const g=gray[i];
       const e=edge[i];
-      const darkAsphalt=g<78;
-      const lightLine=g>185;
-      const curbMid=g>=95&&g<=150;
-      const dark=darkAsphalt?26:lightLine?36:curbMid?72:Math.max(70,190-g);
-      const lineBoost=Math.max(0,e-28)*1.35;
-      const v=Math.max(0,Math.min(255,255-(dark+lineBoost)));
-      d[bi]=v;d[bi+1]=v;d[bi+2]=v;d[bi+3]=255;
+      const darkAsphalt=g<85;
+      const brightMarking=g>185||e>145;
+      const islandMid=(g>=95&&g<=155)||((g>80&&g<175)&&e>72);
+      let v;
+      if(brightMarking){
+        v=245;
+      }else if(darkAsphalt){
+        v=20;
+      }else if(islandMid){
+        v=122;
+      }else{
+        // muted background tones between dark asphalt and white markings
+        v=Math.max(50,Math.min(210,Math.round(g*0.9)));
+      }
+      d[bi]=v;
+      d[bi+1]=v;
+      d[bi+2]=v;
+      d[bi+3]=255;
     }
   }
   octx.putImageData(id,0,0);
@@ -2334,7 +2348,8 @@ async function runRoboflowDetection(){
     setImportStatus('Running Roboflow detection…');
     mapReviewState.active=false;
     mapInteraction.dragging=false;
-    const inferSrc=(mapRenderStyle==='blueprint'&&mapBaseProcessedImage)?mapBaseProcessedImage:mapBaseRawImage;
+    // Keep Roboflow tied to raw capture as the primary model input.
+    const inferSrc=mapBaseRawImage||mapPreviewCanvas;
     const inferCanvas=document.createElement('canvas');
     inferCanvas.width=mapPreviewCanvas.width;
     inferCanvas.height=mapPreviewCanvas.height;
