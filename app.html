@@ -1869,7 +1869,7 @@ async function enableDetectionReviewMode(){
 function classToMarkerType(cls){
   const c=String(cls||'').toLowerCase();
   if(c.includes('handicap')||c==='ada'||c.includes('accessible'))return 'ada';
-  if(c.includes('arrow'))return 'stencil';
+  if(c.includes('arrow')||c.includes('crosswalk')||c.includes('hatch'))return 'stencil';
   if(c.includes('stall'))return 'stall';
   return null;
 }
@@ -1977,10 +1977,11 @@ function markerLikelyDuplicate(a,b,pxTol=12){
   if(ta!==tb)return false;
   const la=String(a.label||'').trim().toUpperCase();
   const lb=String(b.label||'').trim().toUpperCase();
-  if(la!==lb)return false;
+  const stallLikeType=(ta==='stall'||ta==='ada'||ta==='stencil');
+  if(!stallLikeType&&la!==lb)return false;
   const tol=Number.isFinite(pxTol)&&pxTol>0
     ? pxTol
-    : ((ta==='stall'||ta==='ada')?22:(ta==='stencil'?18:14));
+    : ((ta==='stall'||ta==='ada')?32:(ta==='stencil'?24:14));
   return Math.hypot((a.x||0)-(b.x||0),(a.y||0)-(b.y||0))<=tol;
 }
 function confidenceThresholdForClass(cls){
@@ -2009,13 +2010,13 @@ function dedupeStallLikeDetections(detections){
   if(!Array.isArray(detections)||!detections.length)return [];
   const dedupeRadiusByType=(type)=>{
     const t=String(type||'').toLowerCase();
-    if(t==='stall'||t==='ada')return 30;
-    if(t==='stencil')return 24;
+    if(t==='stall'||t==='ada')return 40;
+    if(t==='stencil')return 30;
     return 20;
   };
   const stallLike=(c)=>{
     const s=String(c||'').toLowerCase();
-    return s.includes('stall')||s.includes('ada')||s.includes('handicap')||s.includes('accessible')||s.includes('arrow')||s.includes('stencil');
+    return s.includes('stall')||s.includes('ada')||s.includes('handicap')||s.includes('accessible')||s.includes('arrow')||s.includes('stencil')||s.includes('crosswalk')||s.includes('hatch');
   };
   const kept=[];
   detections.forEach(det=>{
@@ -2028,10 +2029,14 @@ function dedupeStallLikeDetections(detections){
     const dupIdx=kept.findIndex(prev=>{
       if(!stallLike(prev?.class))return false;
       const prevType=classToMarkerType(prev?.class)||String(prev?.class||'').toLowerCase();
-      if(prevType!==markerType)return false;
       const pc=detectionCenterPoint(prev);
+      const d=Math.hypot(center.x-pc.x,center.y-pc.y);
+      // If two stall-like detections are nearly on top of each other, collapse them
+      // even if one is misclassified (e.g. stall vs ada/arrow).
+      if(d<=14)return true;
+      if(prevType!==markerType)return false;
       const tol=Math.max(dedupeRadiusByType(markerType),dedupeRadiusByType(prevType));
-      return Math.hypot(center.x-pc.x,center.y-pc.y)<=tol;
+      return d<=tol;
     });
     if(dupIdx<0){
       kept.push(det);
@@ -2207,7 +2212,7 @@ function detectionToMarker(det){
   const m={type:t,x:det.x,y:det.y,label:''};
   const cls=String(det?.class||'').toLowerCase();
   if(t==='stencil'){
-    m.label='ARROW';
+    m.label=(cls.includes('hatch')||cls.includes('crosswalk'))?'HATCH':'ARROW';
   }else if(t==='ada'){
     m.label='ADA';
   }else if(t==='stall'){
@@ -4328,7 +4333,9 @@ function renderZones(){
   // Measurements
   if(!hasZoneFocus)renderMeasurementShapes(dCtx);
   // Markers
-  if(!hasZoneFocus)markers.forEach((m,idx)=>{
+  markers.forEach((m,idx)=>{
+    // Keep detection dots editable even in focused-zone mode.
+    if(hasZoneFocus&&!(m.type==='stall'||m.type==='ada'||m.type==='stencil'))return;
     const isH=hovering&&hovering.type==='marker'&&hovering.idx===idx;
     const col={stall:'#f5c842',ada:'#3b82f6',bollard:'#f97316',stopblock:'#ef4444',stencil:'#a855f7','bollard-sign':'#f97316'}[m.type]||'#fff';
     const r=Math.max(5,Math.min(12,8/zoom))*(isH?1.4:1);
