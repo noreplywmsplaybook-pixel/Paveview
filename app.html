@@ -2089,6 +2089,17 @@ function classToMarkerType(cls){
   if(c.includes('stall'))return 'stall';
   return null;
 }
+function classIsStallLike(cls){
+  const c=String(cls||'').toLowerCase();
+  return c.includes('stall')
+    || c.includes('ada')
+    || c.includes('handicap')
+    || c.includes('accessible')
+    || c.includes('arrow')
+    || c.includes('stencil')
+    || c.includes('crosswalk')
+    || c.includes('hatch');
+}
 function classIsObstruction(cls){
   const c=String(cls||'').toLowerCase();
   return c.includes('obstruction')||c.includes('obstruct')||c.includes('island')||c.includes('building')||c.includes('fire_lane')||c.includes('fire');
@@ -2096,6 +2107,57 @@ function classIsObstruction(cls){
 function classIsLot(cls){
   const c=String(cls||'').toLowerCase();
   return c.includes('lot');
+}
+function primaryLotPolygonFromDetections(detections){
+  if(!Array.isArray(detections)||!detections.length)return null;
+  let best=null;
+  let bestArea=0;
+  detections.forEach(det=>{
+    if(!classIsLot(det?.class))return;
+    const pts=detectionToPolygonPoints(det);
+    if(!Array.isArray(pts)||pts.length<3)return;
+    const area=polygonArea(pts);
+    if(area>bestArea){bestArea=area;best=pts;}
+  });
+  return (best&&best.length>=3)?best:null;
+}
+function keepStallLikeDetectionsInsideLot(detections,lotPoly=null){
+  if(!Array.isArray(detections)||!detections.length)return [];
+  const lot=(Array.isArray(lotPoly)&&lotPoly.length>=3)?lotPoly:primaryLotPolygonFromDetections(detections);
+  if(!lot){
+    // If no lot was detected, drop stall-like detections to avoid top-of-image false positives.
+    return detections.filter(det=>!classIsStallLike(det?.class));
+  }
+  return detections.filter(det=>{
+    if(!classIsStallLike(det?.class))return true;
+    const ctr=detectionCenterPoint(det);
+    return pointInPolygon(ctr,lot);
+  });
+}
+function primaryLotPolygonFromVectors(vectors){
+  if(!Array.isArray(vectors)||!vectors.length)return null;
+  let best=null;
+  let bestArea=0;
+  vectors.forEach(v=>{
+    if(!classIsLot(v?.className))return;
+    const pts=Array.isArray(v?.points)?v.points:[];
+    if(pts.length<3)return;
+    const area=polygonArea(pts);
+    if(area>bestArea){bestArea=area;best=pts;}
+  });
+  return (best&&best.length>=3)?best:null;
+}
+function keepStallLikeVectorsInsideLot(vectors,lotPoly=null){
+  if(!Array.isArray(vectors)||!vectors.length)return [];
+  const lot=(Array.isArray(lotPoly)&&lotPoly.length>=3)?lotPoly:primaryLotPolygonFromVectors(vectors);
+  if(!lot){
+    return vectors.filter(v=>!classIsStallLike(v?.className));
+  }
+  return vectors.filter(v=>{
+    if(!classIsStallLike(v?.className))return true;
+    const ctr=detectionCenterPoint({points:Array.isArray(v?.points)?v.points:[]});
+    return pointInPolygon(ctr,lot);
+  });
 }
 function detectionToPolygonPoints(det){
   if(Array.isArray(det?.points)&&det.points.length>=3){
@@ -2443,8 +2505,10 @@ function transferDetectionsToEditableObjects(){
   const srcRaw=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
   const src=dedupeStallLikeDetections(
     dedupeZoneDetections(
-      keepSinglePrimaryLotDetections(
-        filterDetectionsByClassConfidence(srcRaw)
+      keepStallLikeDetectionsInsideLot(
+        keepSinglePrimaryLotDetections(
+          filterDetectionsByClassConfidence(srcRaw)
+        )
       )
     )
   );
@@ -2947,7 +3011,9 @@ async function captureMapImageryIntoPlan(){
   const feetPerPx=metersPerPixel(mapViewState.lat,mapViewState.zoom)*3.28084;
   pendingAutoScaleFeetPerPx=feetPerPx;
   const activeDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
-    filterDetectionsByClassConfidence((aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections)
+    keepStallLikeDetectionsInsideLot(
+      filterDetectionsByClassConfidence((aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections)
+    )
   )));
   aiDetectionsForTransfer=JSON.parse(JSON.stringify(activeDetections||[]));
   pendingDetectionTransfer=!!(activeDetections&&activeDetections.length);
@@ -2983,7 +3049,9 @@ async function runRoboflowDetection(){
     const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
     // Store draft detections from Roboflow pass 1 (do not render yet).
     const draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
-      filterDetectionsByClassConfidence(rawPredictions)
+      keepStallLikeDetectionsInsideLot(
+        filterDetectionsByClassConfidence(rawPredictions)
+      )
     )));
 
     // PASS 2: preprocess to strict B/W and snap draft vertices to nearest white clusters.
@@ -3043,7 +3111,8 @@ async function runRoboflowDetection(){
       points:segmentToThinStallPolygon(seg,2)
     }));
 
-    mapVectorDetections=draftVectors.concat(assistVectors);
+    const allVectors=draftVectors.concat(assistVectors);
+    mapVectorDetections=keepStallLikeVectorsInsideLot(allVectors);
     mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
     mapDetectionRenderSize={w:data?.image?.width||mapPreviewCanvas.width,h:data?.image?.height||mapPreviewCanvas.height};
     syncMapVectorDetectionsToRaw();
