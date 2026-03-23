@@ -3734,6 +3734,22 @@ function polyCentroid(pts){
   pts.forEach(p=>{x+=p.x;y+=p.y;});
   return {x:x/pts.length,y:y/pts.length};
 }
+function pointInPolygon2(pt,poly){
+  if(!pt||!Array.isArray(poly)||poly.length<3)return false;
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const a=poly[i],b=poly[j];
+    const hit=((a.y>pt.y)!==(b.y>pt.y))&&(pt.x<((b.x-a.x)*(pt.y-a.y))/((b.y-a.y)||1e-9)+a.x);
+    if(hit)inside=!inside;
+  }
+  return inside;
+}
+function obstructionInsideLot(obs,lot){
+  if(!obs||!lot||!Array.isArray(obs.pts)||!Array.isArray(lot.pts)||obs.pts.length<3||lot.pts.length<3)return false;
+  const c=polyCentroid(obs.pts);
+  if(pointInPolygon2(c,lot.pts))return true;
+  return obs.pts.some(p=>pointInPolygon2(p,lot.pts));
+}
 function calcTons(sqft,d,c){return sqft*(d/12)*145/2000*c}
 function calcBase(sqft,d){return sqft*(d/12)*110/2000}
 
@@ -3743,11 +3759,17 @@ function updateStats(){
   if(focusedZoneId&&!zones.some(z=>z.id===focusedZoneId&&z.closed))focusedZoneId=null;
   const allClosed=zones.filter(z=>z.closed&&!z.obstruct);
   const allObst=zones.filter(z=>z.closed&&z.obstruct);
-  // Always compute project total as: sum(lots) - sum(obstructions).
   const closed=allClosed;
   const obst=allObst;
   let area=0,perim=0,obArea=0;
-  closed.forEach(z=>{area+=polyArea(z.pts)*sc*sc;perim+=polyPerim(z.pts)*sc});
+  closed.forEach(lot=>{
+    area+=polyArea(lot.pts)*sc*sc;
+    let lotPerim=polyPerim(lot.pts)*sc;
+    // Treat in-lot obstructions as holes: add their inner boundary length.
+    const insideObs=allObst.filter(o=>obstructionInsideLot(o,lot));
+    insideObs.forEach(o=>{lotPerim+=polyPerim(o.pts)*sc;});
+    perim+=lotPerim;
+  });
   obst.forEach(z=>{obArea+=polyArea(z.pts)*sc*sc});
   const net=Math.max(0,area-obArea);
   let hatchA=0,cwA=0,adaHA=0;
