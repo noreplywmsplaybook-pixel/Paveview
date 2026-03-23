@@ -1569,6 +1569,49 @@ function normalizeRoboflowPredictionToPolygon(p){
     {x:x-w/2,y:y+h/2},
   ];
 }
+function buildBoundarySeedPolygonForDetection(det,rawPts=[]){
+  const cls=String(det?.class||'').toLowerCase();
+  const pts=Array.isArray(rawPts)&&rawPts.length>=3
+    ? rawPts.map(p=>({x:Number(p?.x)||0,y:Number(p?.y)||0}))
+    : normalizeRoboflowPredictionToPolygon(det);
+  const bb=polygonBounds(pts);
+  const cx=Number.isFinite((bb?.minX+bb?.maxX)/2)?((bb.minX+bb.maxX)/2):(Number(det?.x)||0);
+  const cy=Number.isFinite((bb?.minY+bb?.maxY)/2)?((bb.minY+bb.maxY)/2):(Number(det?.y)||0);
+  const bw=Math.max(8,Number(bb?.w)||Number(det?.width)||8);
+  const bh=Math.max(8,Number(bb?.h)||Number(det?.height)||8);
+  const rx=Math.max(10,(bw*0.56)+8);
+  const ry=Math.max(10,(bh*0.56)+8);
+  const steps=cls.includes('lot')?56:44;
+  const seed=[];
+  for(let i=0;i<steps;i++){
+    const t=(i/steps)*Math.PI*2;
+    seed.push({x:cx+Math.cos(t)*rx,y:cy+Math.sin(t)*ry});
+  }
+  return seed.length>=3?seed:pts;
+}
+function applySnapPriorityToAreaDetections(detections,bw){
+  if(!Array.isArray(detections)||!detections.length||!bw)return Array.isArray(detections)?detections.slice():[];
+  return detections.map((det,idx)=>{
+    const cls=String(det?.class||'');
+    if(!classUsesBoundarySnapPriority(cls))return det;
+    const rawPts=normalizeRoboflowPredictionToPolygon(det);
+    const seedPts=buildBoundarySeedPolygonForDetection(det,rawPts);
+    const refined=snapPriorityBoundaryPolygon(seedPts,bw,cls);
+    const simpPts=simplifyClosedPolygon(refined.points,mapVectorSimplifyTarget(cls));
+    if(!Array.isArray(simpPts)||simpPts.length<3)return det;
+    const ctr=detectionCenterPoint({points:simpPts});
+    const bb=polygonBounds(simpPts);
+    return{
+      ...det,
+      id:det?.id||(`bw-area-${idx}-${Date.now()}`),
+      x:Number(ctr?.x)||Number(det?.x)||0,
+      y:Number(ctr?.y)||Number(det?.y)||0,
+      width:Number(bb?.w)||Number(det?.width)||0,
+      height:Number(bb?.h)||Number(det?.height)||0,
+      points:simpPts
+    };
+  });
+}
 
 function preprocessImageDataForBlueprint(srcCanvas){
   const w=srcCanvas.width,h=srcCanvas.height;
@@ -1734,6 +1777,83 @@ function snapPolygonPointsToBw(points,bw,cls){
   });
   return{points:out,moved,total:points.length};
 }
+function resampleClosedPolygon(points,stepPx=6){
+  if(!Array.isArray(points)||points.length<3)return Array.isArray(points)?points.slice():[];
+  const step=Math.max(2,Number(stepPx)||6);
+  const out=[];
+  for(let i=0;i<points.length;i++){
+    const a=points[i],b=points[(i+1)%points.length];
+    if(!a||!b)continue;
+    out.push({x:a.x,y:a.y});
+    const len=Math.hypot((b.x||0)-(a.x||0),(b.y||0)-(a.y||0));
+    const n=Math.max(0,Math.floor(len/step)-1);
+    for(let k=1;k<=n;k++){
+      const t=k/(n+1);
+      out.push({
+        x:(a.x||0)+((b.x||0)-(a.x||0))*t,
+        y:(a.y||0)+((b.y||0)-(a.y||0))*t
+      });
+    }
+  }
+  return out;
+}
+function removeNearDuplicatePathPoints(points,minDist=1.8){
+  if(!Array.isArray(points)||!points.length)return [];
+  const keep=[{x:points[0].x||0,y:points[0].y||0}];
+  for(let i=1;i<points.length;i++){
+    const p=points[i];
+    const last=keep[keep.length-1];
+    if(Math.hypot((p.x||0)-last.x,(p.y||0)-last.y)>=minDist){
+      keep.push({x:p.x||0,y:p.y||0});
+    }
+  }
+  if(keep.length>=3){
+    const first=keep[0],last=keep[keep.length-1];
+    if(Math.hypot(first.x-last.x,first.y-last.y)<minDist)keep.pop();
+  }
+  return keep;
+}
+function classUsesBoundarySnapPriority(cls){
+  const c=String(cls||'').toLowerCase();
+  return c.includes('lot')||c.includes('obstruct')||c.includes('island');
+}
+function snapPriorityBoundaryPolygon(points,bw,cls){
+  const base=snapPolygonPointsToBw(points,bw,cls);
+  if(!Array.isArray(points)||points.length<3||!bw)return base;
+  const c=String(cls||'').toLowerCase();
+  const denseStep=c.includes('lot')?5:4;
+  const dense=resampleClosedPolygon(points,denseStep);
+  if(!dense.length)return base;
+  const radius=Math.max(classSnapRadius(cls)+8,22);
+  let moved=0;
+  const snappedDense=dense.map(pt=>{
+    const hit=nearestWhiteClusterCenter(bw,pt.x,pt.y,radius);
+    if(hit){
+      if(Math.hypot(hit.x-pt.x,hit.y-pt.y)>0.5)moved++;
+      return{x:hit.x,y:hit.y};
+    }
+    return{x:pt.x,y:pt.y};
+  });
+  const cleaned=removeNearDuplicatePathPoints(snappedDense,1.8);
+  if(cleaned.length<3)return base;
+  const target=Math.max(
+    mapVectorSimplifyTarget(cls),
+    c.includes('lot')?54:44
+  );
+  const simplified=simplifyClosedPolygon(cleaned,target);
+  if(!Array.isArray(simplified)||simplified.length<3)return base;
+  // Final light snap keeps simplified vertices glued to high-contrast lines.
+  const finalSnap=snapPolygonPointsToBw(simplified,bw,cls);
+  return{
+    points:finalSnap.points,
+    moved:moved+finalSnap.moved,
+    total:dense.length+finalSnap.total
+  };
+}
+function refineAreaBoundaryByBw(points,bw,cls){
+  const res=snapPriorityBoundaryPolygon(points,bw,cls);
+  return Array.isArray(res?.points)?res.points:(Array.isArray(points)?points.slice():[]);
+}
 function distPointToSegment(px,py,ax,ay,bx,by){
   const dx=bx-ax,dy=by-ay;
   const len2=dx*dx+dy*dy;
@@ -1800,6 +1920,152 @@ function segmentToThinStallPolygon(seg,widthPx=2){
     {x:seg.b.x-nx*hw,y:seg.b.y-ny*hw},
     {x:seg.a.x-nx*hw,y:seg.a.y-ny*hw},
   ];
+}
+function clampNum(v,min,max){
+  return Math.max(min,Math.min(max,v));
+}
+function estimateTileLotCoverage(rect,lotPoly){
+  if(!rect||!Array.isArray(lotPoly)||lotPoly.length<3)return 0;
+  const cols=4,rows=4;
+  let inside=0,total=0;
+  for(let yi=0;yi<rows;yi++){
+    for(let xi=0;xi<cols;xi++){
+      const x=rect.x+((xi+0.5)/cols)*rect.w;
+      const y=rect.y+((yi+0.5)/rows)*rect.h;
+      total++;
+      if(pointInPolygon({x,y},lotPoly))inside++;
+    }
+  }
+  return total?inside/total:0;
+}
+function buildLotZoomScanTiles(lotPoly,imageW,imageH,opts={}){
+  if(!Array.isArray(lotPoly)||lotPoly.length<3||!imageW||!imageH)return [];
+  const bb=polygonBounds(lotPoly);
+  if(!bb||bb.w<10||bb.h<10)return [];
+  const pad=Number.isFinite(opts.pad)?opts.pad:20;
+  const minX=clampNum(Math.floor(bb.minX-pad),0,Math.max(0,imageW-1));
+  const maxX=clampNum(Math.ceil(bb.maxX+pad),0,Math.max(1,imageW));
+  const minY=clampNum(Math.floor(bb.minY-pad),0,Math.max(0,imageH-1));
+  const maxY=clampNum(Math.ceil(bb.maxY+pad),0,Math.max(1,imageH));
+  const boxW=Math.max(1,maxX-minX);
+  const boxH=Math.max(1,maxY-minY);
+  const maxTiles=Math.max(2,Math.min(16,Number(opts.maxTiles)||10));
+  const overlap=Math.max(0.15,Math.min(0.7,Number(opts.overlap)||0.42));
+  const baseSize=Math.round(Math.min(imageW,imageH)*0.46);
+  const tileSrc=Math.max(320,Math.min(700,baseSize));
+  const step=Math.max(120,Math.round(tileSrc*(1-overlap)));
+  const cols=Math.max(1,Math.ceil((Math.max(0,boxW-tileSrc))/step)+1);
+  const rows=Math.max(1,Math.ceil((Math.max(0,boxH-tileSrc))/step)+1);
+  const lotCtr=detectionCenterPoint({points:lotPoly});
+  const cands=[];
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      let x=minX+(c*step);
+      let y=minY+(r*step);
+      if(x+tileSrc>maxX)x=Math.max(minX,maxX-tileSrc);
+      if(y+tileSrc>maxY)y=Math.max(minY,maxY-tileSrc);
+      const w=Math.max(120,Math.min(tileSrc,imageW-x));
+      const h=Math.max(120,Math.min(tileSrc,imageH-y));
+      const rect={x:Math.round(x),y:Math.round(y),w:Math.round(w),h:Math.round(h)};
+      const coverage=estimateTileLotCoverage(rect,lotPoly);
+      if(coverage<0.12)continue;
+      const cx=rect.x+rect.w/2,cy=rect.y+rect.h/2;
+      const dist=Math.hypot(cx-(lotCtr.x||0),cy-(lotCtr.y||0));
+      cands.push({...rect,coverage,dist});
+    }
+  }
+  cands.sort((a,b)=>{
+    if(Math.abs(b.coverage-a.coverage)>1e-6)return b.coverage-a.coverage;
+    return a.dist-b.dist;
+  });
+  const uniq=[];
+  for(const c of cands){
+    const near=uniq.some(u=>Math.hypot((u.x+u.w/2)-(c.x+c.w/2),(u.y+u.h/2)-(c.y+c.h/2))<=Math.min(u.w,u.h)*0.26);
+    if(!near)uniq.push(c);
+    if(uniq.length>=maxTiles)break;
+  }
+  return uniq;
+}
+function remapDetectionFromTileToGlobal(det,tile,tileW,tileH,idx){
+  if(!det||!tile||!tileW||!tileH)return null;
+  const sx=tile.w/tileW,sy=tile.h/tileH;
+  const cls=String(det.class||'').trim();
+  if(!cls)return null;
+  if(Array.isArray(det.points)&&det.points.length>=3){
+    const points=det.points.map(pt=>({
+      x:tile.x+(Number(pt?.x)||0)*sx,
+      y:tile.y+(Number(pt?.y)||0)*sy
+    }));
+    const ctr=detectionCenterPoint({points});
+    const bb=polygonBounds(points);
+    return{
+      id:`tile-${idx}-${Date.now()}`,
+      class:cls,
+      confidence:Number(det.confidence||0),
+      x:ctr.x||0,
+      y:ctr.y||0,
+      width:Math.max(0,bb?.w||0),
+      height:Math.max(0,bb?.h||0),
+      points
+    };
+  }
+  const gx=tile.x+(Number(det.x)||0)*sx;
+  const gy=tile.y+(Number(det.y)||0)*sy;
+  const gw=Math.max(0,(Number(det.width)||0)*sx);
+  const gh=Math.max(0,(Number(det.height)||0)*sy);
+  return{
+    id:`tile-${idx}-${Date.now()}`,
+    class:cls,
+    confidence:Number(det.confidence||0),
+    x:gx,y:gy,width:gw,height:gh
+  };
+}
+async function runLotStallZoomScan(rawCanvas,lotPoly){
+  if(!rawCanvas||!Array.isArray(lotPoly)||lotPoly.length<3){
+    return{detections:[],tilesPlanned:0,tilesRan:0};
+  }
+  const tiles=buildLotZoomScanTiles(lotPoly,rawCanvas.width,rawCanvas.height,{maxTiles:10,overlap:0.45});
+  if(!tiles.length)return{detections:[],tilesPlanned:0,tilesRan:0};
+  const outW=1024,outH=1024;
+  const all=[];
+  let ran=0;
+  for(let i=0;i<tiles.length;i++){
+    const tile=tiles[i];
+    setImportStatus(`Running stall zoom scan ${i+1}/${tiles.length}…`);
+    try{
+      const tc=document.createElement('canvas');
+      tc.width=outW;tc.height=outH;
+      const tctx=tc.getContext('2d');
+      tctx.imageSmoothingEnabled=true;
+      tctx.imageSmoothingQuality='high';
+      tctx.drawImage(rawCanvas,tile.x,tile.y,tile.w,tile.h,0,0,outW,outH);
+      const payload={
+        imageDataUrl:tc.toDataURL('image/jpeg',0.92),
+        mode:'detect',
+        confidence:18,
+        overlap:30
+      };
+      const res=await fetch('/api/roboflow-detect',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(payload)
+      });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok)continue;
+      ran++;
+      const preds=Array.isArray(data?.predictions)?data.predictions:[];
+      preds.forEach((p,pIdx)=>{
+        if(!classIsStallLike(p?.class))return;
+        const mapped=remapDetectionFromTileToGlobal(p,tile,outW,outH,`${i}-${pIdx}`);
+        if(!mapped)return;
+        const ctr=detectionCenterPoint(mapped);
+        if(pointInPolygon(ctr,lotPoly))all.push(mapped);
+      });
+    }catch(e){
+      console.warn('Tile stall scan failed:',e);
+    }
+  }
+  return{detections:all,tilesPlanned:tiles.length,tilesRan:ran};
 }
 
 function escXml(v){
@@ -3144,12 +3410,64 @@ async function runRoboflowDetection(){
     if(!res.ok)throw new Error(data?.error||'Detection failed');
 
     const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
-    // Store draft detections from Roboflow pass 1 (do not render yet).
-    const draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
-      keepStallLikeDetectionsInsideLot(
-        filterDetectionsByClassConfidence(rawPredictions)
-      )
+    const detW=Number(data?.image?.width)||mapPreviewCanvas.width;
+    const detH=Number(data?.image?.height)||mapPreviewCanvas.height;
+    // Build strict B/W snap layer immediately so lot/obstruction boundaries can
+    // drive downstream lot-gating and zoom-tile planning.
+    const bwCanvas=preprocessImageDataForSnapBw(inferCanvas);
+    mapSnapBwImage=bwCanvas;
+    mapBaseProcessedImage=bwCanvas;
+    const bw=readBwMask(bwCanvas);
+    const bwAligned=(bw&&bw.w===detW&&bw.h===detH)?bw:(()=>{
+      const ac=document.createElement('canvas');
+      ac.width=detW;ac.height=detH;
+      ac.getContext('2d').drawImage(bwCanvas,0,0,detW,detH);
+      return readBwMask(ac);
+    })();
+    // Snap-priority seed detections: refine area boundaries first, then use those
+    // refined boundaries as the lot gate for stall filtering and zoom scans.
+    const seededDetections=filterDetectionsByClassConfidence(rawPredictions).map((pred,idx)=>{
+      const cls=String(pred?.class||'');
+      if(!classUsesBoundarySnapPriority(cls))return pred;
+      const rawPts=normalizeRoboflowPredictionToPolygon(pred);
+      if(!Array.isArray(rawPts)||rawPts.length<3)return pred;
+      const refined=refineAreaBoundaryByBw(rawPts,bwAligned,cls);
+      if(!Array.isArray(refined)||refined.length<3)return pred;
+      const ctr=detectionCenterPoint({points:refined});
+      const bb=polygonBounds(refined);
+      return{
+        ...pred,
+        id:pred?.id||`seed-${idx}-${Date.now()}`,
+        x:ctr.x||0,
+        y:ctr.y||0,
+        width:Math.max(0,bb?.w||0),
+        height:Math.max(0,bb?.h||0),
+        points:refined
+      };
+    });
+    const baseLotPoly=primaryLotPolygonFromDetections(seededDetections);
+    // Store draft detections from Roboflow pass 1 (boundary-snap prioritized).
+    let draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
+      keepStallLikeDetectionsInsideLot(seededDetections,baseLotPoly)
     )));
+    let tileStats={tilesPlanned:0,tilesRan:0,added:0};
+    if(baseLotPoly){
+      const zoomScan=await runLotStallZoomScan(inferCanvas,baseLotPoly);
+      const zoomStalls=Array.isArray(zoomScan?.detections)?zoomScan.detections:[];
+      tileStats.tilesPlanned=Number(zoomScan?.tilesPlanned)||0;
+      tileStats.tilesRan=Number(zoomScan?.tilesRan)||0;
+      if(zoomStalls.length){
+        const beforeCount=draftDetections.length;
+        const merged=draftDetections.concat(zoomStalls);
+        draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
+          keepStallLikeDetectionsInsideLot(
+            filterDetectionsByClassConfidence(merged),
+            baseLotPoly
+          )
+        )));
+        tileStats.added=Math.max(0,draftDetections.length-beforeCount);
+      }
+    }
     mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
     mapLastDetectContext={
       capturedAt:new Date().toISOString(),
@@ -3160,26 +3478,12 @@ async function runRoboflowDetection(){
       mapYear:String(mapViewState?.year||''),
       modelId:String(data?.meta?.model_id||data?.meta?.model||'my-first-project-ug0a7/4'),
       modelVersion:String(data?.meta?.model_version||''),
-      imageWidth:Number(data?.image?.width||mapPreviewCanvas.width||0)||null,
-      imageHeight:Number(data?.image?.height||mapPreviewCanvas.height||0)||null,
+      imageWidth:Number(detW||0)||null,
+      imageHeight:Number(detH||0)||null,
       address:String(document.getElementById('map-search')?.value||'')
     };
 
-    // PASS 2: preprocess to strict B/W and snap draft vertices to nearest white clusters.
-    const bwCanvas=preprocessImageDataForSnapBw(inferCanvas);
-    mapSnapBwImage=bwCanvas;
-    // keep blueprint mode base coherent with correction pass while preserving existing toggle behavior.
-    mapBaseProcessedImage=bwCanvas;
-    const bw=readBwMask(bwCanvas);
-    const detW=Number(data?.image?.width)||mapPreviewCanvas.width;
-    const detH=Number(data?.image?.height)||mapPreviewCanvas.height;
-    // Align pass-2 B/W mask to Roboflow coordinate space if dimensions differ.
-    const bwAligned=(bw&&bw.w===detW&&bw.h===detH)?bw:(()=>{
-      const ac=document.createElement('canvas');
-      ac.width=detW;ac.height=detH;
-      ac.getContext('2d').drawImage(bwCanvas,0,0,detW,detH);
-      return readBwMask(ac);
-    })();
+    // PASS 2: snap final editable vectors to the same strict B/W layer.
     let snapMoved=0,snapTotal=0;
     mapSnapDebugMoves=[];
     const draftVectors=draftDetections.map((p,idx)=>{
@@ -3201,7 +3505,13 @@ async function runRoboflowDetection(){
           });
         }
       }
-      const simpPts=simplifyClosedPolygon(snapRes.points,mapVectorSimplifyTarget(cls));
+      let workingPts=snapRes.points;
+      // Snap-priority refinement for area boundaries: after vertex snap,
+      // densify + resnap along edges so the final perimeter hugs painted lines.
+      if((classIsLot(cls)||classIsObstruction(cls))&&Array.isArray(workingPts)&&workingPts.length>=3){
+        workingPts=refineAreaBoundaryByBw(workingPts,bwAligned,cls);
+      }
+      const simpPts=simplifyClosedPolygon(workingPts,mapVectorSimplifyTarget(cls));
       return{
         id:p.id||('rf-'+idx+'-'+Date.now()),
         className:cls,
@@ -3235,7 +3545,10 @@ async function runRoboflowDetection(){
     mapReviewState.active=false;
     drawMapOverlay();
     const snapPct=snapTotal?Math.round((snapMoved/snapTotal)*100):0;
-    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%). ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
+    const zoomLabel=tileStats.tilesPlanned
+      ? ` Zoom scan ${tileStats.tilesRan}/${tileStats.tilesPlanned} tiles, +${tileStats.added} merged stalls.`
+      : '';
+    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%).${zoomLabel} ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
   }catch(e){
     console.error(e);
     setImportStatus(`Detection failed: ${e.message}`,true);
