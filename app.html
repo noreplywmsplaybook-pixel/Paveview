@@ -3813,6 +3813,13 @@ function updateStats(){
   renderLinearList();
 }
 
+function drawZonePath(ctx,pts){
+  if(!Array.isArray(pts)||pts.length<3)return;
+  ctx.beginPath();
+  pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));
+  ctx.closePath();
+}
+
 // ── RENDER ──
 function renderAll(){renderZones();render()}
 
@@ -3866,6 +3873,18 @@ function renderZones(){
   };
 
   // Zones
+  const lotsById=new Map(zones.filter(z=>z.closed&&!z.obstruct).map(z=>[z.id,z]));
+  const lotObstructions=new Map();
+  zones.filter(z=>z.closed&&z.obstruct).forEach(obs=>{
+    const c=polyCentroid(obs.pts);
+    for(const lot of lotsById.values()){
+      if(pointInPolygon2(c,lot.pts)||obs.pts.some(p=>pointInPolygon2(p,lot.pts))){
+        if(!lotObstructions.has(lot.id))lotObstructions.set(lot.id,[]);
+        lotObstructions.get(lot.id).push(obs);
+        break;
+      }
+    }
+  });
   if(_layerOn('zones')) zones.forEach(z=>{
     if(z.pts.length<3)return;
     if(hasZoneFocus&&!visibleZoneIds.has(z.id))return;
@@ -3881,7 +3900,7 @@ function renderZones(){
     }
     const isA=z.id===activeZone?.id;
     const isFocused=focusedZoneId===z.id;
-    dCtx.beginPath();z.pts.forEach((p,i)=>i===0?dCtx.moveTo(p.x,p.y):dCtx.lineTo(p.x,p.y));dCtx.closePath();
+    drawZonePath(dCtx,z.pts);
     if(z.obstruct){
       dCtx.fillStyle='rgba(239,68,68,.1)';dCtx.fill();
       dCtx.save();dCtx.clip();
@@ -3899,7 +3918,20 @@ function renderZones(){
     }else{
       if(z.showFill!==false){
         const alpha=Math.round((z.opacity!=null?z.opacity:15)/100*255).toString(16).padStart(2,'0');
-        dCtx.fillStyle=z.color+alpha;dCtx.fill();
+        dCtx.save();
+        drawZonePath(dCtx,z.pts);
+        dCtx.fillStyle=z.color+alpha;
+        dCtx.fill('evenodd');
+        const holes=lotObstructions.get(z.id)||[];
+        if(holes.length){
+          dCtx.globalCompositeOperation='destination-out';
+          holes.forEach(h=>{
+            drawZonePath(dCtx,h.pts);
+            dCtx.fillStyle='rgba(0,0,0,1)';
+            dCtx.fill();
+          });
+        }
+        dCtx.restore();
       }
       dCtx.strokeStyle=z.color;
       const lw=z.lineWidth||2;
