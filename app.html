@@ -1551,6 +1551,7 @@ let mapRenderStyle='satellite'; // satellite | blueprint
 let mapVectorDetections=[]; // normalized polygons for map preview editing
 let mapSelectedVectorIdx=-1;
 let mapVectorDrag=null; // {idx,ptIdx}
+let mapVectorDragEdge=null; // {idx,aIdx,bIdx,lastX,lastY}
 let mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
 
 function classStyleForVector(cls){
@@ -1832,6 +1833,7 @@ function clearMapDetections(){
   mapVectorDetections=[];
   mapSelectedVectorIdx=-1;
   mapVectorDrag=null;
+  mapVectorDragEdge=null;
   mapVectorDrawState={active:false,cls:mapDrawClassSel?.value||'lot_boundary',pts:[]};
 }
 function detKind(p){
@@ -2771,6 +2773,7 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
     return;
   }
   if(e.button===2)return;
+  mapVectorDragEdge=null;
   mapVectorDrag=null;
   let hitVertex=false;
   for(let zi=mapVectorDetections.length-1;zi>=0;zi--){
@@ -2791,6 +2794,22 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
   if(hitVertex){
     drawMapOverlay();
     return;
+  }
+  // edge drag: click near selected polygon edge and drag whole line
+  if(mapSelectedVectorIdx>=0&&mapVectorDetections[mapSelectedVectorIdx]){
+    const zSel=mapVectorDetections[mapSelectedVectorIdx];
+    const edgeHit=nearestPolygonEdgeInsert(zSel.points,mx,my,10);
+    if(edgeHit){
+      mapVectorDragEdge={
+        idx:mapSelectedVectorIdx,
+        aIdx:edgeHit.afterIdx,
+        bIdx:(edgeHit.afterIdx+1)%zSel.points.length,
+        lastX:local.x,
+        lastY:local.y
+      };
+      drawMapOverlay();
+      return;
+    }
   }
   // polygon pick
   for(let zi=mapVectorDetections.length-1;zi>=0;zi--){
@@ -2863,6 +2882,23 @@ window.addEventListener('mousemove',e=>{
     }
     return;
   }
+  if(mapVectorDragEdge){
+    const rect=mapPreviewCanvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+    const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+    const local={x:mx/sx,y:my/sy};
+    const z=mapVectorDetections[mapVectorDragEdge.idx];
+    if(z&&Array.isArray(z.points)&&z.points[mapVectorDragEdge.aIdx]&&z.points[mapVectorDragEdge.bIdx]){
+      const dx=local.x-mapVectorDragEdge.lastX,dy=local.y-mapVectorDragEdge.lastY;
+      z.points[mapVectorDragEdge.aIdx]={x:z.points[mapVectorDragEdge.aIdx].x+dx,y:z.points[mapVectorDragEdge.aIdx].y+dy};
+      z.points[mapVectorDragEdge.bIdx]={x:z.points[mapVectorDragEdge.bIdx].x+dx,y:z.points[mapVectorDragEdge.bIdx].y+dy};
+      mapVectorDragEdge.lastX=local.x;mapVectorDragEdge.lastY=local.y;
+      syncMapVectorDetectionsToRaw();
+      drawMapOverlay();
+    }
+    return;
+  }
   if(!mapInteraction.dragging)return;
   if(mapReviewState.active){
     const dx=e.clientX-mapInteraction.startX;
@@ -2888,6 +2924,7 @@ window.addEventListener('mousemove',e=>{
 });
 window.addEventListener('mouseup',()=>{
   if(mapVectorDrag){mapVectorDrag=null;return;}
+  if(mapVectorDragEdge){mapVectorDragEdge=null;mapPreviewCanvas.style.cursor='grab';return;}
   if(!mapInteraction.dragging)return;
   mapInteraction.dragging=false;
   mapPreviewCanvas.style.cursor='grab';
@@ -3025,6 +3062,17 @@ ic.addEventListener('mousemove',e=>{
   if(isPanning) return; // pan handled by window listener
   if(dragging){
     if(dragging.type==='zone'){zones.find(z=>z.id===dragging.id).pts[dragging.idx]={x:p.x,y:p.y}}
+    else if(dragging.type==='zone-edge-move'){
+      const z=zones.find(zo=>zo.id===dragging.id);
+      const aIdx=((dragging.afterIdx% (z?.pts?.length||1))+ (z?.pts?.length||1))%(z?.pts?.length||1);
+      const bIdx=(aIdx+1)% (z?.pts?.length||1);
+      if(z&&Array.isArray(z.pts)&&z.pts[aIdx]&&z.pts[bIdx]){
+        const dx=p.x-dragging.lastX,dy=p.y-dragging.lastY;
+        z.pts[aIdx]={x:z.pts[aIdx].x+dx,y:z.pts[aIdx].y+dy};
+        z.pts[bIdx]={x:z.pts[bIdx].x+dx,y:z.pts[bIdx].y+dy};
+        dragging.lastX=p.x;dragging.lastY=p.y;
+      }
+    }
     else if(dragging.type==='hatch'){hatchZones.find(h=>h.id===dragging.id).pts[dragging.idx]={x:p.x,y:p.y}}
     else if(dragging.type==='marker'){markers[dragging.idx]={...markers[dragging.idx],x:p.x,y:p.y}}
     else if(dragging.type==='linear'){linearSegs[dragging.idx].pts[dragging.ptIdx]={x:p.x,y:p.y}}
@@ -3046,7 +3094,7 @@ ic.addEventListener('mousemove',e=>{
 
     updateStats();renderAll();return;
   }
-  hovering=findNear(p.x,p.y);
+  hovering=findNear(p.x,p.y,{allowEdgeInsert:e.ctrlKey||e.metaKey});
   // Show crosshair+ when ctrl held and near an edge
   let _edgeNear=null;
   if(e.ctrlKey||e.metaKey)_edgeNear=findNearEdge(p.x,p.y);
@@ -3120,10 +3168,10 @@ ic.addEventListener('mousedown',e=>{
     render();return;
   }
 
-  const near=findNear(p.x,p.y);
+  const near=findNear(p.x,p.y,{allowEdgeInsert:e.ctrlKey||e.metaKey});
   if(near){
-    if(near.type==='zone-edge'){
-      // Insert new vertex at this edge point then drag it
+    if(near.type==='zone-edge-insert'){
+      // Ctrl/Cmd+click on edge inserts a new vertex for fine tuning.
       const zo=zones.find(z=>z.id===near.id);
       if(zo){
         activeZone=zo;
@@ -3135,6 +3183,15 @@ ic.addEventListener('mousedown',e=>{
       }
       return;
     }
+    if(near.type==='zone-edge'){
+      // Plain click-drag on an edge moves the whole line segment (both endpoints).
+      dragging={type:'zone-edge-move',id:near.id,afterIdx:near.afterIdx,lastX:p.x,lastY:p.y};
+      const zo=zones.find(z=>z.id===near.id);
+      if(zo){activeZone=zo;setFocusedZone(zo.id);}
+      ic.style.cursor='grabbing';
+      renderAll();
+      return;
+    }
     dragging=near;ic.style.cursor='grabbing';return;
   }
 
@@ -3143,8 +3200,8 @@ ic.addEventListener('mousedown',e=>{
     const editingZone = activeZone && activeZone.closed && !activeZone.locked && activeZone.pts.length>=3 && inProg.length===0;
     if(editingZone){
       // In edit mode: check if clicking on an edge to insert a new vertex
-      const near2=findNear(p.x,p.y);
-      if(near2&&near2.type==='zone-edge'){
+      const near2=findNear(p.x,p.y,{allowEdgeInsert:e.ctrlKey||e.metaKey});
+      if(near2&&near2.type==='zone-edge-insert'&&(e.ctrlKey||e.metaKey)){
         // Insert new vertex at click point
         const zo=zones.find(z=>z.id===near2.id);
         if(zo){
@@ -3279,7 +3336,8 @@ function ptOnSeg(px,py,ax,ay,bx,by){
   return{x:ax+t*dx,y:ay+t*dy,t};
 }
 
-function findNear(ix,iy){
+function findNear(ix,iy,opts={}){
+  const allowEdgeInsert=!!opts.allowEdgeInsert;
   const t=8/zoom;
 
   for(let i=markers.length-1;i>=0;i--)if(dist({x:ix,y:iy},markers[i])<t)return{type:'marker',idx:i};
@@ -3299,6 +3357,9 @@ function findNear(ix,iy){
       const a=pts[i],b=pts[(i+1)%pts.length];
       const p=ptOnSeg(ix,iy,a.x,a.y,b.x,b.y);
       if(dist({x:ix,y:iy},p)<te&&p.t>0.02&&p.t<0.98){
+        if(allowEdgeInsert){
+          return{type:'zone-edge-insert',id:edgeZone.id,afterIdx:i,x:p.x,y:p.y};
+        }
         return{type:'zone-edge',id:edgeZone.id,afterIdx:i,x:p.x,y:p.y};
       }
     }
