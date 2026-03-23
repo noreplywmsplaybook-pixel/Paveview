@@ -1556,12 +1556,12 @@ let mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
 
 function classStyleForVector(cls){
   const c=String(cls||'').toLowerCase();
-  if(c.includes('lot'))return {stroke:'#000',lineWidth:3,dash:[],fill:'rgba(20,20,20,0.08)'};
+  if(c.includes('lot'))return {stroke:'#d4a843',lineWidth:3,dash:[],fill:'rgba(20,20,20,0.08)'};
   if(c.includes('parking_stall')||c.includes('stall'))return {stroke:'#fff8b8',lineWidth:1.1,dash:[],fill:'rgba(255,255,255,0.02)'};
   if(c.includes('fire_lane')||c.includes('fire'))return {stroke:'#ef4444',lineWidth:2,dash:[8,5],fill:'rgba(239,68,68,0.08)'};
   if(c.includes('island')||c.includes('obstruct'))return {stroke:'#6b7280',lineWidth:1.8,dash:[6,4],fill:'rgba(107,114,128,0.12)'};
   if(c.includes('building'))return {stroke:'#fff',lineWidth:1.5,dash:[],fill:'rgba(55,65,81,0.35)'};
-  return {stroke:'#000',lineWidth:2,dash:[],fill:'rgba(17,17,17,0.06)'};
+  return {stroke:'#d4a843',lineWidth:2,dash:[],fill:'rgba(17,17,17,0.06)'};
 }
 function mapVectorSimplifyTarget(cls){
   const c=String(cls||'').toLowerCase();
@@ -1795,11 +1795,24 @@ function drawMapVectorOverlay(){
   mapPreviewCtx.restore();
 }
 function syncMapVectorDetectionsToRaw(){
-  mapDetections=mapVectorDetections.map(v=>({
-    class:v.className,
-    confidence:v.confidence,
-    points:Array.isArray(v.points)?v.points.map(p=>({x:p.x,y:p.y})):[]
-  }));
+  mapDetections=mapVectorDetections.map(v=>{
+    const pts=Array.isArray(v.points)?v.points.map(p=>({x:p.x,y:p.y})):[];
+    const cx=pts.length?pts.reduce((s,p)=>s+p.x,0)/pts.length:0;
+    const cy=pts.length?pts.reduce((s,p)=>s+p.y,0)/pts.length:0;
+    const bbox=pts.length?pts.reduce((b,p)=>({
+      minX:Math.min(b.minX,p.x),maxX:Math.max(b.maxX,p.x),
+      minY:Math.min(b.minY,p.y),maxY:Math.max(b.maxY,p.y)
+    }),{minX:pts[0].x,maxX:pts[0].x,minY:pts[0].y,maxY:pts[0].y}):{minX:0,maxX:0,minY:0,maxY:0};
+    return{
+      class:v.className,
+      confidence:v.confidence,
+      x:cx,
+      y:cy,
+      width:Math.max(0,bbox.maxX-bbox.minX),
+      height:Math.max(0,bbox.maxY-bbox.minY),
+      points:pts
+    };
+  });
   aiDetectionsForTransfer=JSON.parse(JSON.stringify(mapDetections));
 }
 function syncMapVectorDetectionsForTransfer(){
@@ -1810,12 +1823,13 @@ function syncMapVectorDetectionsForTransfer(){
 
 function mapVectorToZoneType(cls){
   const c=String(cls||'').toLowerCase();
+  if(c.includes('stall')||c.includes('ada')||c.includes('handicap')||c.includes('accessible')||c.includes('arrow')||c.includes('stencil')||c.includes('crosswalk')||c.includes('hatch')){
+    return 'marker';
+  }
   if(c.includes('lot'))return 'lot';
   if(c.includes('island')||c.includes('obstruct'))return 'obstruction';
   if(c.includes('fire'))return 'fire_lane';
   if(c.includes('building'))return 'building_footprint';
-  if(c.includes('stall'))return 'parking_stall';
-  if(c.includes('ada'))return 'ada';
   return 'lot';
 }
 
@@ -3396,18 +3410,28 @@ ic.addEventListener('mousedown',e=>{
     return;
   }
   const p=getPos(e);
-  // Edge drag should win over vertex drag when clicking near a line.
+  // Shift+drag edge to move whole line; plain click inserts a point for editing.
   const nearEdgeOnly=findNearEdge(p.x,p.y);
-  if(nearEdgeOnly&&nearEdgeOnly.type==='zone-edge'&&!(e.ctrlKey||e.metaKey)){
+  if(nearEdgeOnly&&nearEdgeOnly.type==='zone-edge'){
     const zo=zones.find(z=>z.id===nearEdgeOnly.id);
-    let moveIdxs=[nearEdgeOnly.afterIdx,(nearEdgeOnly.afterIdx+1)%((zo?.pts?.length)||1)];
-    if(zo&&Array.isArray(zo.pts)&&zo.pts.length>=3){
-      moveIdxs=collectCollinearChainIndices(zo.pts,nearEdgeOnly.afterIdx);
+    if(!zo)return;
+    if(e.shiftKey){
+      let moveIdxs=[nearEdgeOnly.afterIdx,(nearEdgeOnly.afterIdx+1)%((zo?.pts?.length)||1)];
+      if(Array.isArray(zo.pts)&&zo.pts.length>=3){
+        moveIdxs=collectCollinearChainIndices(zo.pts,nearEdgeOnly.afterIdx);
+      }
+      dragging={type:'zone-edge-move',id:nearEdgeOnly.id,afterIdx:nearEdgeOnly.afterIdx,moveIdxs,lastX:p.x,lastY:p.y};
+      activeZone=zo;setFocusedZone(zo.id);
+      ic.style.cursor='grabbing';
+      renderAll();
+      return;
     }
-    dragging={type:'zone-edge-move',id:nearEdgeOnly.id,afterIdx:nearEdgeOnly.afterIdx,moveIdxs,lastX:p.x,lastY:p.y};
-    if(zo){activeZone=zo;setFocusedZone(zo.id);}
+    // Default line edit action: add a dot on the clicked edge, then drag it.
+    zo.pts.splice(nearEdgeOnly.afterIdx+1,0,{x:nearEdgeOnly.x,y:nearEdgeOnly.y});
+    activeZone=zo;setFocusedZone(zo.id);
+    dragging={type:'zone',id:zo.id,idx:nearEdgeOnly.afterIdx+1};
     ic.style.cursor='grabbing';
-    renderAll();
+    updateStats();renderAll();
     return;
   }
   const now=Date.now();
@@ -3448,16 +3472,7 @@ ic.addEventListener('mousedown',e=>{
       return;
     }
     if(near.type==='zone-edge'){
-      // Plain click-drag on an edge moves the whole straight perimeter segment.
-      const zo=zones.find(z=>z.id===near.id);
-      let moveIdxs=[near.afterIdx,(near.afterIdx+1)%((zo?.pts?.length)||1)];
-      if(zo&&Array.isArray(zo.pts)&&zo.pts.length>=3){
-        moveIdxs=collectCollinearChainIndices(zo.pts,near.afterIdx);
-      }
-      dragging={type:'zone-edge-move',id:near.id,afterIdx:near.afterIdx,moveIdxs,lastX:p.x,lastY:p.y};
-      if(zo){activeZone=zo;setFocusedZone(zo.id);}
-      ic.style.cursor='grabbing';
-      renderAll();
+      // Keep edge drag logic in the dedicated early block above.
       return;
     }
     dragging=near;ic.style.cursor='grabbing';return;
@@ -4186,6 +4201,7 @@ function renderAll(){renderZones();render()}
 function renderZones(){
   dCtx.clearRect(0,0,dc.width,dc.height);
   const sc=getScale();
+  const isEditingLineDrag=!!(dragging&&dragging.type==='zone-edge-move');
   const focusedZone=focusedZoneId?zones.find(z=>z.id===focusedZoneId):null;
   const hasZoneFocus=!!focusedZone;
   const visibleZoneIds=hasZoneFocus?new Set([focusedZone.id]):null;
@@ -4262,7 +4278,9 @@ function renderZones(){
     const isFocused=focusedZoneId===z.id;
     drawZonePath(dCtx,z.pts);
     if(z.obstruct){
-      dCtx.fillStyle='rgba(239,68,68,.1)';dCtx.fill();
+      if(!isEditingLineDrag){
+        dCtx.fillStyle='rgba(239,68,68,.1)';dCtx.fill();
+      }
       dCtx.save();dCtx.clip();
       const xs=z.pts.map(p=>p.x),ys=z.pts.map(p=>p.y);
       const mx2=Math.min(...xs)-10,Mx=Math.max(...xs)+10,my2=Math.min(...ys)-10,My=Math.max(...ys)+10;
@@ -4276,7 +4294,7 @@ function renderZones(){
       dCtx.lineWidth=isFocused?2.4:(isA?2:1.5);
       dCtx.setLineDash([6,4]);dCtx.stroke();dCtx.setLineDash([]);
     }else{
-      if(z.showFill!==false){
+      if(z.showFill!==false&&!isEditingLineDrag){
         const alpha=Math.round((z.opacity!=null?z.opacity:15)/100*255).toString(16).padStart(2,'0');
         dCtx.save();
         drawZonePath(dCtx,z.pts);
@@ -4293,7 +4311,8 @@ function renderZones(){
         }
         dCtx.restore();
       }
-      dCtx.strokeStyle=z.color;
+      // Lot editable line should remain the visible source of truth.
+      dCtx.strokeStyle=z.obstruct?'#ef4444':'#d4a843';
       const lw=z.lineWidth||2;
       dCtx.lineWidth=isFocused?lw+1.2:(isA?lw+0.5:lw);
       dCtx.setLineDash(z.lineDashed?[10,5]:[]);
