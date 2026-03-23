@@ -453,8 +453,7 @@ select.sc-inp{cursor:pointer;width:40px}
 }
 .map-row input:focus,.map-row select:focus{border-color:var(--accent)}
 #map-search{min-width:220px;flex:1}
-#map-lat,#map-lng{width:136px}
-#map-zoom{width:66px}
+#map-search{min-width:260px}
 #map-historical-year{min-width:96px}
 #map-import-status{
   font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);
@@ -1051,14 +1050,6 @@ select.sc-inp{cursor:pointer;width:40px}
           <button class="btn" id="btn-map-search">Find</button>
         </div>
         <div class="map-row">
-          <label>Lat</label>
-          <input id="map-lat" type="number" step="any" value="37.4219999">
-          <label>Lng</label>
-          <input id="map-lng" type="number" step="any" value="-122.0840575">
-          <label>Zoom</label>
-          <input id="map-zoom" type="number" min="14" max="22" step="1" value="20">
-        </div>
-        <div class="map-row">
           <label>Imagery</label>
           <select id="map-imagery-mode">
             <option value="google" selected>Google Satellite (current)</option>
@@ -1066,29 +1057,9 @@ select.sc-inp{cursor:pointer;width:40px}
           </select>
           <label>Year</label>
           <select id="map-historical-year"></select>
-          <button class="btn" id="btn-map-refresh">Refresh</button>
           <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
         </div>
-        <div class="map-row">
-          <label>Render</label>
-          <select id="map-render-style">
-            <option value="satellite" selected>Satellite</option>
-            <option value="blueprint">Blueprint</option>
-          </select>
-          <label>Draw class</label>
-          <select id="map-draw-class">
-            <option value="lot_boundary" selected>lot_boundary</option>
-            <option value="parking_stall">parking_stall</option>
-            <option value="fire_lane">fire_lane</option>
-            <option value="island">island</option>
-            <option value="building_footprint">building_footprint</option>
-          </select>
-          <button class="btn" id="btn-map-draw-start">Draw Zone</button>
-          <button class="btn" id="btn-map-draw-finish">Finish</button>
-          <button class="btn" id="btn-map-draw-cancel">Cancel</button>
-          <button class="btn" id="btn-map-export-svg">Export SVG</button>
-          <button class="btn" id="btn-map-export-pdf">Vector PDF</button>
-        </div>
+        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows) before running AI detect.</div>
         <div id="map-import-status">Pick a location and click Refresh.</div>
         <canvas id="map-preview" width="1024" height="1024"></canvas>
       </div>
@@ -1535,6 +1506,10 @@ const btnMapDrawFinish=document.getElementById('btn-map-draw-finish');
 const btnMapDrawCancel=document.getElementById('btn-map-draw-cancel');
 const btnMapExportSvg=document.getElementById('btn-map-export-svg');
 const btnMapExportPdf=document.getElementById('btn-map-export-pdf');
+const btnMapRefresh=document.getElementById('btn-map-refresh');
+const mapLatInp=document.getElementById('map-lat');
+const mapLngInp=document.getElementById('map-lng');
+const mapZoomInp=document.getElementById('map-zoom');
 let pageModalView='source'; // source | pdf | map
 let waybackByYear={...WAYBACK_FALLBACK_BY_YEAR}; // { [year]: {m, date, label} }
 let mapViewState={lat:37.4219999,lng:-122.0840575,zoom:20,mode:'google',year:''};
@@ -2414,21 +2389,11 @@ function loadImageFromUrl(url){
 }
 
 function readMapInputsIntoState(){
-  const lat=parseFloat(document.getElementById('map-lat').value);
-  const lng=parseFloat(document.getElementById('map-lng').value);
-  const zoomLv=Math.max(14,Math.min(22,parseInt(document.getElementById('map-zoom').value,10)||20));
-  if(Number.isFinite(lat)&&Number.isFinite(lng)){
-    mapViewState.lat=Math.max(-85.05112878,Math.min(85.05112878,lat));
-    mapViewState.lng=normalizeLng(lng);
-    mapViewState.zoom=zoomLv;
-  }
   mapViewState.mode=mapImageryModeSel.value;
   mapViewState.year=mapHistoricalYearSel.value||mapViewState.year||'';
 }
 function syncMapInputsFromState(){
-  document.getElementById('map-lat').value=mapViewState.lat.toFixed(7);
-  document.getElementById('map-lng').value=mapViewState.lng.toFixed(7);
-  document.getElementById('map-zoom').value=String(mapViewState.zoom);
+  // Lat/Lng/Zoom inputs intentionally hidden in simplified UI.
 }
 function populateWaybackYearsDropdown(){
   const years=listWaybackYears();
@@ -2710,8 +2675,8 @@ async function geocodeMapSearch(){
     const data=await res.json();
     const loc=data?.results?.[0]?.geometry?.location;
     if(!loc)throw new Error('No location found');
-    document.getElementById('map-lat').value=loc.lat.toFixed(7);
-    document.getElementById('map-lng').value=loc.lng.toFixed(7);
+    if(mapLatInp)mapLatInp.value=loc.lat.toFixed(7);
+    if(mapLngInp)mapLngInp.value=loc.lng.toFixed(7);
     mapViewState.lat=loc.lat;
     mapViewState.lng=loc.lng;
     syncMapInputsFromState();
@@ -2730,8 +2695,8 @@ function updateHistoricalControls(){
 }
 
 async function captureMapImageryIntoPlan(){
-  const lat=(parseFloat(document.getElementById('map-lat').value)||0).toFixed(5);
-  const lng=(parseFloat(document.getElementById('map-lng').value)||0).toFixed(5);
+  const lat=(Number.isFinite(mapViewState.lat)?mapViewState.lat:0).toFixed(5);
+  const lng=(Number.isFinite(mapViewState.lng)?mapViewState.lng:0).toFixed(5);
   const mode=mapImageryModeSel.value;
   const year=mapHistoricalYearSel.value;
   const label=(mode==='historical'?`Map ${year}`:'Map Current')+` ${lat},${lng}`;
@@ -2915,7 +2880,7 @@ importFileInput.addEventListener('change',e=>{if(e.target.files[0])startImportFr
 btnImportBack.addEventListener('click',()=>setPageModalView('source'));
 document.getElementById('btn-page-cancel').onclick=()=>{closeModal('page-modal');setPageModalView('source');};
 document.getElementById('btn-map-search').addEventListener('click',geocodeMapSearch);
-document.getElementById('btn-map-refresh').addEventListener('click',()=>loadMapPreview({fromInputs:true,reason:'Refreshing imagery…'}));
+if(btnMapRefresh)btnMapRefresh.addEventListener('click',()=>loadMapPreview({fromInputs:true,reason:'Refreshing imagery…'}));
 document.getElementById('map-search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();geocodeMapSearch();}});
 if(mapRenderStyleSel){
   mapRenderStyleSel.addEventListener('change',()=>{
