@@ -1322,6 +1322,7 @@ let plans=[]; // [{id,label,dataURL,imgW,imgH}]
 let currentPlanIdx=0;
 // Per-plan drawing data — keyed by plan id
 let planData={}; // {planId: {zones,markers,measurements,linearSegs,hatchZones}}
+const LEARNING_FEEDBACK_API='/api/learning-feedback';
 
 const COLORS=['#f5c842','#3b82f6','#22c55e','#ef4444','#a855f7','#f97316','#06b6d4','#ec4899','#84cc16','#d97706'];
 
@@ -1530,6 +1531,8 @@ let mapSnapBwImage=null; // strict B/W preprocessing layer used for pass-2 snapp
 let mapDebugBwPreview=false; // debug-only B/W preview toggle for validation
 let mapDebugSnapOverlay=false; // debug-only overlay of vertex snap deltas
 let mapSnapDebugMoves=[]; // [{from:{x,y},to:{x,y},className,dist}]
+let mapLearningDraftDetections=[]; // raw draft detections captured at AI detect time
+let mapLastDetectContext=null; // context for active-learning feedback capture
 let mapRenderStyle='satellite'; // satellite | blueprint
 let mapVectorDetections=[]; // normalized polygons for map preview editing
 let mapSelectedVectorIdx=-1;
@@ -2005,6 +2008,97 @@ function syncMapVectorDetectionsToRaw(){
     };
   });
   aiDetectionsForTransfer=JSON.parse(JSON.stringify(mapDetections));
+}
+function cloneDetectionsForLearning(dets){
+  if(!Array.isArray(dets))return [];
+  return dets.map((d,idx)=>{
+    const cls=String(d?.class||d?.className||'').trim()||'unknown';
+    const conf=Number.isFinite(Number(d?.confidence))?Number(d.confidence):0;
+    const points=Array.isArray(d?.points)
+      ? d.points.map(pt=>({x:Number(pt?.x)||0,y:Number(pt?.y)||0}))
+      : detectionToPolygonPoints(d).map(pt=>({x:Number(pt?.x)||0,y:Number(pt?.y)||0}));
+    const center=detectionCenterPoint({points});
+    const area=polygonArea(points);
+    return{
+      id:String(d?.id||`${cls}-${idx}`),
+      class:cls,
+      confidence:conf,
+      x:Number(center?.x)||0,
+      y:Number(center?.y)||0,
+      points,
+      area:Number(area)||0
+    };
+  });
+}
+function captureCurrentPlanSnapshot(){
+  return{
+    zones:JSON.parse(JSON.stringify(zones||[])),
+    markers:JSON.parse(JSON.stringify(markers||[])),
+    measurements:JSON.parse(JSON.stringify(measurements||[])),
+    linearSegs:JSON.parse(JSON.stringify(linearSegs||[])),
+    hatchZones:JSON.parse(JSON.stringify(hatchZones||[])),
+  };
+}
+async function submitLearningFeedbackSample(sample){
+  try{
+    if(!sample||typeof sample!=='object')return;
+    if(!window._sbClient)return;
+    const {data:{session}}=await window._sbClient.auth.getSession();
+    const accessToken=String(session?.access_token||'');
+    if(!session?.user?.id||!accessToken)return;
+    const payload={
+      userId:session.user.id,
+      accessToken,
+      projectId:currentProjectId||null,
+      planId:plans[currentPlanIdx]?.id||null,
+      address:String(document.getElementById('map-search')?.value||'').trim()||null,
+      mapMode:mapViewState?.mode||null,
+      mapYear:mapViewState?.year||null,
+      zoom:Number.isFinite(mapViewState?.zoom)?mapViewState.zoom:null,
+      lat:Number.isFinite(mapViewState?.lat)?mapViewState.lat:null,
+      lng:Number.isFinite(mapViewState?.lng)?mapViewState.lng:null,
+      modelId:'my-first-project-ug0a7/4',
+      modelVersion:'4',
+      source:'imagery_review_confirm',
+      ...sample
+    };
+    await fetch(LEARNING_FEEDBACK_API,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+  }catch(_e){
+    // Feedback capture should never interrupt user flow.
+  }
+}
+async function captureLearningFeedbackOnConfirm(savedProjectId){
+  try{
+    const planId=plans[currentPlanIdx]?.id||null;
+    if(!planId)return;
+    const draft=cloneDetectionsForLearning(mapLearningDraftDetections||[]);
+    const finalDetections=cloneDetectionsForLearning(aiDetectionsForTransfer||mapDetections||[]);
+    if(!draft.length&&!finalDetections.length)return;
+    const finalSnapshot=captureCurrentPlanSnapshot();
+    const payload={
+      projectId:savedProjectId||currentProjectId||null,
+      planId,
+      source:'imagery_review_confirm',
+      status:'pending',
+      draftDetections:draft,
+      finalDetections,
+      finalSnapshot,
+      draftCount:draft.length,
+      finalCount:finalDetections.length,
+      editDistance:Math.abs(finalDetections.length-draft.length),
+      context:mapLastDetectContext||null
+    };
+    await submitLearningFeedbackSample(payload);
+    // Clear draft context after successful capture to avoid duplicate sends.
+    mapLearningDraftDetections=[];
+    mapLastDetectContext=null;
+  }catch(e){
+    console.warn('Learning feedback capture skipped:',e);
+  }
 }
 function syncMapVectorDetectionsForTransfer(){
   syncMapVectorDetectionsToRaw();
@@ -3016,6 +3110,9 @@ async function captureMapImageryIntoPlan(){
     )
   )));
   aiDetectionsForTransfer=JSON.parse(JSON.stringify(activeDetections||[]));
+  if(Array.isArray(aiDetectionsForTransfer)&&aiDetectionsForTransfer.length){
+    mapLearningDraftDetections=JSON.parse(JSON.stringify(aiDetectionsForTransfer));
+  }
   pendingDetectionTransfer=!!(activeDetections&&activeDetections.length);
   closeModal('page-modal');
   addCanvasAsPlan(oc,label,false,{autoScaleFeetPerPx:feetPerPx,skipCalibration:true});
@@ -3053,6 +3150,20 @@ async function runRoboflowDetection(){
         filterDetectionsByClassConfidence(rawPredictions)
       )
     )));
+    mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
+    mapLastDetectContext={
+      capturedAt:new Date().toISOString(),
+      lat:Number.isFinite(mapViewState?.lat)?Number(mapViewState.lat):null,
+      lng:Number.isFinite(mapViewState?.lng)?Number(mapViewState.lng):null,
+      zoom:Number.isFinite(mapViewState?.zoom)?Number(mapViewState.zoom):null,
+      mapMode:String(mapViewState?.mode||''),
+      mapYear:String(mapViewState?.year||''),
+      modelId:String(data?.meta?.model_id||data?.meta?.model||'my-first-project-ug0a7/4'),
+      modelVersion:String(data?.meta?.model_version||''),
+      imageWidth:Number(data?.image?.width||mapPreviewCanvas.width||0)||null,
+      imageHeight:Number(data?.image?.height||mapPreviewCanvas.height||0)||null,
+      address:String(document.getElementById('map-search')?.value||'')
+    };
 
     // PASS 2: preprocess to strict B/W and snap draft vertices to nearest white clusters.
     const bwCanvas=preprocessImageDataForSnapBw(inferCanvas);
@@ -3113,6 +3224,7 @@ async function runRoboflowDetection(){
 
     const allVectors=draftVectors.concat(assistVectors);
     mapVectorDetections=keepStallLikeVectorsInsideLot(allVectors);
+    mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
     mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
     mapDetectionRenderSize={w:data?.image?.width||mapPreviewCanvas.width,h:data?.image?.height||mapPreviewCanvas.height};
     syncMapVectorDetectionsToRaw();
@@ -5262,6 +5374,11 @@ async function doSave(){
       if(!error&&res.data?.[0]?.id){currentProjectId=res.data[0].id;savedId=currentProjectId;}
     }
     if(error)throw new Error(error.message||JSON.stringify(error));
+    try{
+      if(savedId)await captureLearningFeedbackOnConfirm(savedId);
+    }catch(_lfErr){
+      console.warn('Learning feedback capture failed:',_lfErr);
+    }
     if(btn){btn.textContent='Saved ✓';setTimeout(()=>{btn.textContent='Save';btn.disabled=false;},2000);}
     if(btn2)btn2.disabled=false;
     return savedId;
