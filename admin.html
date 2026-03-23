@@ -159,6 +159,7 @@ tr:hover td{background:#141414}
   <div class="admin-tabs">
     <button class="admin-tab-btn active" id="tab-btn-overview" onclick="showAdminTab('overview')">Overview</button>
     <button class="admin-tab-btn" id="tab-btn-customers" onclick="showAdminTab('customers')">Customers</button>
+    <button class="admin-tab-btn" id="tab-btn-learning" onclick="showAdminTab('learning')">Learning</button>
     <button class="admin-tab-btn" id="tab-btn-settings" onclick="showAdminTab('settings')">Settings</button>
   </div>
   <div id="data-mode-banner" class="msg err" style="display:none;margin-bottom:12px"></div>
@@ -315,6 +316,47 @@ tr:hover td{background:#141414}
     </div>
   </div>
 
+  <!-- LEARNING FEEDBACK -->
+  <div class="section admin-section" data-admin-tab="learning">
+    <div class="section-hdr">
+      <span class="section-title">Learning Feedback Samples</span>
+      <div class="section-hdr-right">
+        <input type="text" class="search-inp" id="learning-search" placeholder="Search address / user / id..." oninput="filterLearningTable()">
+        <select id="learning-status-filter" class="search-inp" style="width:150px" onchange="filterLearningTable()">
+          <option value="all">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="exported">Exported</option>
+        </select>
+        <button class="btn y" onclick="exportLearningSamples()">Export Approved JSON</button>
+        <button class="btn" onclick="loadData()">↺ Refresh</button>
+      </div>
+    </div>
+    <div style="padding:10px 14px;border-bottom:1px solid #1e1e1e;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#666">
+      Captures AI draft vs user-confirmed edits from imagery workflow.
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Created</th>
+            <th>Status</th>
+            <th>User</th>
+            <th>Project</th>
+            <th>Address</th>
+            <th>Map</th>
+            <th>Draft / Final</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="learning-body">
+          <tr><td colspan="8" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 
 <!-- ADD ACCOUNT MODAL -->
@@ -384,8 +426,10 @@ const TRIAL_DURATION_MS = 24 * 60 * 60 * 1000;
 const ADMIN_PIN_KEY = 'paveview_admin_pin_v1';
 const ADMIN_USERS_KEY = 'paveview_admin_user_ids_v1';
 const ADMIN_API_URL = '/api/admin-users';
+const ADMIN_LEARNING_EXPORT_API_URL = '/api/admin-learning-export';
 
 let allCustomers = [];
+let learningSamples = [];
 let revokeTarget = null;
 let restoreTarget = null;
 let profilesById = {};
@@ -577,6 +621,155 @@ function showDataModeBanner(text) {
   el.style.display = 'block';
 }
 
+function normLearningStatus(value) {
+  const s = String(value || '').toLowerCase();
+  if (s === 'approved' || s === 'rejected' || s === 'exported') return s;
+  return 'pending';
+}
+function fmtLearningStatus(status) {
+  const s = normLearningStatus(status);
+  if (s === 'approved') return '<span class="badge badge-green">Approved</span>';
+  if (s === 'rejected') return '<span class="badge badge-red">Rejected</span>';
+  if (s === 'exported') return '<span class="badge badge-yellow">Exported</span>';
+  return '<span class="badge badge-gray">Pending</span>';
+}
+function scoreEditDistance(sample) {
+  const explicit = Number(sample?.edit_distance);
+  if (Number.isFinite(explicit)) return explicit;
+  const draft = Number(sample?.draft_count || sample?.payload?.draft_count || 0);
+  const fin = Number(sample?.final_count || sample?.payload?.final_count || 0);
+  return Math.abs(fin - draft);
+}
+async function setLearningStatus(sampleId, status) {
+  try {
+    const resp = await fetch(ADMIN_API_URL, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set_learning_status', sampleId, status })
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(payload.error || `Update failed (${resp.status})`);
+    const idx = learningSamples.findIndex(s => String(s.id) === String(sampleId));
+    if (idx >= 0) learningSamples[idx].status = status;
+    renderLearningTable();
+  } catch (e) {
+    alert(`Learning status update failed: ${e.message || e}`);
+  }
+}
+async function exportLearningSamples() {
+  try {
+    const resp = await fetch(ADMIN_LEARNING_EXPORT_API_URL, { headers: { Accept: 'application/json' } });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(payload.error || `Export failed (${resp.status})`);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    a.href = url;
+    a.download = `learning-samples-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  } catch (e) {
+    alert(`Export failed: ${e.message || e}`);
+  }
+}
+async function viewLearningSample(sampleId) {
+  const s = (learningSamples || []).find(x => String(x?.id) === String(sampleId));
+  if (!s) {
+    alert('Sample not found.');
+    return;
+  }
+  const payload = s.payload || {};
+  const out = {
+    id: s.id,
+    status: normLearningStatus(s.status),
+    created_at: s.created_at,
+    updated_at: s.updated_at,
+    user_id: s.user_id,
+    project_id: s.project_id,
+    plan_id: s.plan_id,
+    address: s.address,
+    map_mode: s.map_mode,
+    map_year: s.map_year,
+    zoom: s.zoom,
+    lat: s.lat,
+    lng: s.lng,
+    model_id: s.model_id,
+    model_version: s.model_version,
+    draft_count: s.draft_count,
+    final_count: s.final_count,
+    payload
+  };
+  const txt = JSON.stringify(out, null, 2);
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if (!win) {
+    alert(txt);
+    return;
+  }
+  win.document.write(`<pre style="white-space:pre-wrap;word-break:break-word;background:#0b0b0b;color:#d1d5db;padding:16px;font:12px/1.45 'IBM Plex Mono',monospace;">${txt
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')}</pre>`);
+  win.document.close();
+}
+function renderLearningTable() {
+  const tbody = document.getElementById('learning-body');
+  if (!tbody) return;
+  const q = String(document.getElementById('learning-search')?.value || '').trim().toLowerCase();
+  const statusFilter = String(document.getElementById('learning-status-filter')?.value || 'all');
+  const rows = (learningSamples || []).filter(s => {
+    const st = normLearningStatus(s?.status);
+    if (statusFilter !== 'all' && st !== statusFilter) return false;
+    if (!q) return true;
+    const hay = [
+      s?.id,
+      s?.address,
+      s?.user_id,
+      s?.project_id,
+      s?.plan_id,
+      s?.map_mode,
+      s?.map_year
+    ].map(v => String(v || '').toLowerCase()).join(' ');
+    return hay.includes(q);
+  });
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">No learning samples found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(s => {
+    const dt = formatDateTime(s.created_at);
+    const address = s.address || '—';
+    const mode = [s.map_mode || 'map', s.map_year || 'current'].join(' / ');
+    const draft = Number(s.draft_count || s.payload?.draft_count || 0);
+    const fin = Number(s.final_count || s.payload?.final_count || 0);
+    const edit = scoreEditDistance(s);
+    const statusBadge = fmtLearningStatus(s.status);
+    return `<tr>
+      <td class="mono">${dt}</td>
+      <td class="mono">${String(s.id || '').slice(0, 8)}…</td>
+      <td>${address}</td>
+      <td class="mono">${mode}</td>
+      <td class="mono">${draft}</td>
+      <td class="mono">${fin}</td>
+      <td class="mono">${edit}</td>
+      <td>
+        <div class="td-actions" style="flex-wrap:wrap">
+          ${statusBadge}
+          <button class="btn green" style="padding:3px 7px;font-size:9px" onclick="setLearningStatus('${String(s.id).replace(/'/g, "\\'")}','approved')">Approve</button>
+          <button class="btn red" style="padding:3px 7px;font-size:9px" onclick="setLearningStatus('${String(s.id).replace(/'/g, "\\'")}','rejected')">Reject</button>
+          <button class="btn" style="padding:3px 7px;font-size:9px" onclick="setLearningStatus('${String(s.id).replace(/'/g, "\\'")}','pending')">Reset</button>
+          <button class="btn" style="padding:3px 7px;font-size:9px" onclick="viewLearningSample('${String(s.id).replace(/'/g, "\\'")}')">View</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+function filterLearningTable() {
+  renderLearningTable();
+}
+
 async function signOut() {
   stopLiveUpdates();
   await sb.auth.signOut();
@@ -616,6 +809,7 @@ async function loadData() {
       profileRows = Array.isArray(payload.profiles) ? payload.profiles : [];
       purchaseRows = Array.isArray(payload.purchases) ? payload.purchases : [];
       projectRows = Array.isArray(payload.projects) ? payload.projects : [];
+      learningSamples = Array.isArray(payload.learningFeedback) ? payload.learningFeedback : [];
       supplemental = Array.isArray(payload.authUsers) ? payload.authUsers.map(u => ({
         id: u.id,
         email: u.email || '',
@@ -640,6 +834,7 @@ async function loadData() {
       profileRows = profiles || [];
       purchaseRows = purchases || [];
       projectRows = projects || [];
+      learningSamples = [];
       supplemental = supplementalRows || [];
     }
 
@@ -713,12 +908,15 @@ async function loadData() {
     renderTable(allCustomers);
     renderActiveTesters(allCustomers);
     renderPurchases(purchaseRows);
+    renderLearningTable();
     updateStats(allCustomers, purchaseRows);
     updatePlatformAnalytics(profileRows, purchaseRows, projectRows);
   } catch (err) {
     document.getElementById('tbl-body').innerHTML = `<tr><td colspan="9" class="empty">Failed to load data: ${err.message || err}</td></tr>`;
     document.getElementById('testers-body').innerHTML = '<tr><td colspan="5" class="empty">Failed to load tester activity.</td></tr>';
     document.getElementById('purchases-body').innerHTML = '<tr><td colspan="6" class="empty">Failed to load purchases.</td></tr>';
+    const ltbody = document.getElementById('learning-body');
+    if (ltbody) ltbody.innerHTML = '<tr><td colspan="8" class="empty">Failed to load learning samples.</td></tr>';
     resetAnalytics(err.message || String(err));
   } finally {
     loadingData = false;
@@ -1170,7 +1368,6 @@ function filterTable() {
   );
   renderTable(filtered);
 }
-
 // ── ADMIN SECURITY ──
 function refreshPinState() {
   const hasPin = !!localStorage.getItem(ADMIN_PIN_KEY);

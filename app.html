@@ -418,7 +418,7 @@ select.sc-inp{cursor:pointer;width:40px}
 
 /* page picker */
 #page-modal .mbox{width:780px}
-#page-thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;padding:14px}
+#page-thumbs{display:none;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;padding:14px}
 .pthumb{
   cursor:pointer;border:2px solid var(--border);background:var(--surface2);
   display:flex;flex-direction:column;transition:all .15s;position:relative;
@@ -434,6 +434,36 @@ select.sc-inp{cursor:pointer;width:40px}
 .pthumb-lbl{padding:4px 6px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);border-top:1px solid var(--border)}
 .pthumb.sel .pthumb-lbl{color:var(--accent)}
 .ploading{aspect-ratio:8.5/11;display:flex;align-items:center;justify-content:center;color:var(--text3);font-family:'JetBrains Mono',monospace;font-size:10px}
+.import-source{padding:16px 14px 10px}
+.import-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.import-choice{
+  border:1px solid var(--border);background:var(--surface2);color:var(--text);
+  text-align:left;padding:12px 12px;cursor:pointer;transition:all .15s;
+}
+.import-choice:hover{border-color:var(--accent);background:var(--accent-bg)}
+.import-choice .t{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.import-choice .d{font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5}
+.import-hint{margin-top:10px;font-size:10px;color:var(--text3)}
+#import-map-panel{display:none;padding:12px 14px}
+.map-row{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.map-row label{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3)}
+.map-row input,.map-row select{
+  background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  font-family:'JetBrains Mono',monospace;font-size:10px;padding:5px 7px;outline:none;
+}
+.map-row input:focus,.map-row select:focus{border-color:var(--accent)}
+#map-search{min-width:220px;flex:1}
+#map-search{min-width:260px}
+#map-historical-year{min-width:96px}
+#map-import-status{
+  font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);
+  border:1px solid var(--border);background:var(--surface2);padding:6px 8px;margin-bottom:8px;min-height:30px;
+}
+#map-preview{
+  width:100%;height:420px;border:1px solid var(--border);background:var(--canvas);
+}
+.hist-only{}
+#map-historical-year:disabled{opacity:.6;cursor:not-allowed}
 
 /* settings */
 #settings-modal .mbox{width:700px;max-width:98vw}
@@ -802,10 +832,8 @@ select.sc-inp{cursor:pointer;width:40px}
 <!-- PLAN TABS -->
 <div id="plan-tabs" style="background:var(--surface2);border-bottom:1px solid var(--border);height:30px;display:flex;align-items:center;padding:0 8px;gap:0;overflow-x:auto;flex-shrink:0">
   <div id="plan-tab-list" style="display:flex;gap:0;align-items:center;flex:1;overflow-x:auto"></div>
-  <button id="btn-add-plan" title="Add another file" style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 10px;border:1px solid var(--accent);background:var(--accent-bg);color:var(--accent);cursor:pointer;flex-shrink:0;position:relative;transition:all .15s;font-weight:600">
-    + Add File
-    <input type="file" id="file-input-extra" accept=".pdf,image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
-  </button>
+  <button id="btn-add-plan" title="Add another file" style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 10px;border:1px solid var(--accent);background:var(--accent-bg);color:var(--accent);cursor:pointer;flex-shrink:0;position:relative;transition:all .15s;font-weight:600">+ Add File</button>
+  <input type="file" id="import-file-input" accept=".pdf,image/*" style="display:none">
 </div>
 
 <!-- MAIN -->
@@ -817,14 +845,12 @@ select.sc-inp{cursor:pointer;width:40px}
 
     <!-- Upload -->
     <div class="sb-sec" style="padding:6px 6px">
-      <div class="upload-btn-collapsed" title="Upload PDF or image">
-        <input type="file" id="file-input" accept=".pdf,image/*">
+      <div class="upload-btn-collapsed" title="Import PDF or map imagery" id="btn-open-import-collapsed">
         ▦
       </div>
-      <div class="upload-zone-full">
-        <input type="file" accept=".pdf,image/*" tabindex="-1">
+      <div class="upload-zone-full" id="btn-open-import-full">
         <div class="uz-icon">▦</div>
-        <div class="uz-text"><strong>Drop PDF or image</strong><br>or click to browse</div>
+        <div class="uz-text"><strong>Import plan</strong><br>PDF/image or maps imagery</div>
       </div>
     </div>
 
@@ -854,10 +880,10 @@ select.sc-inp{cursor:pointer;width:40px}
 
   <!-- CANVAS -->
   <div id="cview">
-    <div id="drop-overlay" style="cursor:pointer" onclick="document.getElementById('file-input').click()">
+    <div id="drop-overlay" style="cursor:pointer">
       <div class="do-icon">▦</div>
       <div class="do-title">PaveView Takeoff</div>
-      <div class="do-sub">Drop a PDF or image to begin</div>
+      <div class="do-sub">Import PDF/image or maps imagery to begin</div>
     </div>
     <div id="cwrap">
       <canvas id="bgc"></canvas>
@@ -994,18 +1020,59 @@ select.sc-inp{cursor:pointer;width:40px}
 <div class="modal" id="page-modal">
   <div class="mbox" style="width:780px">
     <div class="mhdr no-print">
-      <div class="mtitle">Select Pages</div>
+      <div class="mtitle" id="page-modal-title">Import Plan</div>
       <span id="page-filename" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)"></span>
       <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn" id="btn-import-back" style="display:none">← Back</button>
         <button class="btn" id="btn-page-all">All</button>
         <button class="btn" id="btn-page-none">Clear</button>
         <button class="btn" id="btn-page-cancel">✕</button>
       </div>
     </div>
-    <div class="mbody"><div id="page-thumbs"></div></div>
+    <div class="mbody">
+      <div class="import-source" id="import-source-panel">
+        <div class="import-grid">
+          <button class="import-choice" id="btn-import-source-file">
+            <div class="t">Upload PDF / Image</div>
+            <div class="d">Select plan sheets from a PDF, or upload a single image file.</div>
+          </button>
+          <button class="import-choice" id="btn-import-source-map">
+            <div class="t">Maps Imagery</div>
+            <div class="d">Search an address or use lat/lng, then capture satellite imagery as a takeoff plan.</div>
+          </button>
+        </div>
+        <div class="import-hint">Tip: drag-and-drop PDF/image directly onto the canvas at any time.</div>
+      </div>
+      <div id="import-map-panel">
+        <div class="map-row">
+          <label>Search</label>
+          <input id="map-search" type="text" placeholder="Address or place">
+          <button class="btn" id="btn-map-search">Find</button>
+        </div>
+        <div class="map-row">
+          <label>Imagery</label>
+          <select id="map-imagery-mode">
+            <option value="google" selected>Google Satellite (current)</option>
+            <option value="historical">Historical Satellite (pick year)</option>
+          </select>
+          <label>Year</label>
+          <select id="map-historical-year"></select>
+          <button class="btn" id="btn-map-debug-bw" title="Debug only: preview pass-2 snap layer">Preview B&W</button>
+          <button class="btn" id="btn-map-debug-snap" title="Debug only: show before/after vertex snap deltas">Show Snap Changes</button>
+          <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
+        </div>
+        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows) before running AI detect.</div>
+        <div id="map-import-status">Pick a location and click Refresh.</div>
+        <canvas id="map-preview" width="1024" height="1024"></canvas>
+      </div>
+      <div id="page-thumbs"></div>
+    </div>
     <div class="mfooter no-print">
-      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)"><strong id="page-sel-count" style="color:var(--stripe)">0</strong> selected</span>
+      <span id="page-footer-text" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)"><strong id="page-sel-count" style="color:var(--stripe)">0</strong> selected</span>
+      <span id="map-footer-text" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);display:none">Capture current map imagery into takeoff</span>
       <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn" id="btn-map-detect" style="display:none">Run AI Detect</button>
+        <button class="btn y" id="btn-map-capture" style="display:none">Use Imagery →</button>
         <button class="btn y" id="btn-page-load">Load Selected →</button>
       </div>
     </div>
@@ -1206,7 +1273,7 @@ function renderZoneCollapsed(){
     el.className='zi-collapsed'+(z.id===activeZone?.id?' active':'');
     el.innerHTML='<div class="zi-dot" style="background:'+(z.obstruct?'#ef4444':z.color)+'"></div><span class="zi-short">'+shortName+'</span>';
     el.title=z.name+(z.closed?' \u2014 '+Math.round(polyArea(z.pts)*getScale()*getScale()).toLocaleString()+' sq ft':'');
-    el.onclick=()=>{activeZone=z;renderZoneList();renderZoneCollapsed();};
+    el.onclick=()=>{activeZone=z;setFocusedZone(z.id);renderZoneList();renderZoneCollapsed();};
     list.appendChild(el);
   });
   const addEl=document.createElement('div');
@@ -1214,6 +1281,10 @@ function renderZoneCollapsed(){
   addEl.title='Add Zone';addEl.textContent='+';
   addEl.onclick=()=>{if(inProg.length>=3)closeZone();addZone(mode==='obstruct');renderAll();};
   list.appendChild(addEl);
+}
+function setFocusedZone(zoneId){
+  const has=zones.some(z=>z.id===zoneId);
+  focusedZoneId=has?zoneId:null;
 }
 
 
@@ -1225,12 +1296,14 @@ let imgW=0, imgH=0;
 let mode='draw';
 let calibState=0, calibPt1=null, measuredPx=null;
 let calibrated=false, loadedAsPdf=false;
+let pendingAutoScaleFeetPerPx=null; // one-shot auto-scale for imagery capture
 let currentStencil='NO PARKING';
 let currentBollardSign='ADA';
 let zones=[], activeZone=null, inProg=[];
 let markers=[], hatchZones=[], linearSegs=[];
 let inHatch=[], inLinear=[];
 let dragging=null, hovering=null;
+let focusedZoneId=null; // when set, stats panel shows only this zone
 let mx=0, my=0; // mouse in image coords
 let isPanning=false;
 let lastClick=0; // for dblclick detection
@@ -1249,6 +1322,7 @@ let plans=[]; // [{id,label,dataURL,imgW,imgH}]
 let currentPlanIdx=0;
 // Per-plan drawing data — keyed by plan id
 let planData={}; // {planId: {zones,markers,measurements,linearSegs,hatchZones}}
+const LEARNING_FEEDBACK_API='/api/learning-feedback';
 
 const COLORS=['#f5c842','#3b82f6','#22c55e','#ef4444','#a855f7','#f97316','#06b6d4','#ec4899','#84cc16','#d97706'];
 
@@ -1304,6 +1378,7 @@ function loadPlanData(idx){
   linearSegs=JSON.parse(JSON.stringify(pd.linearSegs||[]));
   hatchZones=JSON.parse(JSON.stringify(pd.hatchZones||[]));
   activeZone=zones.filter(z=>z.closed).slice(-1)[0]||zones.slice(-1)[0]||null;
+  focusedZoneId=activeZone?.id||null;
   inProg=[];inHatch=[];inLinear=[];
   calibrated=pd.calibrated||false;
 
@@ -1389,19 +1464,1792 @@ function renderPlanTabs(){
   });
 }
 
-// ── FILE LOADING ──
-document.getElementById('file-input').addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0])});
-document.getElementById('file-input-extra').addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0]);e.target.value='';});
-// Upload zone drag-drop — attach to upload-zone-full (expanded) and cview
-const uz=document.getElementById('upload-zone-full-wrap');
-const uzFull=document.querySelector('.upload-zone-full');
-if(uzFull){
-  uzFull.addEventListener('dragover',e=>{e.preventDefault();uzFull.style.borderColor='var(--accent)'});
-  uzFull.addEventListener('dragleave',()=>{uzFull.style.borderColor=''});
-  uzFull.addEventListener('drop',e=>{e.preventDefault();uzFull.style.borderColor='';if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0])});
+// ── FILE LOADING / IMPORT MODAL ──
+const GOOGLE_MAPS_API_KEY='AIzaSyDmfG4UZGYNEE6vlPEBiD8b6YT624eGZK0';
+const WAYBACK_SELECTION_URL='https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer?f=pjson';
+const WAYBACK_FALLBACK_BY_YEAR={
+  '2026':{m:'64001',date:'2026-02-26',label:'World Imagery (Wayback 2026-02-26)'},
+  '2025':{m:'13192',date:'2025-12-18',label:'World Imagery (Wayback 2025-12-18)'},
+  '2024':{m:'16453',date:'2024-12-12',label:'World Imagery (Wayback 2024-12-12)'},
+  '2023':{m:'56102',date:'2023-12-07',label:'World Imagery (Wayback 2023-12-07)'},
+  '2022':{m:'45134',date:'2022-12-14',label:'World Imagery (Wayback 2022-12-14)'},
+  '2021':{m:'26120',date:'2021-12-21',label:'World Imagery (Wayback 2021-12-21)'},
+  '2020':{m:'29260',date:'2020-12-16',label:'World Imagery (Wayback 2020-12-16)'},
+  '2019':{m:'4756',date:'2019-12-12',label:'World Imagery (Wayback 2019-12-12)'},
+  '2018':{m:'23448',date:'2018-12-14',label:'World Imagery (Wayback 2018-12-14)'},
+  '2017':{m:'13161',date:'2018-01-08',label:'World Imagery (Wayback 2018-01-08)'},
+  '2016':{m:'18966',date:'2016-12-20',label:'World Imagery (Wayback 2016-12-20)'},
+  '2015':{m:'28163',date:'2015-12-16',label:'World Imagery (Wayback 2015-12-16)'},
+  '2014':{m:'5844',date:'2014-12-30',label:'World Imagery (Wayback 2014-12-30)'},
+};
+const importFileInput=document.getElementById('import-file-input');
+const pageModalTitle=document.getElementById('page-modal-title');
+const pageFilename=document.getElementById('page-filename');
+const importSourcePanel=document.getElementById('import-source-panel');
+const importMapPanel=document.getElementById('import-map-panel');
+const pageThumbs=document.getElementById('page-thumbs');
+const pageFooterText=document.getElementById('page-footer-text');
+const mapFooterText=document.getElementById('map-footer-text');
+const btnImportBack=document.getElementById('btn-import-back');
+const btnPageAll=document.getElementById('btn-page-all');
+const btnPageNone=document.getElementById('btn-page-none');
+const btnPageLoad=document.getElementById('btn-page-load');
+const btnMapCapture=document.getElementById('btn-map-capture');
+const btnMapDetect=document.getElementById('btn-map-detect');
+const btnMapAiDetect=document.getElementById('btn-map-ai-detect');
+const mapPreviewCanvas=document.getElementById('map-preview');
+const mapPreviewCtx=mapPreviewCanvas.getContext('2d');
+const mapImportStatus=document.getElementById('map-import-status');
+const mapImageryModeSel=document.getElementById('map-imagery-mode');
+const mapHistoricalYearSel=document.getElementById('map-historical-year');
+const btnMapDebugBw=document.getElementById('btn-map-debug-bw');
+const btnMapDebugSnap=document.getElementById('btn-map-debug-snap');
+const mapRenderStyleSel=document.getElementById('map-render-style');
+const mapDrawClassSel=document.getElementById('map-draw-class');
+const btnMapDrawStart=document.getElementById('btn-map-draw-start');
+const btnMapDrawFinish=document.getElementById('btn-map-draw-finish');
+const btnMapDrawCancel=document.getElementById('btn-map-draw-cancel');
+const btnMapExportSvg=document.getElementById('btn-map-export-svg');
+const btnMapExportPdf=document.getElementById('btn-map-export-pdf');
+const btnMapRefresh=document.getElementById('btn-map-refresh');
+const mapLatInp=document.getElementById('map-lat');
+const mapLngInp=document.getElementById('map-lng');
+const mapZoomInp=document.getElementById('map-zoom');
+let pageModalView='source'; // source | pdf | map
+let waybackByYear={...WAYBACK_FALLBACK_BY_YEAR}; // { [year]: {m, date, label} }
+let mapViewState={lat:37.4219999,lng:-122.0840575,zoom:20,mode:'google',year:''};
+let mapInteraction={dragging:false,startX:0,startY:0,startLat:0,startLng:0,startWorld:null,startTx:0,startTy:0};
+let mapRenderReqId=0;
+let mapDetections=[]; // [{x,y,width,height,class,confidence,points?}]
+let mapDetectionRenderSize={w:0,h:0};
+let mapReviewState={active:false,scale:1,tx:0,ty:0,image:null}; // freeze-and-review state after AI detect
+let aiDetectionsForTransfer=[]; // frozen copy used when "Use Imagery" is clicked
+let pendingDetectionTransfer=false;
+let mapBaseRawImage=null;
+let mapBaseProcessedImage=null;
+let mapSnapBwImage=null; // strict B/W preprocessing layer used for pass-2 snapping
+let mapDebugBwPreview=false; // debug-only B/W preview toggle for validation
+let mapDebugSnapOverlay=false; // debug-only overlay of vertex snap deltas
+let mapSnapDebugMoves=[]; // [{from:{x,y},to:{x,y},className,dist}]
+let mapLearningDraftDetections=[]; // raw draft detections captured at AI detect time
+let mapLastDetectContext=null; // context for active-learning feedback capture
+let mapRenderStyle='satellite'; // satellite | blueprint
+let mapVectorDetections=[]; // normalized polygons for map preview editing
+let mapSelectedVectorIdx=-1;
+let mapVectorDrag=null; // {idx,ptIdx}
+let mapVectorDragEdge=null; // {idx,chainIdxs,lastX,lastY}
+let mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
+
+function classStyleForVector(cls){
+  const c=String(cls||'').toLowerCase();
+  if(c.includes('lot'))return {stroke:'#d4a843',lineWidth:3,dash:[],fill:'rgba(20,20,20,0.08)'};
+  if(c.includes('parking_stall')||c.includes('stall'))return {stroke:'#fff8b8',lineWidth:1.1,dash:[],fill:'rgba(255,255,255,0.02)'};
+  if(c.includes('fire_lane')||c.includes('fire'))return {stroke:'#ef4444',lineWidth:2,dash:[8,5],fill:'rgba(239,68,68,0.08)'};
+  if(c.includes('island')||c.includes('obstruct'))return {stroke:'#6b7280',lineWidth:1.8,dash:[6,4],fill:'rgba(107,114,128,0.12)'};
+  if(c.includes('building'))return {stroke:'#fff',lineWidth:1.5,dash:[],fill:'rgba(55,65,81,0.35)'};
+  return {stroke:'#d4a843',lineWidth:2,dash:[],fill:'rgba(17,17,17,0.06)'};
 }
-cview.addEventListener('dragover',e=>e.preventDefault());
-cview.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0])});
+function mapVectorSimplifyTarget(cls){
+  const c=String(cls||'').toLowerCase();
+  if(c.includes('lot'))return 42;
+  if(c.includes('island')||c.includes('obstruct')||c.includes('building'))return 36;
+  return 28;
+}
+
+function normalizeRoboflowPredictionToPolygon(p){
+  if(Array.isArray(p?.points)&&p.points.length>=3){
+    return p.points.map(pt=>({x:pt.x||0,y:pt.y||0}));
+  }
+  const x=p?.x||0,y=p?.y||0,w=p?.width||0,h=p?.height||0;
+  if(!w||!h)return [];
+  return[
+    {x:x-w/2,y:y-h/2},
+    {x:x+w/2,y:y-h/2},
+    {x:x+w/2,y:y+h/2},
+    {x:x-w/2,y:y+h/2},
+  ];
+}
+
+function preprocessImageDataForBlueprint(srcCanvas){
+  const w=srcCanvas.width,h=srcCanvas.height;
+  const out=document.createElement('canvas');
+  out.width=w;out.height=h;
+  const octx=out.getContext('2d');
+  octx.drawImage(srcCanvas,0,0);
+  const id=octx.getImageData(0,0,w,h);
+  const d=id.data;
+  // grayscale + contrast + hard edge emphasis
+  const gray=new Float32Array(w*h);
+  for(let i=0,j=0;i<d.length;i+=4,j++){
+    const g=(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]);
+    const c=Math.max(0,Math.min(255,(g-128)*1.75+128));
+    gray[j]=c;
+  }
+  const edge=new Float32Array(w*h);
+  const gx=[-1,0,1,-2,0,2,-1,0,1];
+  const gy=[-1,-2,-1,0,0,0,1,2,1];
+  for(let y=1;y<h-1;y++){
+    for(let x=1;x<w-1;x++){
+      let sx=0,sy=0,k=0;
+      for(let yy=-1;yy<=1;yy++){
+        for(let xx=-1;xx<=1;xx++){
+          const v=gray[(y+yy)*w+(x+xx)];
+          sx+=v*gx[k];sy+=v*gy[k];k++;
+        }
+      }
+      const mag=Math.min(255,Math.hypot(sx,sy));
+      edge[y*w+x]=mag;
+    }
+  }
+  // Blueprint color plane:
+  // asphalt = black/near-black
+  // markings/stencils = white
+  // islands/curbs = gray mid-tones
+  // everything else muted grayscale
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i=(y*w+x),bi=i*4;
+      const g=gray[i];
+      const e=edge[i];
+      const darkAsphalt=g<85;
+      const brightMarking=g>185||e>145;
+      const islandMid=(g>=95&&g<=155)||((g>80&&g<175)&&e>72);
+      let v;
+      if(brightMarking){
+        v=245;
+      }else if(darkAsphalt){
+        v=20;
+      }else if(islandMid){
+        v=122;
+      }else{
+        // muted background tones between dark asphalt and white markings
+        v=Math.max(50,Math.min(210,Math.round(g*0.9)));
+      }
+      d[bi]=v;
+      d[bi+1]=v;
+      d[bi+2]=v;
+      d[bi+3]=255;
+    }
+  }
+  octx.putImageData(id,0,0);
+  return out;
+}
+function preprocessImageDataForSnapBw(srcCanvas){
+  const w=srcCanvas.width,h=srcCanvas.height;
+  const out=document.createElement('canvas');
+  out.width=w;out.height=h;
+  const octx=out.getContext('2d');
+  // Slight blur to reduce high-frequency noise before threshold.
+  octx.filter='blur(1px)';
+  octx.drawImage(srcCanvas,0,0,w,h);
+  octx.filter='none';
+  const id=octx.getImageData(0,0,w,h);
+  const d=id.data;
+  for(let i=0;i<d.length;i+=4){
+    const lum=(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]);
+    // contrast 200%, brightness 110%
+    const contrasted=((lum-128)*2.0)+128;
+    const boosted=Math.max(0,Math.min(255,contrasted*1.1));
+    // Small dead-band around threshold to reduce speckle and improve visual clarity.
+    const bw=boosted<76?0:(boosted>92?255:(lum<84?0:255));
+    d[i]=bw;d[i+1]=bw;d[i+2]=bw;d[i+3]=255;
+  }
+  octx.putImageData(id,0,0);
+  return out;
+}
+function readBwMask(canvas){
+  if(!canvas)return null;
+  const w=canvas.width,h=canvas.height;
+  const id=canvas.getContext('2d').getImageData(0,0,w,h);
+  const d=id.data;
+  const mask=new Uint8Array(w*h);
+  for(let i=0,j=0;i<d.length;i+=4,j++){
+    mask[j]=d[i]>=250?1:0;
+  }
+  return{w,h,mask};
+}
+function nearestWhiteClusterCenter(bw,x,y,radius=18){
+  if(!bw||!bw.mask||!Number.isFinite(x)||!Number.isFinite(y))return null;
+  const w=bw.w,h=bw.h,m=bw.mask;
+  const cx=Math.round(x),cy=Math.round(y);
+  const r=Math.max(1,Math.round(radius));
+  let best=null;
+  for(let yy=Math.max(0,cy-r);yy<=Math.min(h-1,cy+r);yy++){
+    const dy=yy-cy;
+    for(let xx=Math.max(0,cx-r);xx<=Math.min(w-1,cx+r);xx++){
+      const dx=xx-cx;
+      const d2=dx*dx+dy*dy;
+      if(d2>r*r)continue;
+      const idx=yy*w+xx;
+      if(!m[idx])continue;
+      if(!best||d2<best.d2)best={x:xx,y:yy,d2};
+    }
+  }
+  if(!best)return null;
+  // local cluster centroid around nearest white hit
+  const cr=2;
+  let sx=0,sy=0,cnt=0;
+  for(let yy=Math.max(0,best.y-cr);yy<=Math.min(h-1,best.y+cr);yy++){
+    for(let xx=Math.max(0,best.x-cr);xx<=Math.min(w-1,best.x+cr);xx++){
+      if(!m[yy*w+xx])continue;
+      sx+=xx;sy+=yy;cnt++;
+    }
+  }
+  if(cnt>0)return{x:sx/cnt,y:sy/cnt};
+  return{x:best.x,y:best.y};
+}
+const SNAP_RADIUS_BY_CLASS={
+  lot:20,
+  stall:16,
+  obstruction:15,
+  island:15,
+  building:15,
+  fire:15,
+  default:15
+};
+function classSnapRadius(cls){
+  const c=String(cls||'').toLowerCase();
+  if(c.includes('lot'))return SNAP_RADIUS_BY_CLASS.lot;
+  if(c.includes('stall'))return SNAP_RADIUS_BY_CLASS.stall;
+  if(c.includes('obstruct'))return SNAP_RADIUS_BY_CLASS.obstruction;
+  if(c.includes('island'))return SNAP_RADIUS_BY_CLASS.island;
+  if(c.includes('building'))return SNAP_RADIUS_BY_CLASS.building;
+  if(c.includes('fire'))return SNAP_RADIUS_BY_CLASS.fire;
+  return SNAP_RADIUS_BY_CLASS.default;
+}
+function snapPolygonPointsToBw(points,bw,cls){
+  if(!Array.isArray(points)||points.length<3||!bw){
+    return{points:Array.isArray(points)?points.slice():[],moved:0,total:Array.isArray(points)?points.length:0};
+  }
+  const r=classSnapRadius(cls);
+  let moved=0;
+  const out=points.map(pt=>{
+    const hit=nearestWhiteClusterCenter(bw,pt.x,pt.y,r);
+    if(hit){
+      const d=Math.hypot(hit.x-pt.x,hit.y-pt.y);
+      if(d>0.5)moved++;
+      return{x:hit.x,y:hit.y};
+    }
+    return{x:pt.x,y:pt.y};
+  });
+  return{points:out,moved,total:points.length};
+}
+function distPointToSegment(px,py,ax,ay,bx,by){
+  const dx=bx-ax,dy=by-ay;
+  const len2=dx*dx+dy*dy;
+  if(len2<=1e-9)return Math.hypot(px-ax,py-ay);
+  const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/len2));
+  const sx=ax+t*dx,sy=ay+t*dy;
+  return Math.hypot(px-sx,py-sy);
+}
+function stallCoveredByExisting(ptA,ptB,stallPolys,tol=12){
+  if(!Array.isArray(stallPolys)||!stallPolys.length)return false;
+  const mx=(ptA.x+ptB.x)/2,my=(ptA.y+ptB.y)/2;
+  return stallPolys.some(poly=>{
+    if(!Array.isArray(poly)||poly.length<2)return false;
+    for(let i=0;i<poly.length;i++){
+      const a=poly[i],b=poly[(i+1)%poly.length];
+      if(distPointToSegment(mx,my,a.x,a.y,b.x,b.y)<=tol)return true;
+    }
+    return false;
+  });
+}
+function detectStallAssistSegmentsFromBw(bw,existingStallPolys=[]){
+  if(!bw||!bw.mask)return [];
+  const {w,h,mask}=bw;
+  const minRun=24;
+  const segments=[];
+  // Horizontal runs (cheap Hough-like line extraction)
+  for(let y=0;y<h;y++){
+    let x=0;
+    while(x<w){
+      while(x<w&&!mask[y*w+x])x++;
+      const s=x;
+      while(x<w&&mask[y*w+x])x++;
+      const e=x-1;
+      if(e-s+1>=minRun){
+        const a={x:s,y},b={x:e,y};
+        if(!stallCoveredByExisting(a,b,existingStallPolys,10))segments.push({a,b});
+      }
+    }
+  }
+  // Vertical runs
+  for(let x=0;x<w;x++){
+    let y=0;
+    while(y<h){
+      while(y<h&&!mask[y*w+x])y++;
+      const s=y;
+      while(y<h&&mask[y*w+x])y++;
+      const e=y-1;
+      if(e-s+1>=minRun){
+        const a={x,y:s},b={x,y:e};
+        if(!stallCoveredByExisting(a,b,existingStallPolys,10))segments.push({a,b});
+      }
+    }
+  }
+  return segments.slice(0,120);
+}
+function segmentToThinStallPolygon(seg,widthPx=2){
+  const dx=seg.b.x-seg.a.x,dy=seg.b.y-seg.a.y;
+  const len=Math.hypot(dx,dy)||1;
+  const nx=-dy/len,ny=dx/len;
+  const hw=Math.max(1,widthPx/2);
+  return[
+    {x:seg.a.x+nx*hw,y:seg.a.y+ny*hw},
+    {x:seg.b.x+nx*hw,y:seg.b.y+ny*hw},
+    {x:seg.b.x-nx*hw,y:seg.b.y-ny*hw},
+    {x:seg.a.x-nx*hw,y:seg.a.y-ny*hw},
+  ];
+}
+
+function escXml(v){
+  return String(v??'')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&apos;');
+}
+function classStyleForSvg(cls){
+  const st=classStyleForVector(cls);
+  return{
+    stroke:st.stroke||'#111',
+    strokeWidth:Number(st.lineWidth||1.5),
+    fill:st.fill||'none',
+    dash:Array.isArray(st.dash)&&st.dash.length?st.dash.join(','):'',
+  };
+}
+function buildMapVectorSvgDocument(opts={}){
+  const w=mapDetectionRenderSize.w||mapPreviewCanvas.width||1024;
+  const h=mapDetectionRenderSize.h||mapPreviewCanvas.height||1024;
+  const includeBase=opts.includeBase!==false;
+  const baseSrc=(mapRenderStyle==='blueprint'&&mapBaseProcessedImage)?mapBaseProcessedImage:mapBaseRawImage;
+  let baseDataUrl='';
+  if(includeBase&&baseSrc){
+    const c=document.createElement('canvas');
+    c.width=w;c.height=h;
+    c.getContext('2d').drawImage(baseSrc,0,0,w,h);
+    baseDataUrl=c.toDataURL('image/png');
+  }
+  const polys=(mapVectorDetections||[]).filter(z=>Array.isArray(z.points)&&z.points.length>=3);
+  const parts=[];
+  parts.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
+  parts.push(`<rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"/>`);
+  if(baseDataUrl)parts.push(`<image x="0" y="0" width="${w}" height="${h}" href="${escXml(baseDataUrl)}" opacity="${mapRenderStyle==='blueprint'?'0.96':'1'}"/>`);
+  parts.push(`<g id="rf-vectors">`);
+  polys.forEach((z,idx)=>{
+    const pts=z.points.map(pt=>`${Number(pt.x||0).toFixed(2)},${Number(pt.y||0).toFixed(2)}`).join(' ');
+    const st=classStyleForSvg(z.className);
+    const cls=escXml(z.className||`zone_${idx+1}`);
+    const dash=st.dash?` stroke-dasharray="${st.dash}"`:'';
+    parts.push(`<polygon points="${pts}" fill="${escXml(st.fill)}" stroke="${escXml(st.stroke)}" stroke-width="${st.strokeWidth}"${dash} vector-effect="non-scaling-stroke" data-class="${cls}"/>`);
+    const p0=z.points[0]||{x:0,y:0};
+    parts.push(`<text x="${Number(p0.x||0)+4}" y="${Number(p0.y||0)-4}" font-family="Arial, sans-serif" font-size="10" fill="#111">${cls}</text>`);
+  });
+  parts.push(`</g>`);
+  parts.push(`</svg>`);
+  return parts.join('');
+}
+function downloadTextFile(filename,text,mime='image/svg+xml'){
+  const blob=new Blob([text],{type:mime});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=filename;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+function exportMapVectorsAsSvg(){
+  if(!mapVectorDetections.length){
+    setImportStatus('No vector zones to export yet. Run AI Detect first.',true);
+    return;
+  }
+  const svg=buildMapVectorSvgDocument({includeBase:true});
+  const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+  downloadTextFile(`paveview-vector-${stamp}.svg`,svg,'image/svg+xml');
+  setImportStatus('Exported vector SVG.');
+}
+function openVectorPrintWindow(){
+  if(!mapVectorDetections.length){
+    setImportStatus('No vector zones to print. Run AI Detect first.',true);
+    return;
+  }
+  const svg=buildMapVectorSvgDocument({includeBase:true});
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>PaveView Vector</title><style>
+  html,body{margin:0;padding:0;background:#fff}
+  .page{width:11in;height:8.5in;display:flex;align-items:center;justify-content:center}
+  img,object{max-width:10.5in;max-height:8in}
+  @media print{.hint{display:none}}
+  .hint{position:fixed;top:10px;left:10px;font:12px Arial,sans-serif;background:#000;color:#fff;padding:6px 8px;border-radius:4px}
+  </style></head><body><div class="hint">Print → Save as PDF for vector page</div><div class="page"><object type="image/svg+xml" data="data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}"></object></div></body></html>`;
+  const win=window.open('','_blank','width=1200,height=800');
+  if(!win){setImportStatus('Popup blocked. Allow popups to print vector PDF.',true);return;}
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  setTimeout(()=>{try{win.focus();win.print();}catch(_){/* noop */}},350);
+}
+function exportMapVectorsAsPdf(){
+  openVectorPrintWindow();
+}
+
+function drawMapVectorOverlay(){
+  if(!Array.isArray(mapVectorDetections)||!mapVectorDetections.length)return;
+  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  mapPreviewCtx.save();
+  mapVectorDetections.forEach((z,idx)=>{
+    if(!Array.isArray(z.points)||z.points.length<3)return;
+    const st=classStyleForVector(z.className);
+    mapPreviewCtx.beginPath();
+    z.points.forEach((pt,i)=>{
+      const x=(pt.x||0)*sx,y=(pt.y||0)*sy;
+      if(i===0)mapPreviewCtx.moveTo(x,y);else mapPreviewCtx.lineTo(x,y);
+    });
+    mapPreviewCtx.closePath();
+    mapPreviewCtx.fillStyle=st.fill;
+    mapPreviewCtx.fill();
+    mapPreviewCtx.strokeStyle=st.stroke;
+    mapPreviewCtx.lineWidth=st.lineWidth;
+    mapPreviewCtx.setLineDash(st.dash);
+    mapPreviewCtx.stroke();
+    mapPreviewCtx.setLineDash([]);
+    if(idx===mapSelectedVectorIdx){
+      mapPreviewCtx.strokeStyle='#38bdf8';
+      mapPreviewCtx.lineWidth=2;
+      mapPreviewCtx.stroke();
+      const step=Math.max(1,Math.ceil(z.points.length/28));
+      z.points.forEach((pt,ptIdx)=>{
+        if(ptIdx%step!==0&&ptIdx!==z.points.length-1)return;
+        const x=(pt.x||0)*sx,y=(pt.y||0)*sy;
+        mapPreviewCtx.beginPath();
+        mapPreviewCtx.arc(x,y,4,0,Math.PI*2);
+        mapPreviewCtx.fillStyle='#fff';
+        mapPreviewCtx.fill();
+        mapPreviewCtx.strokeStyle='#111';
+        mapPreviewCtx.lineWidth=1;
+        mapPreviewCtx.stroke();
+      });
+    }
+  });
+  if(mapVectorDrawState.active&&mapVectorDrawState.pts.length){
+    const st=classStyleForVector(mapVectorDrawState.cls);
+    mapPreviewCtx.beginPath();
+    mapVectorDrawState.pts.forEach((pt,i)=>{
+      const x=(pt.x||0)*sx,y=(pt.y||0)*sy;
+      if(i===0)mapPreviewCtx.moveTo(x,y);else mapPreviewCtx.lineTo(x,y);
+    });
+    mapPreviewCtx.strokeStyle=st.stroke;
+    mapPreviewCtx.lineWidth=Math.max(1,st.lineWidth);
+    mapPreviewCtx.setLineDash([5,4]);
+    mapPreviewCtx.stroke();
+    mapPreviewCtx.setLineDash([]);
+  }
+  drawSnapDebugOverlay();
+  mapPreviewCtx.restore();
+}
+function drawSnapDebugOverlay(){
+  if(!mapDebugSnapOverlay||!Array.isArray(mapSnapDebugMoves)||!mapSnapDebugMoves.length)return;
+  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  mapPreviewCtx.save();
+  mapPreviewCtx.setLineDash([4,3]);
+  mapPreviewCtx.lineWidth=1.4;
+  mapSnapDebugMoves.forEach(m=>{
+    if(!m||!m.from||!m.to)return;
+    const fx=(m.from.x||0)*sx,fy=(m.from.y||0)*sy;
+    const tx=(m.to.x||0)*sx,ty=(m.to.y||0)*sy;
+    mapPreviewCtx.strokeStyle='rgba(56,189,248,0.95)';
+    mapPreviewCtx.beginPath();
+    mapPreviewCtx.moveTo(fx,fy);
+    mapPreviewCtx.lineTo(tx,ty);
+    mapPreviewCtx.stroke();
+    mapPreviewCtx.setLineDash([]);
+    mapPreviewCtx.beginPath();
+    mapPreviewCtx.arc(fx,fy,2.2,0,Math.PI*2);
+    mapPreviewCtx.fillStyle='rgba(239,68,68,0.95)';
+    mapPreviewCtx.fill();
+    mapPreviewCtx.beginPath();
+    mapPreviewCtx.arc(tx,ty,2.2,0,Math.PI*2);
+    mapPreviewCtx.fillStyle='rgba(34,197,94,0.95)';
+    mapPreviewCtx.fill();
+    mapPreviewCtx.setLineDash([4,3]);
+  });
+  mapPreviewCtx.setLineDash([]);
+  const shown=Math.min(mapSnapDebugMoves.length,9999);
+  mapPreviewCtx.fillStyle='rgba(0,0,0,0.72)';
+  mapPreviewCtx.fillRect(10,mapPreviewCanvas.height-52,280,32);
+  mapPreviewCtx.fillStyle='#e5e7eb';
+  mapPreviewCtx.font='11px JetBrains Mono,monospace';
+  mapPreviewCtx.fillText(`Snap debug: ${shown} moved vertices`,16,mapPreviewCanvas.height-32);
+  mapPreviewCtx.fillStyle='#ef4444';
+  mapPreviewCtx.fillText('red=before',170,mapPreviewCanvas.height-16);
+  mapPreviewCtx.fillStyle='#22c55e';
+  mapPreviewCtx.fillText('green=after',232,mapPreviewCanvas.height-16);
+  mapPreviewCtx.restore();
+}
+function syncMapVectorDetectionsToRaw(){
+  mapDetections=mapVectorDetections.map(v=>{
+    const pts=Array.isArray(v.points)?v.points.map(p=>({x:p.x,y:p.y})):[];
+    const cx=pts.length?pts.reduce((s,p)=>s+p.x,0)/pts.length:0;
+    const cy=pts.length?pts.reduce((s,p)=>s+p.y,0)/pts.length:0;
+    const bbox=pts.length?pts.reduce((b,p)=>({
+      minX:Math.min(b.minX,p.x),maxX:Math.max(b.maxX,p.x),
+      minY:Math.min(b.minY,p.y),maxY:Math.max(b.maxY,p.y)
+    }),{minX:pts[0].x,maxX:pts[0].x,minY:pts[0].y,maxY:pts[0].y}):{minX:0,maxX:0,minY:0,maxY:0};
+    return{
+      class:v.className,
+      confidence:v.confidence,
+      x:cx,
+      y:cy,
+      width:Math.max(0,bbox.maxX-bbox.minX),
+      height:Math.max(0,bbox.maxY-bbox.minY),
+      points:pts
+    };
+  });
+  aiDetectionsForTransfer=JSON.parse(JSON.stringify(mapDetections));
+}
+function cloneDetectionsForLearning(dets){
+  if(!Array.isArray(dets))return [];
+  return dets.map((d,idx)=>{
+    const cls=String(d?.class||d?.className||'').trim()||'unknown';
+    const conf=Number.isFinite(Number(d?.confidence))?Number(d.confidence):0;
+    const points=Array.isArray(d?.points)
+      ? d.points.map(pt=>({x:Number(pt?.x)||0,y:Number(pt?.y)||0}))
+      : detectionToPolygonPoints(d).map(pt=>({x:Number(pt?.x)||0,y:Number(pt?.y)||0}));
+    const center=detectionCenterPoint({points});
+    const area=polygonArea(points);
+    return{
+      id:String(d?.id||`${cls}-${idx}`),
+      class:cls,
+      confidence:conf,
+      x:Number(center?.x)||0,
+      y:Number(center?.y)||0,
+      points,
+      area:Number(area)||0
+    };
+  });
+}
+function captureCurrentPlanSnapshot(){
+  return{
+    zones:JSON.parse(JSON.stringify(zones||[])),
+    markers:JSON.parse(JSON.stringify(markers||[])),
+    measurements:JSON.parse(JSON.stringify(measurements||[])),
+    linearSegs:JSON.parse(JSON.stringify(linearSegs||[])),
+    hatchZones:JSON.parse(JSON.stringify(hatchZones||[])),
+  };
+}
+async function submitLearningFeedbackSample(sample){
+  try{
+    if(!sample||typeof sample!=='object')return;
+    if(!window._sbClient)return;
+    const {data:{session}}=await window._sbClient.auth.getSession();
+    const accessToken=String(session?.access_token||'');
+    if(!session?.user?.id||!accessToken)return;
+    const payload={
+      userId:session.user.id,
+      accessToken,
+      projectId:currentProjectId||null,
+      planId:plans[currentPlanIdx]?.id||null,
+      address:String(document.getElementById('map-search')?.value||'').trim()||null,
+      mapMode:mapViewState?.mode||null,
+      mapYear:mapViewState?.year||null,
+      zoom:Number.isFinite(mapViewState?.zoom)?mapViewState.zoom:null,
+      lat:Number.isFinite(mapViewState?.lat)?mapViewState.lat:null,
+      lng:Number.isFinite(mapViewState?.lng)?mapViewState.lng:null,
+      modelId:'my-first-project-ug0a7/4',
+      modelVersion:'4',
+      source:'imagery_review_confirm',
+      ...sample
+    };
+    await fetch(LEARNING_FEEDBACK_API,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+  }catch(_e){
+    // Feedback capture should never interrupt user flow.
+  }
+}
+async function captureLearningFeedbackOnConfirm(savedProjectId){
+  try{
+    const planId=plans[currentPlanIdx]?.id||null;
+    if(!planId)return;
+    const draft=cloneDetectionsForLearning(mapLearningDraftDetections||[]);
+    const finalDetections=cloneDetectionsForLearning(aiDetectionsForTransfer||mapDetections||[]);
+    if(!draft.length&&!finalDetections.length)return;
+    const finalSnapshot=captureCurrentPlanSnapshot();
+    const payload={
+      projectId:savedProjectId||currentProjectId||null,
+      planId,
+      source:'imagery_review_confirm',
+      status:'pending',
+      draftDetections:draft,
+      finalDetections,
+      finalSnapshot,
+      draftCount:draft.length,
+      finalCount:finalDetections.length,
+      editDistance:Math.abs(finalDetections.length-draft.length),
+      context:mapLastDetectContext||null
+    };
+    await submitLearningFeedbackSample(payload);
+    // Clear draft context after successful capture to avoid duplicate sends.
+    mapLearningDraftDetections=[];
+    mapLastDetectContext=null;
+  }catch(e){
+    console.warn('Learning feedback capture skipped:',e);
+  }
+}
+function syncMapVectorDetectionsForTransfer(){
+  syncMapVectorDetectionsToRaw();
+}
+
+// legacy duplicate export helpers removed
+
+function mapVectorToZoneType(cls){
+  const c=String(cls||'').toLowerCase();
+  if(c.includes('stall')||c.includes('ada')||c.includes('handicap')||c.includes('accessible')||c.includes('arrow')||c.includes('stencil')||c.includes('crosswalk')||c.includes('hatch')){
+    return 'marker';
+  }
+  if(c.includes('lot'))return 'lot';
+  if(c.includes('island')||c.includes('obstruct'))return 'obstruction';
+  if(c.includes('fire'))return 'fire_lane';
+  if(c.includes('building'))return 'building_footprint';
+  return 'lot';
+}
+
+function setImportStatus(msg,isError=false){
+  if(!mapImportStatus)return;
+  mapImportStatus.style.color=isError?'var(--red)':'var(--text3)';
+  mapImportStatus.textContent=msg;
+}
+function syncMapDebugBwButton(){
+  if(!btnMapDebugBw)return;
+  btnMapDebugBw.classList.toggle('y',mapDebugBwPreview);
+  btnMapDebugBw.textContent=mapDebugBwPreview?'B&W Preview: ON':'Preview B&W';
+}
+function syncMapDebugSnapButton(){
+  if(!btnMapDebugSnap)return;
+  btnMapDebugSnap.classList.toggle('y',mapDebugSnapOverlay);
+  btnMapDebugSnap.textContent=mapDebugSnapOverlay?'Snap Changes: ON':'Show Snap Changes';
+}
+function clearMapDetections(){
+  mapDetections=[];
+  mapDetectionRenderSize={w:0,h:0};
+  mapReviewState={active:false,scale:1,tx:0,ty:0,image:null};
+  aiDetectionsForTransfer=[];
+  pendingDetectionTransfer=false;
+  mapVectorDetections=[];
+  mapSelectedVectorIdx=-1;
+  mapVectorDrag=null;
+  mapVectorDragEdge=null;
+  mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
+  mapSnapDebugMoves=[];
+}
+function detKind(p){
+  const c=String(p?.class||'').toLowerCase();
+  if(c.includes('stall')||c.includes('handicap')||c.includes('ada')||c.includes('arrow'))return 'box';
+  if(c.includes('lot')||c.includes('obstruction')||c.includes('obstruct'))return 'seg';
+  return (Array.isArray(p?.points)&&p.points.length>=3)?'seg':'box';
+}
+function renderDetectionReview(){
+  if(!mapReviewState.active||!mapReviewState.image)return;
+  mapPreviewCtx.save();
+  mapPreviewCtx.setTransform(1,0,0,1,0,0);
+  mapPreviewCtx.clearRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  mapPreviewCtx.fillStyle='#151515';
+  mapPreviewCtx.fillRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  mapPreviewCtx.setTransform(mapReviewState.scale,0,0,mapReviewState.scale,mapReviewState.tx,mapReviewState.ty);
+  mapPreviewCtx.drawImage(mapReviewState.image,0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  mapPreviewCtx.restore();
+}
+
+async function enableDetectionReviewMode(){
+  try{
+    const snap=mapPreviewCanvas.toDataURL('image/png');
+    const img=await loadImageFromUrl(snap);
+    mapReviewState={active:true,scale:1,tx:0,ty:0,image:img};
+    aiDetectionsForTransfer=JSON.parse(JSON.stringify(mapDetections||[]));
+    renderDetectionReview();
+  }catch(e){
+    console.warn('Unable to start review mode:',e);
+  }
+}
+
+function classToMarkerType(cls){
+  const c=String(cls||'').toLowerCase();
+  if(c.includes('handicap')||c==='ada'||c.includes('accessible'))return 'ada';
+  if(c.includes('arrow')||c.includes('crosswalk')||c.includes('hatch'))return 'stencil';
+  if(c.includes('stall'))return 'stall';
+  return null;
+}
+function classIsStallLike(cls){
+  const c=String(cls||'').toLowerCase();
+  return c.includes('stall')
+    || c.includes('ada')
+    || c.includes('handicap')
+    || c.includes('accessible')
+    || c.includes('arrow')
+    || c.includes('stencil')
+    || c.includes('crosswalk')
+    || c.includes('hatch');
+}
+function classIsObstruction(cls){
+  const c=String(cls||'').toLowerCase();
+  return c.includes('obstruction')||c.includes('obstruct')||c.includes('island')||c.includes('building')||c.includes('fire_lane')||c.includes('fire');
+}
+function classIsLot(cls){
+  const c=String(cls||'').toLowerCase();
+  return c.includes('lot');
+}
+function primaryLotPolygonFromDetections(detections){
+  if(!Array.isArray(detections)||!detections.length)return null;
+  let best=null;
+  let bestArea=0;
+  detections.forEach(det=>{
+    if(!classIsLot(det?.class))return;
+    const pts=detectionToPolygonPoints(det);
+    if(!Array.isArray(pts)||pts.length<3)return;
+    const area=polygonArea(pts);
+    if(area>bestArea){bestArea=area;best=pts;}
+  });
+  return (best&&best.length>=3)?best:null;
+}
+function keepStallLikeDetectionsInsideLot(detections,lotPoly=null){
+  if(!Array.isArray(detections)||!detections.length)return [];
+  const lot=(Array.isArray(lotPoly)&&lotPoly.length>=3)?lotPoly:primaryLotPolygonFromDetections(detections);
+  if(!lot){
+    // If no lot was detected, drop stall-like detections to avoid top-of-image false positives.
+    return detections.filter(det=>!classIsStallLike(det?.class));
+  }
+  return detections.filter(det=>{
+    if(!classIsStallLike(det?.class))return true;
+    const ctr=detectionCenterPoint(det);
+    return pointInPolygon(ctr,lot);
+  });
+}
+function primaryLotPolygonFromVectors(vectors){
+  if(!Array.isArray(vectors)||!vectors.length)return null;
+  let best=null;
+  let bestArea=0;
+  vectors.forEach(v=>{
+    if(!classIsLot(v?.className))return;
+    const pts=Array.isArray(v?.points)?v.points:[];
+    if(pts.length<3)return;
+    const area=polygonArea(pts);
+    if(area>bestArea){bestArea=area;best=pts;}
+  });
+  return (best&&best.length>=3)?best:null;
+}
+function keepStallLikeVectorsInsideLot(vectors,lotPoly=null){
+  if(!Array.isArray(vectors)||!vectors.length)return [];
+  const lot=(Array.isArray(lotPoly)&&lotPoly.length>=3)?lotPoly:primaryLotPolygonFromVectors(vectors);
+  if(!lot){
+    return vectors.filter(v=>!classIsStallLike(v?.className));
+  }
+  return vectors.filter(v=>{
+    if(!classIsStallLike(v?.className))return true;
+    const ctr=detectionCenterPoint({points:Array.isArray(v?.points)?v.points:[]});
+    return pointInPolygon(ctr,lot);
+  });
+}
+function detectionToPolygonPoints(det){
+  if(Array.isArray(det?.points)&&det.points.length>=3){
+    return det.points.map(pt=>({x:pt.x,y:pt.y}));
+  }
+  return [
+    {x:(det?.x||0)-(det?.width||0)/2,y:(det?.y||0)-(det?.height||0)/2},
+    {x:(det?.x||0)+(det?.width||0)/2,y:(det?.y||0)-(det?.height||0)/2},
+    {x:(det?.x||0)+(det?.width||0)/2,y:(det?.y||0)+(det?.height||0)/2},
+    {x:(det?.x||0)-(det?.width||0)/2,y:(det?.y||0)+(det?.height||0)/2}
+  ];
+}
+function detectionArea(det){
+  if(!det)return 0;
+  const pts=detectionToPolygonPoints(det);
+  const area=polygonArea(pts);
+  if(area>0)return area;
+  return Math.abs((det.width||0)*(det.height||0));
+}
+function keepSinglePrimaryLotDetections(detections){
+  if(!Array.isArray(detections)||!detections.length)return [];
+  const lotCandidates=[];
+  detections.forEach((det,idx)=>{
+    if(!classIsLot(det?.class))return;
+    lotCandidates.push({idx,area:detectionArea(det)});
+  });
+  if(lotCandidates.length<=1)return detections.slice();
+  lotCandidates.sort((a,b)=>b.area-a.area);
+  const keepIdx=lotCandidates[0].idx;
+  return detections.filter((det,idx)=>!classIsLot(det?.class)||idx===keepIdx);
+}
+function polygonBounds(pts){
+  if(!Array.isArray(pts)||!pts.length)return null;
+  let minX=pts[0].x,maxX=pts[0].x,minY=pts[0].y,maxY=pts[0].y;
+  for(let i=1;i<pts.length;i++){
+    const p=pts[i];
+    if(p.x<minX)minX=p.x;
+    if(p.x>maxX)maxX=p.x;
+    if(p.y<minY)minY=p.y;
+    if(p.y>maxY)maxY=p.y;
+  }
+  return {minX,maxX,minY,maxY,w:Math.max(0,maxX-minX),h:Math.max(0,maxY-minY)};
+}
+function boundsIou(a,b){
+  if(!a||!b)return 0;
+  const ix=Math.max(0,Math.min(a.maxX,b.maxX)-Math.max(a.minX,b.minX));
+  const iy=Math.max(0,Math.min(a.maxY,b.maxY)-Math.max(a.minY,b.minY));
+  const inter=ix*iy;
+  const union=(a.w*a.h)+(b.w*b.h)-inter;
+  if(union<=1e-9)return 0;
+  return inter/union;
+}
+function areaSimilarity(a,b){
+  const aa=Math.max(0,Number(a)||0),bb=Math.max(0,Number(b)||0);
+  const mx=Math.max(aa,bb)||1;
+  return Math.min(aa,bb)/mx;
+}
+function dedupeZoneDetections(detections){
+  if(!Array.isArray(detections)||!detections.length)return [];
+  const kept=[];
+  detections.forEach(det=>{
+    const isZone=classIsLot(det?.class)||classIsObstruction(det?.class);
+    if(!isZone){
+      kept.push({det,bucket:'other',bbox:null,area:0});
+      return;
+    }
+    const bucket=classIsLot(det?.class)?'lot':'obstruction';
+    const pts=simplifyClosedPolygon(detectionToPolygonPoints(det),36);
+    const bbox=polygonBounds(pts);
+    const area=polygonArea(pts);
+    const dup=kept.some(k=>k.bucket===bucket&&bbox&&k.bbox&&boundsIou(k.bbox,bbox)>=0.9&&areaSimilarity(k.area,area)>=0.9);
+    if(!dup)kept.push({det,bucket,bbox,area});
+  });
+  return kept.map(k=>k.det);
+}
+function zoneGeometryLikelyDuplicate(a,b){
+  if(!a||!b||!Array.isArray(a.pts)||!Array.isArray(b.pts)||a.pts.length<3||b.pts.length<3)return false;
+  const ab=polygonBounds(a.pts),bb=polygonBounds(b.pts);
+  const iou=boundsIou(ab,bb);
+  if(iou<0.9)return false;
+  const aa=polygonArea(a.pts),ba=polygonArea(b.pts);
+  return areaSimilarity(aa,ba)>=0.9;
+}
+function markerKey(m){
+  const t=String(m?.type||'').toLowerCase();
+  const lbl=String(m?.label||'').trim().toUpperCase();
+  const x=Math.round(Number(m?.x)||0);
+  const y=Math.round(Number(m?.y)||0);
+  return `${t}|${lbl}|${x}|${y}`;
+}
+function markerLikelyDuplicate(a,b,pxTol=12){
+  if(!a||!b)return false;
+  const ta=String(a.type||'').toLowerCase();
+  const tb=String(b.type||'').toLowerCase();
+  if(ta!==tb)return false;
+  const la=String(a.label||'').trim().toUpperCase();
+  const lb=String(b.label||'').trim().toUpperCase();
+  const stallLikeType=(ta==='stall'||ta==='ada'||ta==='stencil');
+  if(!stallLikeType&&la!==lb)return false;
+  const tol=Number.isFinite(pxTol)&&pxTol>0
+    ? pxTol
+    : ((ta==='stall'||ta==='ada')?32:(ta==='stencil'?24:14));
+  return Math.hypot((a.x||0)-(b.x||0),(a.y||0)-(b.y||0))<=tol;
+}
+function confidenceThresholdForClass(cls){
+  const c=String(cls||'').toLowerCase();
+  // Keep stall-like detections visible while filtering low-confidence noise.
+  if(c.includes('stall'))return 0.22;
+  if(c.includes('ada')||c.includes('handicap'))return 0.2;
+  if(c.includes('arrow')||c.includes('stencil'))return 0.18;
+  return 0.25;
+}
+function filterDetectionsByClassConfidence(detections){
+  if(!Array.isArray(detections)||!detections.length)return [];
+  return detections.filter(det=>{
+    const conf=Number(det?.confidence||0);
+    return conf>=confidenceThresholdForClass(det?.class);
+  });
+}
+function detectionCenterPoint(det){
+  if(Array.isArray(det?.points)&&det.points.length){
+    const s=det.points.reduce((acc,p)=>({x:acc.x+(p.x||0),y:acc.y+(p.y||0)}),{x:0,y:0});
+    return {x:s.x/det.points.length,y:s.y/det.points.length};
+  }
+  return {x:Number(det?.x)||0,y:Number(det?.y)||0};
+}
+function dedupeStallLikeDetections(detections){
+  if(!Array.isArray(detections)||!detections.length)return [];
+  const dedupeRadiusByType=(type)=>{
+    const t=String(type||'').toLowerCase();
+    if(t==='stall'||t==='ada')return 40;
+    if(t==='stencil')return 30;
+    return 20;
+  };
+  const stallLike=(c)=>{
+    const s=String(c||'').toLowerCase();
+    return s.includes('stall')||s.includes('ada')||s.includes('handicap')||s.includes('accessible')||s.includes('arrow')||s.includes('stencil')||s.includes('crosswalk')||s.includes('hatch');
+  };
+  const kept=[];
+  detections.forEach(det=>{
+    if(!stallLike(det?.class)){
+      kept.push(det);
+      return;
+    }
+    const center=detectionCenterPoint(det);
+    const markerType=classToMarkerType(det?.class)||String(det?.class||'').toLowerCase();
+    const dupIdx=kept.findIndex(prev=>{
+      if(!stallLike(prev?.class))return false;
+      const prevType=classToMarkerType(prev?.class)||String(prev?.class||'').toLowerCase();
+      const pc=detectionCenterPoint(prev);
+      const d=Math.hypot(center.x-pc.x,center.y-pc.y);
+      // If two stall-like detections are nearly on top of each other, collapse them
+      // even if one is misclassified (e.g. stall vs ada/arrow).
+      if(d<=14)return true;
+      if(prevType!==markerType)return false;
+      const tol=Math.max(dedupeRadiusByType(markerType),dedupeRadiusByType(prevType));
+      return d<=tol;
+    });
+    if(dupIdx<0){
+      kept.push(det);
+      return;
+    }
+    // Keep the strongest confidence if detections overlap.
+    const prevConf=Number(kept[dupIdx]?.confidence||0);
+    const curConf=Number(det?.confidence||0);
+    if(curConf>prevConf)kept[dupIdx]=det;
+  });
+  return kept;
+}
+function dedupeImportedMarkers(markersIn){
+  if(!Array.isArray(markersIn)||!markersIn.length)return [];
+  const kept=[];
+  markersIn.forEach(m=>{
+    const dup=kept.some(k=>markerLikelyDuplicate(k,m));
+    if(!dup)kept.push(m);
+  });
+  return kept;
+}
+function polygonArea(pts){
+  if(!Array.isArray(pts)||pts.length<3)return 0;
+  let s=0;
+  for(let i=0;i<pts.length;i++){
+    const a=pts[i],b=pts[(i+1)%pts.length];
+    s+=(a.x*b.y)-(b.x*a.y);
+  }
+  return Math.abs(s)/2;
+}
+function angleBetweenSegments(a,b,c){
+  const v1={x:b.x-a.x,y:b.y-a.y};
+  const v2={x:c.x-b.x,y:c.y-b.y};
+  const l1=Math.hypot(v1.x,v1.y),l2=Math.hypot(v2.x,v2.y);
+  if(l1<=1e-9||l2<=1e-9)return 0;
+  const dot=(v1.x*v2.x+v1.y*v2.y)/(l1*l2);
+  const clamped=Math.max(-1,Math.min(1,dot));
+  return Math.acos(clamped);
+}
+function collectCollinearChainIndices(pts,afterIdx,angleTolRad=Math.PI/48){
+  if(!Array.isArray(pts)||pts.length<3)return [];
+  const n=pts.length;
+  const norm=(i)=>((i%n)+n)%n;
+  let a=norm(afterIdx),b=norm(afterIdx+1);
+  const chain=[a,b];
+  const inChain=(idx)=>chain.includes(norm(idx));
+  while(chain.length<n){
+    const leftCand=norm(chain[0]-1);
+    const angL=angleBetweenSegments(pts[leftCand],pts[chain[0]],pts[chain[1]]);
+    if(Math.abs(Math.PI-angL)<=angleTolRad&&!inChain(leftCand))chain.unshift(leftCand); else break;
+  }
+  while(chain.length<n){
+    const m=chain.length;
+    const rightCand=norm(chain[m-1]+1);
+    const angR=angleBetweenSegments(pts[chain[m-2]],pts[chain[m-1]],pts[rightCand]);
+    if(Math.abs(Math.PI-angR)<=angleTolRad&&!inChain(rightCand))chain.push(rightCand); else break;
+  }
+  return chain;
+}
+function perpendicularDistanceToSegment(p,a,b){
+  const dx=b.x-a.x,dy=b.y-a.y;
+  const len2=dx*dx+dy*dy;
+  if(len2===0)return dist(p,a);
+  const t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/len2));
+  const proj={x:a.x+t*dx,y:a.y+t*dy};
+  return dist(p,proj);
+}
+function rdpSimplify(points,epsilon){
+  if(!Array.isArray(points)||points.length<=2)return Array.isArray(points)?points.slice():[];
+  let maxDist=-1;
+  let idx=-1;
+  const first=points[0],last=points[points.length-1];
+  for(let i=1;i<points.length-1;i++){
+    const d=perpendicularDistanceToSegment(points[i],first,last);
+    if(d>maxDist){maxDist=d;idx=i;}
+  }
+  if(maxDist>epsilon&&idx>0){
+    const left=rdpSimplify(points.slice(0,idx+1),epsilon);
+    const right=rdpSimplify(points.slice(idx),epsilon);
+    return left.slice(0,-1).concat(right);
+  }
+  return [first,last];
+}
+function simplifyClosedPolygon(rawPts,targetMax=80){
+  if(!Array.isArray(rawPts)||rawPts.length<3)return Array.isArray(rawPts)?rawPts.slice():[];
+  let pts=rawPts.map(p=>({x:p.x,y:p.y})).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+  if(pts.length<3)return pts;
+  // Remove exact duplicate closure point if present
+  if(dist(pts[0],pts[pts.length-1])<0.001)pts=pts.slice(0,-1);
+  if(pts.length<3)return pts;
+  if(pts.length<=targetMax)return pts;
+  const area=polygonArea(pts);
+  const bbox=pts.reduce((b,p)=>({
+    minX:Math.min(b.minX,p.x),maxX:Math.max(b.maxX,p.x),
+    minY:Math.min(b.minY,p.y),maxY:Math.max(b.maxY,p.y)
+  }),{minX:pts[0].x,maxX:pts[0].x,minY:pts[0].y,maxY:pts[0].y});
+  const diag=Math.hypot(bbox.maxX-bbox.minX,bbox.maxY-bbox.minY)||1;
+  // Baseline epsilon scales by geometry size and complexity.
+  let eps=Math.max(0.8,diag*0.003,Math.sqrt(area||1)/220);
+  let simplified=pts;
+  for(let i=0;i<12;i++){
+    const open=pts.concat([pts[0]]);
+    const simpOpen=rdpSimplify(open,eps);
+    simplified=simpOpen.slice(0,-1);
+    if(simplified.length<=targetMax&&simplified.length>=6)break;
+    if(simplified.length>targetMax)eps*=1.35; else eps*=0.82;
+  }
+  if(simplified.length<3){
+    // Safe fallback: sparse sampling keeps shape editable.
+    const step=Math.max(1,Math.ceil(pts.length/targetMax));
+    simplified=pts.filter((_,i)=>i%step===0);
+  }
+  // Final hard cap in pathological cases.
+  if(simplified.length>targetMax){
+    const step=Math.max(1,Math.ceil(simplified.length/targetMax));
+    simplified=simplified.filter((_,i)=>i%step===0);
+  }
+  if(simplified.length<3)simplified=pts.slice(0,Math.min(pts.length,targetMax));
+  // second-stage cleanup: remove near-collinear jitter + very short edges
+  const cleaned=[];
+  const minEdge=Math.max(0.8,diag*0.0022);
+  for(let i=0;i<simplified.length;i++){
+    const prev=simplified[(i-1+simplified.length)%simplified.length];
+    const cur=simplified[i];
+    const next=simplified[(i+1)%simplified.length];
+    const v1={x:cur.x-prev.x,y:cur.y-prev.y};
+    const v2={x:next.x-cur.x,y:next.y-cur.y};
+    const l1=Math.hypot(v1.x,v1.y),l2=Math.hypot(v2.x,v2.y);
+    if(l1<minEdge||l2<minEdge)continue;
+    const dot=(v1.x*v2.x+v1.y*v2.y)/(l1*l2);
+    // keep corners; drop almost-straight micro points
+    const isNearStraight=Math.abs(dot)>0.992;
+    if(isNearStraight)continue;
+    cleaned.push(cur);
+  }
+  if(cleaned.length>=3)simplified=cleaned;
+  return simplified.length>=3?simplified:pts.slice(0,Math.min(pts.length,targetMax));
+}
+function detectionToZone(det){
+  const pts=Array.isArray(det?.points)&&det.points.length>=3
+    ? det.points.map(pt=>({x:pt.x,y:pt.y}))
+    : [
+        {x:det.x-det.width/2,y:det.y-det.height/2},
+        {x:det.x+det.width/2,y:det.y-det.height/2},
+        {x:det.x+det.width/2,y:det.y+det.height/2},
+        {x:det.x-det.width/2,y:det.y+det.height/2}
+      ];
+  if(pts.length<3)return null;
+  const simplifiedPts=simplifyClosedPolygon(pts,36);
+  if(simplifiedPts.length<3)return null;
+  const isObs=classIsObstruction(det.class);
+  const idx=isObs?zones.filter(z=>z.obstruct).length+1:zones.filter(z=>!z.obstruct).length+1;
+  const id='z'+Date.now()+Math.floor(Math.random()*10000);
+  const color=isObs?'#ef4444':COLORS[(zones.filter(z=>!z.obstruct).length)%COLORS.length];
+  return{
+    id,
+    name:isObs?`Obstruction ${idx}`:`Lot ${idx}`,
+    color,
+    pts:simplifiedPts,
+    closed:true,
+    locked:true,
+    showFill:true,
+    obstruct:isObs,
+    labelSize:12,
+    opacity:15,
+    lineWidth:2,
+    lineDashed:false
+  };
+}
+function detectionToMarker(det){
+  const t=classToMarkerType(det.class);
+  if(!t)return null;
+  const m={type:t,x:det.x,y:det.y,label:''};
+  const cls=String(det?.class||'').toLowerCase();
+  if(t==='stencil'){
+    m.label=(cls.includes('hatch')||cls.includes('crosswalk'))?'HATCH':'ARROW';
+  }else if(t==='ada'){
+    m.label='ADA';
+  }else if(t==='stall'){
+    // Keep standard stall dots aligned with existing PaveView labeling.
+    m.label='STALL';
+  }
+  // Preserve explicit class hints that should map to current label conventions.
+  if(cls.includes('accessible')||cls.includes('handicap'))m.label='ADA';
+  return m;
+}
+function transferDetectionsToEditableObjects(){
+  const srcRaw=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
+  const src=dedupeStallLikeDetections(
+    dedupeZoneDetections(
+      keepStallLikeDetectionsInsideLot(
+        keepSinglePrimaryLotDetections(
+          filterDetectionsByClassConfidence(srcRaw)
+        )
+      )
+    )
+  );
+  if(!Array.isArray(src)||!src.length)return {zonesAdded:0,markersAdded:0};
+  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  const rs=mapReviewState;
+  const rsScale=(rs&&rs.active&&Number.isFinite(rs.scale)&&rs.scale!==0)?rs.scale:1;
+  const rsTx=(rs&&rs.active&&Number.isFinite(rs.tx))?rs.tx:0;
+  const rsTy=(rs&&rs.active&&Number.isFinite(rs.ty))?rs.ty:0;
+  const toCapturedPoint=(x,y)=>({x:(x*rsScale+rsTx),y:(y*rsScale+rsTy)});
+  const mapped=src.map(det=>{
+    const cp={...det};
+    cp.x=(det.x||0)*sx;
+    cp.y=(det.y||0)*sy;
+    cp.width=(det.width||0)*sx;
+    cp.height=(det.height||0)*sy;
+    if(Array.isArray(det.points))cp.points=det.points.map(pt=>({x:(pt.x||0)*sx,y:(pt.y||0)*sy}));
+    const center=toCapturedPoint(cp.x,cp.y);
+    cp.x=center.x;cp.y=center.y;
+    cp.width=cp.width*rsScale;
+    cp.height=cp.height*rsScale;
+    if(Array.isArray(cp.points))cp.points=cp.points.map(pt=>toCapturedPoint(pt.x,pt.y));
+    return cp;
+  });
+  let zonesAdded=0,markersAdded=0;
+  mapped.forEach(det=>{
+    if(classIsLot(det.class)||classIsObstruction(det.class)){
+      const z=detectionToZone(det);
+      if(z){
+        const isDup=zones.some(existing=>existing.obstruct===z.obstruct&&zoneGeometryLikelyDuplicate(existing,z));
+        if(!isDup){
+          zones.push(z);
+          zonesAdded++;
+        }
+      }
+      return;
+    }
+    const m=detectionToMarker(det);
+    if(m){
+      const isMarkerDup=markers.some(existing=>markerLikelyDuplicate(existing,m));
+      if(!isMarkerDup){
+        markers.push(m);
+        markersAdded++;
+      }
+    }
+  });
+  if(zonesAdded||markersAdded){
+    activeZone=zones.filter(z=>z.closed).slice(-1)[0]||zones.slice(-1)[0]||activeZone;
+    focusedZoneId=activeZone?.id||focusedZoneId;
+    undoHistory.push({type:'ai-import',zonesAdded,markersAdded});
+    renderZoneList();updateStats();renderAll();savePlanData();
+  }
+  aiDetectionsForTransfer=[];
+  pendingDetectionTransfer=false;
+  return {zonesAdded,markersAdded};
+}
+
+function transferDetectionsWhenPlanReady(tries=0){
+  if(_switchingPlan&&tries<60){
+    setTimeout(()=>transferDetectionsWhenPlanReady(tries+1),40);
+    return;
+  }
+  const moved=transferDetectionsToEditableObjects();
+  if((moved.zonesAdded||0)+(moved.markersAdded||0)>0){
+    setImportStatus(`Transferred AI detections: ${moved.zonesAdded} zones, ${moved.markersAdded} markers. Edit them, then finish/report.`);
+  }
+}
+
+function setPageModalView(view){
+  pageModalView=view;
+  const source=view==='source';
+  const pdf=view==='pdf';
+  const map=view==='map';
+  if(pageModalTitle)pageModalTitle.textContent=source?'Import Plan':(pdf?'Select Pages':'Maps Imagery');
+  if(pageFilename)pageFilename.style.display=pdf?'':'none';
+  importSourcePanel.style.display=source?'block':'none';
+  importMapPanel.style.display=map?'block':'none';
+  pageThumbs.style.display=pdf?'grid':'none';
+  btnImportBack.style.display=source?'none':'inline-block';
+  btnPageAll.style.display=pdf?'inline-block':'none';
+  btnPageNone.style.display=pdf?'inline-block':'none';
+  btnPageLoad.style.display=pdf?'inline-block':'none';
+  btnMapCapture.style.display=map?'inline-block':'none';
+  pageFooterText.style.display=map?'none':'';
+  mapFooterText.style.display=map?'':'none';
+}
+
+function openImportSourceChooser(){
+  setPageModalView('source');
+  openModal('page-modal');
+}
+
+function applyAutoImageryScale(feetPerPx){
+  const autoFeet=Math.max(0.001,Math.round(feetPerPx*1000)/1000);
+  document.getElementById('scale-px').value='1';
+  document.getElementById('scale-ft').value=String(autoFeet);
+  document.getElementById('scale-unit').value='ft';
+  calibrated=true;
+  updateScaleReadout();
+  updateStats();
+  updateCalibBadge();
+  savePlanData();
+}
+function applyAutoImageryScaleWhenReady(feetPerPx,tries=0){
+  if(_switchingPlan&&tries<30){
+    setTimeout(()=>applyAutoImageryScaleWhenReady(feetPerPx,tries+1),35);
+    return;
+  }
+  applyAutoImageryScale(feetPerPx);
+}
+
+function addCanvasAsPlan(oc,label,isPdf,opts={}){
+  const dataURL=oc.toDataURL('image/jpeg',0.85);
+  if(plans.length===0){
+    bgc.width=oc.width;bgc.height=oc.height;
+    bgCtx.clearRect(0,0,oc.width,oc.height);
+    bgCtx.drawImage(oc,0,0);
+    const pid='plan'+Date.now();
+    plans=[{id:pid,label,dataURL,imgW:oc.width,imgH:oc.height}];
+    planData[pid]={zones:[],markers:[],measurements:[],linearSegs:[],hatchZones:[]};
+    currentPlanIdx=0;
+    onPlanLoaded(isPdf,opts);
+    document.getElementById('plan-tabs').classList.add('visible');
+    renderPlanTabs();
+  }else{
+    addPlan(dataURL,oc.width,oc.height,label);
+    if(opts.autoScaleFeetPerPx){
+      applyAutoImageryScaleWhenReady(opts.autoScaleFeetPerPx);
+    }else{
+      openModal('calib-modal');
+    }
+  }
+}
+
+function latLngToWorldPixel(lat,lng,zoomLv){
+  const clamped=Math.max(-85.05112878,Math.min(85.05112878,lat));
+  const sin=Math.sin(clamped*Math.PI/180);
+  const scale=256*Math.pow(2,zoomLv);
+  return{
+    x:(lng+180)/360*scale,
+    y:(0.5-Math.log((1+sin)/(1-sin))/(4*Math.PI))*scale
+  };
+}
+function worldPixelToLatLng(x,y,zoomLv){
+  const scale=256*Math.pow(2,zoomLv);
+  const lng=x/scale*360-180;
+  const n=Math.PI-(2*Math.PI*y)/scale;
+  const lat=(180/Math.PI)*Math.atan(0.5*(Math.exp(n)-Math.exp(-n)));
+  return{lat,lng};
+}
+function metersPerPixel(lat,zoomLv){
+  return (156543.03392*Math.cos(lat*Math.PI/180))/Math.pow(2,zoomLv);
+}
+function normalizeLng(lng){
+  let v=lng;
+  while(v>180)v-=360;
+  while(v<-180)v+=360;
+  return v;
+}
+function loadImageFromUrl(url){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.crossOrigin='anonymous';
+    img.onload=()=>resolve(img);
+    img.onerror=()=>reject(new Error('Image load failed'));
+    img.src=url;
+  });
+}
+
+function readMapInputsIntoState(){
+  mapViewState.mode=mapImageryModeSel.value;
+  mapViewState.year=mapHistoricalYearSel.value||mapViewState.year||'';
+}
+function syncMapInputsFromState(){
+  // Lat/Lng/Zoom inputs intentionally hidden in simplified UI.
+}
+function populateWaybackYearsDropdown(){
+  const years=listWaybackYears();
+  mapHistoricalYearSel.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join('');
+}
+function ensureFallbackWaybackYears(){
+  if(!waybackByYear)waybackByYear={...WAYBACK_FALLBACK_BY_YEAR};
+  else waybackByYear={...WAYBACK_FALLBACK_BY_YEAR,...waybackByYear};
+  populateWaybackYearsDropdown();
+}
+function listWaybackYears(){
+  return Object.keys(waybackByYear||{}).sort((a,b)=>b.localeCompare(a));
+}
+async function ensureWaybackYears(){
+  if(waybackByYear&&Object.keys(waybackByYear).length>0){
+    populateWaybackYearsDropdown();
+    return;
+  }
+  ensureFallbackWaybackYears();
+  try{
+    const res=await fetch(WAYBACK_SELECTION_URL);
+    const data=await res.json();
+    const byYear={};
+    (data.Selection||[]).forEach(row=>{
+      const m=String(row.M||'').trim();
+      const name=String(row.Name||'');
+      const dateMatch=name.match(/(\d{4}-\d{2}-\d{2})/);
+      if(!m||!dateMatch)return;
+      const date=dateMatch[1];
+      const year=date.slice(0,4);
+      if(!byYear[year]||date>byYear[year].date)byYear[year]={m,date,label:name};
+    });
+    waybackByYear={...WAYBACK_FALLBACK_BY_YEAR,...byYear};
+    populateWaybackYearsDropdown();
+  }catch(e){
+    console.warn('Falling back to bundled historical years:',e);
+    ensureFallbackWaybackYears();
+  }
+}
+
+async function drawTilePreview(mode,lat,lng,zoomLv,year){
+  const tileSize=256;
+  const world=latLngToWorldPixel(lat,lng,zoomLv);
+  const startX=world.x-mapPreviewCanvas.width/2;
+  const startY=world.y-mapPreviewCanvas.height/2;
+  const endX=startX+mapPreviewCanvas.width;
+  const endY=startY+mapPreviewCanvas.height;
+  const minTx=Math.floor(startX/tileSize),maxTx=Math.floor((endX-1)/tileSize);
+  const minTy=Math.floor(startY/tileSize),maxTy=Math.floor((endY-1)/tileSize);
+  const n=Math.pow(2,zoomLv);
+  mapPreviewCtx.fillStyle='#151515';
+  mapPreviewCtx.fillRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  const tasks=[];
+  for(let ty=minTy;ty<=maxTy;ty++){
+    if(ty<0||ty>=n)continue;
+    for(let tx=minTx;tx<=maxTx;tx++){
+      const wrapped=((tx%n)+n)%n;
+      const dx=tx*tileSize-startX;
+      const dy=ty*tileSize-startY;
+      let url='';
+      if(mode==='historical'){
+        const rel=waybackByYear?.[year];
+        if(!rel)continue;
+        url=`https://wayback.maptiles.arcgis.com/arcgis/rest/services/world_imagery/mapserver/tile/${rel.m}/${zoomLv}/${ty}/${wrapped}`;
+      }else{
+        url=`https://mt1.google.com/vt/lyrs=s&x=${wrapped}&y=${ty}&z=${zoomLv}`;
+      }
+      tasks.push(loadImageFromUrl(url).then(img=>mapPreviewCtx.drawImage(img,dx,dy,tileSize,tileSize)).catch(()=>{}));
+    }
+  }
+  await Promise.all(tasks);
+  mapDetectionRenderSize={w:mapPreviewCanvas.width,h:mapPreviewCanvas.height};
+  // Capture raw tile render for preprocess/blueprint rendering.
+  const rawCanvas=document.createElement('canvas');
+  rawCanvas.width=mapPreviewCanvas.width;rawCanvas.height=mapPreviewCanvas.height;
+  rawCanvas.getContext('2d').drawImage(mapPreviewCanvas,0,0);
+  mapBaseRawImage=rawCanvas;
+  mapBaseProcessedImage=preprocessImageDataForBlueprint(rawCanvas);
+  mapSnapBwImage=preprocessImageDataForSnapBw(rawCanvas);
+}
+
+function drawMapOverlay(){
+  // Re-render base depending on selected render style.
+  const debugBwMode=(mapDebugBwPreview&&mapSnapBwImage);
+  const base=debugBwMode?mapSnapBwImage:((mapRenderStyle==='blueprint'&&mapBaseProcessedImage)?mapBaseProcessedImage:mapBaseRawImage);
+  if(base){
+    mapPreviewCtx.setTransform(1,0,0,1,0,0);
+    mapPreviewCtx.clearRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+    mapPreviewCtx.drawImage(base,0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  }
+  const mpp=metersPerPixel(mapViewState.lat,mapViewState.zoom);
+  const feetPerPx=mpp*3.28084;
+  const barFeet=feetPerPx<0.5?20:feetPerPx<1?50:feetPerPx<2?100:feetPerPx<5?200:500;
+  const barPx=Math.max(30,Math.min(240,barFeet/feetPerPx));
+  const years=listWaybackYears();
+  const yearLines=[];
+  if(years.length){
+    for(let i=0;i<years.length;i+=6){
+      yearLines.push(years.slice(i,i+6).join(', '));
+    }
+  }
+  const topH=24+(yearLines.length?14+yearLines.length*12:0);
+  const y=mapPreviewCanvas.height-18;
+  mapPreviewCtx.fillStyle='rgba(0,0,0,.55)';
+  mapPreviewCtx.fillRect(8,8,Math.min(690,mapPreviewCanvas.width-16),topH);
+  mapPreviewCtx.fillRect(8,mapPreviewCanvas.height-30,Math.ceil(barPx)+16,20);
+  mapPreviewCtx.strokeStyle='#fff';
+  mapPreviewCtx.lineWidth=2;
+  mapPreviewCtx.beginPath();
+  mapPreviewCtx.moveTo(14,y);
+  mapPreviewCtx.lineTo(14+barPx,y);
+  mapPreviewCtx.stroke();
+  mapPreviewCtx.beginPath();
+  mapPreviewCtx.moveTo(14,y-5);mapPreviewCtx.lineTo(14,y+5);
+  mapPreviewCtx.moveTo(14+barPx,y-5);mapPreviewCtx.lineTo(14+barPx,y+5);
+  mapPreviewCtx.stroke();
+  mapPreviewCtx.fillStyle='#fff';
+  mapPreviewCtx.font='11px JetBrains Mono,monospace';
+  const modeLabel=debugBwMode
+    ? ((mapViewState.mode==='historical'?`Historical ${mapViewState.year||''}`:'Google Current')+' · DEBUG B/W')
+    : (mapViewState.mode==='historical'?`Historical ${mapViewState.year||''}`:'Google Current');
+  mapPreviewCtx.fillText(`${modeLabel} · z${mapViewState.zoom} · ${mapViewState.lat.toFixed(5)}, ${mapViewState.lng.toFixed(5)}`,14,24);
+  if(yearLines.length){
+    mapPreviewCtx.fillText('Available historical years:',14,38);
+    yearLines.forEach((ln,i)=>mapPreviewCtx.fillText(ln,14,50+i*12));
+  }
+  mapPreviewCtx.fillText(`${Math.round(barFeet)} ft`,18+barPx, y+4);
+  if(mapVectorDetections.length){
+    drawMapVectorOverlay();
+  }else if(mapDetections.length){
+    const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+    const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+    mapPreviewCtx.save();
+    mapPreviewCtx.lineWidth=2;
+    mapPreviewCtx.font='11px JetBrains Mono,monospace';
+    mapDetections.forEach((p,idx)=>{
+      const x=(p.x-p.width/2)*sx;
+      const y=(p.y-p.height/2)*sy;
+      const w=p.width*sx;
+      const h=p.height*sy;
+      const hue=(idx*57)%360;
+      const col=`hsl(${hue} 90% 55%)`;
+      mapPreviewCtx.strokeStyle=col;
+      mapPreviewCtx.fillStyle='rgba(0,0,0,.65)';
+      const kind=detKind(p);
+      if(kind==='seg'&&Array.isArray(p.points)&&p.points.length>=3){
+        mapPreviewCtx.beginPath();
+        p.points.forEach((pt,i)=>{
+          const px=(pt.x||0)*sx, py=(pt.y||0)*sy;
+          if(i===0)mapPreviewCtx.moveTo(px,py); else mapPreviewCtx.lineTo(px,py);
+        });
+        mapPreviewCtx.closePath();
+        mapPreviewCtx.fillStyle='hsla('+hue+',90%,55%,0.20)';
+        mapPreviewCtx.fill();
+        mapPreviewCtx.strokeStyle=col;
+        mapPreviewCtx.stroke();
+        mapPreviewCtx.fillStyle='rgba(0,0,0,.65)';
+      }else{
+        mapPreviewCtx.strokeRect(x,y,w,h);
+      }
+      const lbl=`${p.class||'object'} ${(Number(p.confidence||0)*100).toFixed(1)}%`;
+      const tw=mapPreviewCtx.measureText(lbl).width+8;
+      const lx=(kind==='seg'&&Array.isArray(p.points)&&p.points.length)?(p.points[0].x*sx):x;
+      const ly=(kind==='seg'&&Array.isArray(p.points)&&p.points.length)?(p.points[0].y*sy):y;
+      mapPreviewCtx.fillRect(lx,Math.max(0,ly-16),tw,14);
+      mapPreviewCtx.fillStyle=col;
+      mapPreviewCtx.fillText(lbl,lx+4,Math.max(10,ly-5));
+    });
+    mapPreviewCtx.restore();
+  }
+}
+
+function mapCanvasToDetectionPt(canvasX,canvasY){
+  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  return{x:canvasX/sx,y:canvasY/sy};
+}
+function mapDetectionToCanvasPt(dx,dy){
+  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  return{x:dx*sx,y:dy*sy};
+}
+function nearestVectorVertex(canvasX,canvasY,maxPx=12){
+  if(mapSelectedVectorIdx<0||!mapVectorDetections[mapSelectedVectorIdx])return null;
+  const z=mapVectorDetections[mapSelectedVectorIdx];
+  let best=null;
+  z.points.forEach((pt,ptIdx)=>{
+    const cp=mapDetectionToCanvasPt(pt.x,pt.y);
+    const d=Math.hypot(cp.x-canvasX,cp.y-canvasY);
+    if(d<=maxPx&&(!best||d<best.d))best={ptIdx,d};
+  });
+  return best;
+}
+function nearestPolygonEdgeInsert(poly,canvasX,canvasY,maxPx=14){
+  if(!Array.isArray(poly)||poly.length<2)return null;
+  const dp=mapCanvasToDetectionPt(canvasX,canvasY);
+  let best=null;
+  for(let i=0;i<poly.length;i++){
+    const a=poly[i],b=poly[(i+1)%poly.length];
+    const pr=ptOnSeg(dp.x,dp.y,a.x,a.y,b.x,b.y);
+    const cp=mapDetectionToCanvasPt(pr.x,pr.y);
+    const d=Math.hypot(cp.x-canvasX,cp.y-canvasY);
+    if(d<=maxPx&&(!best||d<best.d))best={afterIdx:i,pt:{x:pr.x,y:pr.y},d};
+  }
+  return best;
+}
+function pointInPolygon(pt,poly){
+  if(!pt||!Array.isArray(poly)||poly.length<3)return false;
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const a=poly[i],b=poly[j];
+    const hit=((a.y>pt.y)!==(b.y>pt.y))&&(pt.x<((b.x-a.x)*(pt.y-a.y))/((b.y-a.y)||1e-9)+a.x);
+    if(hit)inside=!inside;
+  }
+  return inside;
+}
+
+function mapVectorDetectionsToSvgMarkup(opts={}){
+  const w=mapPreviewCanvas.width;
+  const h=mapPreviewCanvas.height;
+  const base=(opts.baseStyle==='blueprint'&&mapBaseProcessedImage)?mapBaseProcessedImage:mapBaseRawImage;
+  const baseDataUrl=base?base.toDataURL('image/png'):'';
+  const esc=(s)=>String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const sx=mapDetectionRenderSize.w?w/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?h/mapDetectionRenderSize.h:1;
+  const polys=(mapVectorDetections||[]).map((z,idx)=>{
+    if(!Array.isArray(z.points)||z.points.length<3)return '';
+    const st=classStyleForVector(z.className);
+    const pts=z.points.map(p=>`${(p.x||0)*sx},${(p.y||0)*sy}`).join(' ');
+    const dash=(Array.isArray(st.dash)&&st.dash.length)?` stroke-dasharray="${st.dash.join(' ')}"`:'';
+    const selected=idx===mapSelectedVectorIdx?` stroke="#38bdf8" stroke-width="${Math.max(2,st.lineWidth+0.8)}"`:'';
+    const basePoly=`<polygon points="${pts}" fill="${st.fill}" stroke="${st.stroke}" stroke-width="${st.lineWidth}"${dash} data-class="${esc(z.className)}"/>`;
+    return selected?`${basePoly}<polygon points="${pts}" fill="none"${selected}/>`:basePoly;
+  }).join('');
+  const bg=baseDataUrl?`<image href="${baseDataUrl}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none"/>`:`<rect x="0" y="0" width="${w}" height="${h}" fill="#fff"/>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <title>PaveView Vector Export</title>
+  ${bg}
+  <g id="paveview-vectors">
+    ${polys}
+  </g>
+</svg>`;
+}
+
+async function loadMapPreview(opts={}){
+  if(opts.fromInputs!==false)readMapInputsIntoState();
+  const reqId=++mapRenderReqId;
+  const lat=mapViewState.lat,lng=mapViewState.lng,zoomLv=mapViewState.zoom;
+  if(!opts.preserveDetections)clearMapDetections();
+  if(!Number.isFinite(lat)||!Number.isFinite(lng)){setImportStatus('Enter valid latitude and longitude.',true);return;}
+  setImportStatus(opts.reason||'Loading map imagery…');
+  try{
+    if(!waybackByYear){
+      try{await ensureWaybackYears();}catch(e){console.warn('Wayback year list unavailable:',e);}
+    }
+    if(mapViewState.mode==='historical'){
+      if(!mapViewState.year){
+        const first=listWaybackYears()[0];
+        mapViewState.year=first||'';
+      }
+      if(mapHistoricalYearSel.value!==mapViewState.year)mapHistoricalYearSel.value=mapViewState.year;
+    }
+    await drawTilePreview(mapViewState.mode,lat,lng,zoomLv,mapViewState.year);
+    if(reqId!==mapRenderReqId)return;
+    drawMapOverlay();
+    syncMapInputsFromState();
+    setImportStatus('Drag to pan, scroll to zoom, then click "Use Imagery".');
+  }catch(e){
+    console.error(e);
+    if(reqId!==mapRenderReqId)return;
+    setImportStatus('Unable to load imagery. Check connectivity or selected source.',true);
+  }
+}
+
+async function geocodeMapSearch(){
+  const q=(document.getElementById('map-search').value||'').trim();
+  if(!q)return;
+  setImportStatus('Searching location…');
+  try{
+    const url='https://maps.googleapis.com/maps/api/geocode/json?address='+encodeURIComponent(q)+'&key='+encodeURIComponent(GOOGLE_MAPS_API_KEY);
+    const res=await fetch(url);
+    const data=await res.json();
+    const loc=data?.results?.[0]?.geometry?.location;
+    if(!loc)throw new Error('No location found');
+    if(mapLatInp)mapLatInp.value=loc.lat.toFixed(7);
+    if(mapLngInp)mapLngInp.value=loc.lng.toFixed(7);
+    mapViewState.lat=loc.lat;
+    mapViewState.lng=loc.lng;
+    syncMapInputsFromState();
+    await loadMapPreview({fromInputs:false,reason:'Loading searched location…'});
+  }catch(e){
+    console.error(e);
+    setImportStatus('Location search failed. Try a full address.',true);
+  }
+}
+
+function updateHistoricalControls(){
+  const on=mapImageryModeSel.value==='historical';
+  document.querySelectorAll('.hist-only').forEach(el=>el.style.display='');
+  mapHistoricalYearSel.disabled=!on;
+  mapHistoricalYearSel.style.opacity=on?'1':'0.55';
+}
+
+async function captureMapImageryIntoPlan(){
+  // Never capture debug overlays into plan imagery.
+  const prevDebugBw=mapDebugBwPreview;
+  const prevDebugSnap=mapDebugSnapOverlay;
+  if(prevDebugBw||prevDebugSnap){
+    mapDebugBwPreview=false;
+    mapDebugSnapOverlay=false;
+    syncMapDebugBwButton();
+    syncMapDebugSnapButton();
+    drawMapOverlay();
+  }
+  const lat=(Number.isFinite(mapViewState.lat)?mapViewState.lat:0).toFixed(5);
+  const lng=(Number.isFinite(mapViewState.lng)?mapViewState.lng:0).toFixed(5);
+  const mode=mapImageryModeSel.value;
+  const year=mapHistoricalYearSel.value;
+  const label=(mode==='historical'?`Map ${year}`:'Map Current')+` ${lat},${lng}`;
+  const oc=document.createElement('canvas');
+  oc.width=mapPreviewCanvas.width;oc.height=mapPreviewCanvas.height;
+  oc.getContext('2d').drawImage(mapPreviewCanvas,0,0);
+  const feetPerPx=metersPerPixel(mapViewState.lat,mapViewState.zoom)*3.28084;
+  pendingAutoScaleFeetPerPx=feetPerPx;
+  const activeDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
+    keepStallLikeDetectionsInsideLot(
+      filterDetectionsByClassConfidence((aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections)
+    )
+  )));
+  aiDetectionsForTransfer=JSON.parse(JSON.stringify(activeDetections||[]));
+  if(Array.isArray(aiDetectionsForTransfer)&&aiDetectionsForTransfer.length){
+    mapLearningDraftDetections=JSON.parse(JSON.stringify(aiDetectionsForTransfer));
+  }
+  pendingDetectionTransfer=!!(activeDetections&&activeDetections.length);
+  closeModal('page-modal');
+  addCanvasAsPlan(oc,label,false,{autoScaleFeetPerPx:feetPerPx,skipCalibration:true});
+  if(pendingDetectionTransfer)transferDetectionsWhenPlanReady();
+  mapDebugBwPreview=prevDebugBw;
+  mapDebugSnapOverlay=prevDebugSnap;
+  syncMapDebugBwButton();
+  syncMapDebugSnapButton();
+}
+
+async function runRoboflowDetection(){
+  try{
+    setImportStatus('Running Roboflow detection…');
+    mapReviewState.active=false;
+    mapInteraction.dragging=false;
+    // PASS 1: Keep Roboflow tied to raw capture as the primary model input.
+    const inferSrc=mapBaseRawImage||mapPreviewCanvas;
+    const inferCanvas=document.createElement('canvas');
+    inferCanvas.width=mapPreviewCanvas.width;
+    inferCanvas.height=mapPreviewCanvas.height;
+    inferCanvas.getContext('2d').drawImage(inferSrc||mapPreviewCanvas,0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+    const payload={imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),mode:'hybrid'};
+    const res=await fetch('/api/roboflow-detect',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload),
+    });
+    const data=await res.json();
+    if(!res.ok)throw new Error(data?.error||'Detection failed');
+
+    const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
+    // Store draft detections from Roboflow pass 1 (do not render yet).
+    const draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
+      keepStallLikeDetectionsInsideLot(
+        filterDetectionsByClassConfidence(rawPredictions)
+      )
+    )));
+    mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
+    mapLastDetectContext={
+      capturedAt:new Date().toISOString(),
+      lat:Number.isFinite(mapViewState?.lat)?Number(mapViewState.lat):null,
+      lng:Number.isFinite(mapViewState?.lng)?Number(mapViewState.lng):null,
+      zoom:Number.isFinite(mapViewState?.zoom)?Number(mapViewState.zoom):null,
+      mapMode:String(mapViewState?.mode||''),
+      mapYear:String(mapViewState?.year||''),
+      modelId:String(data?.meta?.model_id||data?.meta?.model||'my-first-project-ug0a7/4'),
+      modelVersion:String(data?.meta?.model_version||''),
+      imageWidth:Number(data?.image?.width||mapPreviewCanvas.width||0)||null,
+      imageHeight:Number(data?.image?.height||mapPreviewCanvas.height||0)||null,
+      address:String(document.getElementById('map-search')?.value||'')
+    };
+
+    // PASS 2: preprocess to strict B/W and snap draft vertices to nearest white clusters.
+    const bwCanvas=preprocessImageDataForSnapBw(inferCanvas);
+    mapSnapBwImage=bwCanvas;
+    // keep blueprint mode base coherent with correction pass while preserving existing toggle behavior.
+    mapBaseProcessedImage=bwCanvas;
+    const bw=readBwMask(bwCanvas);
+    const detW=Number(data?.image?.width)||mapPreviewCanvas.width;
+    const detH=Number(data?.image?.height)||mapPreviewCanvas.height;
+    // Align pass-2 B/W mask to Roboflow coordinate space if dimensions differ.
+    const bwAligned=(bw&&bw.w===detW&&bw.h===detH)?bw:(()=>{
+      const ac=document.createElement('canvas');
+      ac.width=detW;ac.height=detH;
+      ac.getContext('2d').drawImage(bwCanvas,0,0,detW,detH);
+      return readBwMask(ac);
+    })();
+    let snapMoved=0,snapTotal=0;
+    mapSnapDebugMoves=[];
+    const draftVectors=draftDetections.map((p,idx)=>{
+      const cls=String(p.class||'lot_boundary');
+      const rawPts=normalizeRoboflowPredictionToPolygon(p);
+      const snapRes=snapPolygonPointsToBw(rawPts,bwAligned,cls);
+      snapMoved+=snapRes.moved;snapTotal+=snapRes.total;
+      const n=Math.min(rawPts.length,snapRes.points.length);
+      for(let i=0;i<n;i++){
+        const a=rawPts[i],b=snapRes.points[i];
+        if(!a||!b)continue;
+        const d=Math.hypot((b.x||0)-(a.x||0),(b.y||0)-(a.y||0));
+        if(d>0.5){
+          mapSnapDebugMoves.push({
+            from:{x:a.x||0,y:a.y||0},
+            to:{x:b.x||0,y:b.y||0},
+            className:cls,
+            dist:d
+          });
+        }
+      }
+      const simpPts=simplifyClosedPolygon(snapRes.points,mapVectorSimplifyTarget(cls));
+      return{
+        id:p.id||('rf-'+idx+'-'+Date.now()),
+        className:cls,
+        confidence:Number(p.confidence||0),
+        points:simpPts,
+      };
+    }).filter(z=>Array.isArray(z.points)&&z.points.length>=3);
+
+    // Secondary stall line assist (lightweight Hough-like extraction on B/W layer).
+    const existingStallPolys=draftVectors
+      .filter(v=>String(v.className||'').toLowerCase().includes('stall'))
+      .map(v=>v.points);
+    const assistSegs=detectStallAssistSegmentsFromBw(bwAligned,existingStallPolys);
+    const assistVectors=assistSegs.map((seg,i)=>({
+      id:'assist-stall-'+Date.now()+'-'+i,
+      className:'parking_stall',
+      confidence:0.35,
+      points:segmentToThinStallPolygon(seg,2)
+    }));
+
+    const allVectors=draftVectors.concat(assistVectors);
+    mapVectorDetections=keepStallLikeVectorsInsideLot(allVectors);
+    mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
+    mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
+    mapDetectionRenderSize={w:data?.image?.width||mapPreviewCanvas.width,h:data?.image?.height||mapPreviewCanvas.height};
+    syncMapVectorDetectionsToRaw();
+    await loadMapPreview({fromInputs:false,preserveDetections:true,reason:`Detections: ${mapDetections.length}`});
+    const clsCounts={};
+    mapVectorDetections.forEach(z=>{clsCounts[z.className]=(clsCounts[z.className]||0)+1;});
+    const classSummary=Object.entries(clsCounts).map(([k,v])=>`${k}:${v}`).join(', ');
+    mapReviewState.active=false;
+    drawMapOverlay();
+    const snapPct=snapTotal?Math.round((snapMoved/snapTotal)*100):0;
+    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%). ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
+  }catch(e){
+    console.error(e);
+    setImportStatus(`Detection failed: ${e.message}`,true);
+  }
+}
+
+function startImportFromFile(f){
+  if(!f)return;
+  if(f.type==='application/pdf')openPagePicker(f);
+  else{
+    closeModal('page-modal');
+    loadImg(f);
+  }
+}
 
 async function loadFile(f){
   if(f.type==='application/pdf') await openPagePicker(f);
@@ -1409,19 +3257,20 @@ async function loadFile(f){
 }
 
 async function openPagePicker(f){
+  setPageModalView('pdf');
   const ab=await f.arrayBuffer();
   currentPdf=await pdfjsLib.getDocument({data:ab}).promise;
   selPages=new Set();
+  document.getElementById('page-filename').style.display='';
   document.getElementById('page-filename').textContent=f.name+' · '+currentPdf.numPages+' pages';
   document.getElementById('page-sel-count').textContent='0';
-  const thumbs=document.getElementById('page-thumbs');
-  thumbs.innerHTML='';
+  pageThumbs.innerHTML='';
   openModal('page-modal');
   for(let i=1;i<=currentPdf.numPages;i++){
     const wrap=document.createElement('div');
     wrap.className='pthumb';
     wrap.innerHTML=`<div class="ploading">Loading…</div><div class="pthumb-lbl">Page ${i}</div>`;
-    thumbs.appendChild(wrap);
+    pageThumbs.appendChild(wrap);
     (async(pn,el)=>{
       const pg=await currentPdf.getPage(pn);
       const vp=pg.getViewport({scale:.28});
@@ -1449,10 +3298,10 @@ document.getElementById('btn-page-none').onclick=()=>{
   document.querySelectorAll('.pthumb').forEach(el=>el.classList.remove('sel'));
   document.getElementById('page-sel-count').textContent='0';
 };
-document.getElementById('btn-page-cancel').onclick=()=>closeModal('page-modal');
 document.getElementById('btn-page-load').onclick=async()=>{
   if(!selPages.size)return;
   closeModal('page-modal');
+  setPageModalView('source');
   const pages=Array.from(selPages).sort((a,b)=>a-b);
   const rendered=[];
   for(const pn of pages){
@@ -1474,22 +3323,7 @@ document.getElementById('btn-page-load').onclick=async()=>{
   let y=0;
   for(const c of rendered){octx.drawImage(c,Math.floor((tw-c.width)/2),y);y+=c.height+GAP}
   const label=(document.getElementById('page-filename').textContent||'PDF').split('·')[0].trim().replace(/\.[^.]+$/,'').substring(0,24);
-  if(plans.length===0){
-    bgc.width=tw;bgc.height=th;
-    bgCtx.fillStyle='#fff';bgCtx.fillRect(0,0,tw,th);
-    let y2=0;
-    for(const c of rendered){bgCtx.drawImage(c,Math.floor((tw-c.width)/2),y2);y2+=c.height+GAP}
-    const pid='plan'+Date.now();
-    plans=[{id:pid,label,dataURL:oc.toDataURL('image/jpeg',0.85),imgW:tw,imgH:th}];
-    planData[pid]={zones:[],markers:[],measurements:[],linearSegs:[],hatchZones:[]};
-    currentPlanIdx=0;
-    onPlanLoaded(true);
-    document.getElementById('plan-tabs').classList.add('visible');
-    renderPlanTabs();
-  }else{
-    addPlan(oc.toDataURL('image/jpeg',0.85),tw,th,label);
-    openModal('calib-modal');
-  }
+  addCanvasAsPlan(oc,label,true);
 };
 
 async function loadImg(f){
@@ -1502,26 +3336,357 @@ async function loadImg(f){
     oc.width=img.naturalWidth;oc.height=img.naturalHeight;
     oc.getContext('2d').drawImage(img,0,0);
     const label=f.name.replace(/\.[^.]+$/,'').substring(0,24);
-    if(plans.length===0){
-      // First file - draw directly and set up plan
-      bgc.width=oc.width;bgc.height=oc.height;
-      bgCtx.drawImage(oc,0,0);
-      const pid='plan'+Date.now();
-      plans=[{id:pid,label,dataURL:oc.toDataURL('image/jpeg',0.85),imgW:oc.width,imgH:oc.height}];
-      planData[pid]={zones:[],markers:[],measurements:[],linearSegs:[],hatchZones:[]};
-      currentPlanIdx=0;
-      onPlanLoaded(false);
-      document.getElementById('plan-tabs').classList.add('visible');
-      renderPlanTabs();
-    }else{
-      addPlan(oc.toDataURL('image/jpeg',0.85),oc.width,oc.height,label);
-      openModal('calib-modal');
-    }
+    addCanvasAsPlan(oc,label,false);
   };
   img.src=url;
 }
 
-function onPlanLoaded(isPdf){
+// Import modal handlers
+document.getElementById('btn-open-import-collapsed').addEventListener('click',openImportSourceChooser);
+document.getElementById('btn-open-import-full').addEventListener('click',openImportSourceChooser);
+document.getElementById('btn-add-plan').addEventListener('click',openImportSourceChooser);
+document.getElementById('drop-overlay').addEventListener('click',openImportSourceChooser);
+document.getElementById('btn-import-source-file').addEventListener('click',()=>importFileInput.click());
+document.getElementById('btn-import-source-map').addEventListener('click',async()=>{
+  setPageModalView('map');
+  mapRenderStyle='satellite';
+  mapDebugBwPreview=false;
+  mapDebugSnapOverlay=false;
+  syncMapDebugBwButton();
+  syncMapDebugSnapButton();
+  if(mapRenderStyleSel)mapRenderStyleSel.value='satellite';
+  updateHistoricalControls();
+  readMapInputsIntoState();
+  if(mapViewState.mode==='historical'){try{await ensureWaybackYears();}catch(e){console.warn(e);}}
+  await loadMapPreview({fromInputs:false});
+});
+importFileInput.addEventListener('change',e=>{if(e.target.files[0])startImportFromFile(e.target.files[0]);e.target.value='';});
+btnImportBack.addEventListener('click',()=>setPageModalView('source'));
+document.getElementById('btn-page-cancel').onclick=()=>{closeModal('page-modal');setPageModalView('source');};
+document.getElementById('btn-map-search').addEventListener('click',geocodeMapSearch);
+document.getElementById('map-search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();geocodeMapSearch();}});
+if(btnMapDebugBw){
+  btnMapDebugBw.addEventListener('click',()=>{
+    mapDebugBwPreview=!mapDebugBwPreview;
+    syncMapDebugBwButton();
+    drawMapOverlay();
+    setImportStatus(mapDebugBwPreview?'Debug B&W preview ON (for validation only).':'Debug B&W preview OFF.');
+  });
+}
+if(btnMapDebugSnap){
+  btnMapDebugSnap.addEventListener('click',()=>{
+    mapDebugSnapOverlay=!mapDebugSnapOverlay;
+    syncMapDebugSnapButton();
+    drawMapOverlay();
+    if(mapDebugSnapOverlay&&!mapSnapDebugMoves.length){
+      setImportStatus('Snap change overlay ON. Run AI Detect to populate moved-vertex lines.');
+    }else{
+      setImportStatus(mapDebugSnapOverlay?'Snap change overlay ON.':'Snap change overlay OFF.');
+    }
+  });
+}
+if(mapRenderStyleSel){
+  mapRenderStyleSel.addEventListener('change',()=>{
+    mapRenderStyle=mapRenderStyleSel.value||'satellite';
+    drawMapOverlay();
+  });
+}
+if(mapDrawClassSel){
+  mapDrawClassSel.addEventListener('change',()=>{
+    mapVectorDrawState.cls=mapDrawClassSel.value||'lot_boundary';
+  });
+}
+if(btnMapDrawStart){
+  btnMapDrawStart.addEventListener('click',()=>{
+    mapVectorDrawState.active=true;
+    mapVectorDrawState.cls=mapDrawClassSel?.value||mapVectorDrawState.cls||'lot_boundary';
+    mapVectorDrawState.pts=[];
+    setImportStatus(`Draw ${mapVectorDrawState.cls}: click to add vertices, Finish to close.`);
+    drawMapOverlay();
+  });
+}
+if(btnMapDrawFinish){
+  btnMapDrawFinish.addEventListener('click',()=>{
+    if(!mapVectorDrawState.active||mapVectorDrawState.pts.length<3)return;
+    mapVectorDetections.push({
+      id:'manual-'+Date.now(),
+      className:mapVectorDrawState.cls||'lot_boundary',
+      confidence:1,
+      points:mapVectorDrawState.pts.map(p=>({x:p.x,y:p.y}))
+    });
+    mapSelectedVectorIdx=mapVectorDetections.length-1;
+    mapVectorDrawState={active:false,cls:mapDrawClassSel?.value||'lot_boundary',pts:[]};
+    syncMapVectorDetectionsToRaw();
+    setImportStatus(`Added ${mapVectorDetections[mapSelectedVectorIdx].className}.`);
+    drawMapOverlay();
+  });
+}
+if(btnMapDrawCancel){
+  btnMapDrawCancel.addEventListener('click',()=>{
+    mapVectorDrawState={active:false,cls:mapDrawClassSel?.value||'lot_boundary',pts:[]};
+    setImportStatus('Manual draw cancelled.');
+    drawMapOverlay();
+  });
+}
+if(btnMapExportSvg){
+  btnMapExportSvg.addEventListener('click',exportMapVectorsAsSvg);
+}
+if(btnMapExportPdf){
+  btnMapExportPdf.addEventListener('click',exportMapVectorsAsPdf);
+}
+mapImageryModeSel.addEventListener('change',async()=>{
+  mapViewState.mode=mapImageryModeSel.value;
+  updateHistoricalControls();
+  if(mapViewState.mode==='historical'){try{await ensureWaybackYears();}catch(e){console.warn(e);}}
+  await loadMapPreview({fromInputs:true});
+});
+mapHistoricalYearSel.addEventListener('change',()=>{mapViewState.year=mapHistoricalYearSel.value;loadMapPreview({fromInputs:false,reason:'Loading selected year…'});});
+btnMapCapture.addEventListener('click',captureMapImageryIntoPlan);
+if(btnMapDetect)btnMapDetect.addEventListener('click',runRoboflowDetection);
+if(btnMapAiDetect)btnMapAiDetect.addEventListener('click',runRoboflowDetection);
+
+mapPreviewCanvas.addEventListener('wheel',e=>{
+  if(pageModalView!=='map')return;
+  if(mapVectorDrawState.active)return;
+  e.preventDefault();
+  if(mapReviewState.active){
+    const rect=mapPreviewCanvas.getBoundingClientRect();
+    const sx=e.clientX-rect.left;
+    const sy=e.clientY-rect.top;
+    const oldScale=mapReviewState.scale;
+    const newScale=Math.max(0.3,Math.min(5,oldScale*(e.deltaY<0?1.1:1/1.1)));
+    if(newScale===oldScale)return;
+    const wx=(sx-mapReviewState.tx)/oldScale;
+    const wy=(sy-mapReviewState.ty)/oldScale;
+    mapReviewState.scale=newScale;
+    mapReviewState.tx=sx-wx*newScale;
+    mapReviewState.ty=sy-wy*newScale;
+    renderDetectionReview();
+    setImportStatus('Review mode: zooming detections');
+    return;
+  }
+  const oldZoom=mapViewState.zoom;
+  const next=Math.max(14,Math.min(22,oldZoom+(e.deltaY<0?1:-1)));
+  if(next===oldZoom)return;
+  const rect=mapPreviewCanvas.getBoundingClientRect();
+  const sx=e.clientX-rect.left;
+  const sy=e.clientY-rect.top;
+  const oldWorld=latLngToWorldPixel(mapViewState.lat,mapViewState.lng,oldZoom);
+  const cursorWorld={x:oldWorld.x+(sx-mapPreviewCanvas.width/2),y:oldWorld.y+(sy-mapPreviewCanvas.height/2)};
+  const scale=Math.pow(2,next-oldZoom);
+  const newCursorWorld={x:cursorWorld.x*scale,y:cursorWorld.y*scale};
+  const newCenterWorld={x:newCursorWorld.x-(sx-mapPreviewCanvas.width/2),y:newCursorWorld.y-(sy-mapPreviewCanvas.height/2)};
+  const ll=worldPixelToLatLng(newCenterWorld.x,newCenterWorld.y,next);
+  mapViewState.zoom=next;
+  mapViewState.lat=Math.max(-85.05112878,Math.min(85.05112878,ll.lat));
+  mapViewState.lng=normalizeLng(ll.lng);
+  loadMapPreview({fromInputs:false,reason:'Zooming imagery…'});
+},{passive:false});
+mapPreviewCanvas.addEventListener('mousedown',e=>{
+  if(pageModalView!=='map')return;
+  if(mapDebugSnapOverlay){
+    mapDebugSnapOverlay=false;
+    syncMapDebugSnapButton();
+  }
+  const rect=mapPreviewCanvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  const toDet=(x,y)=>({x:x/sx,y:y/sy});
+  const local=toDet(mx,my);
+  if(mapVectorDrawState.active){
+    mapVectorDrawState.pts.push(local);
+    drawMapOverlay();
+    return;
+  }
+  if(e.button===2)return;
+  mapVectorDragEdge=null;
+  mapVectorDrag=null;
+  let hitVertex=false;
+  for(let zi=mapVectorDetections.length-1;zi>=0;zi--){
+    const z=mapVectorDetections[zi];
+    if(!Array.isArray(z.points))continue;
+    for(let pi=0;pi<z.points.length;pi++){
+      const pt=z.points[pi];
+      const dx=(pt.x-local.x),dy=(pt.y-local.y);
+      if((dx*dx+dy*dy)<=36){
+        mapSelectedVectorIdx=zi;
+        mapVectorDrag={idx:zi,ptIdx:pi};
+        hitVertex=true;
+        break;
+      }
+    }
+    if(hitVertex)break;
+  }
+  if(hitVertex){
+    drawMapOverlay();
+    return;
+  }
+  // edge drag: click near selected polygon edge and drag whole line
+  if(mapSelectedVectorIdx>=0&&mapVectorDetections[mapSelectedVectorIdx]){
+    const zSel=mapVectorDetections[mapSelectedVectorIdx];
+    const edgeHit=nearestPolygonEdgeInsert(zSel.points,mx,my,10);
+    if(edgeHit){
+      const chainIdxs=collectCollinearChainIndices(zSel.points,edgeHit.afterIdx);
+      mapVectorDragEdge={
+        idx:mapSelectedVectorIdx,
+        aIdx:edgeHit.afterIdx,
+        bIdx:(edgeHit.afterIdx+1)%zSel.points.length,
+        chainIdxs:chainIdxs.length?chainIdxs:[edgeHit.afterIdx,(edgeHit.afterIdx+1)%zSel.points.length],
+        lastX:local.x,
+        lastY:local.y
+      };
+      drawMapOverlay();
+      return;
+    }
+  }
+  // polygon pick
+  for(let zi=mapVectorDetections.length-1;zi>=0;zi--){
+    const z=mapVectorDetections[zi];
+    if(!Array.isArray(z.points)||z.points.length<3)continue;
+    let inside=false;
+    for(let i=0,j=z.points.length-1;i<z.points.length;j=i++){
+      const a=z.points[i],b=z.points[j];
+      if(((a.y>local.y)!==(b.y>local.y))&&(local.x<((b.x-a.x)*(local.y-a.y))/((b.y-a.y)||1e-9)+a.x))inside=!inside;
+    }
+    if(inside){
+      if(e.detail>=2){
+        let minD=Infinity,insIdx=0;
+        for(let i=0;i<z.points.length;i++){
+          const a=z.points[i],b=z.points[(i+1)%z.points.length];
+          const pr=ptOnSeg(local.x,local.y,a.x,a.y,b.x,b.y);
+          const d=(pr.x-local.x)*(pr.x-local.x)+(pr.y-local.y)*(pr.y-local.y);
+          if(d<minD){minD=d;insIdx=i+1;}
+        }
+        z.points.splice(insIdx,0,{x:local.x,y:local.y});
+      }
+      mapSelectedVectorIdx=zi;
+      syncMapVectorDetectionsToRaw();
+      drawMapOverlay();
+      return;
+    }
+  }
+  // fall through to map pan
+  mapInteraction.dragging=true;
+  mapInteraction.startX=e.clientX;
+  mapInteraction.startY=e.clientY;
+  mapInteraction.startTx=mapReviewState.tx;
+  mapInteraction.startTy=mapReviewState.ty;
+  if(mapReviewState.active){
+    mapPreviewCanvas.style.cursor='grabbing';
+    return;
+  }
+  mapInteraction.startLat=mapViewState.lat;
+  mapInteraction.startLng=mapViewState.lng;
+  mapInteraction.startWorld=latLngToWorldPixel(mapViewState.lat,mapViewState.lng,mapViewState.zoom);
+  mapPreviewCanvas.style.cursor='grabbing';
+});
+mapPreviewCanvas.addEventListener('contextmenu',e=>{
+  if(pageModalView!=='map')return;
+  e.preventDefault();
+  if(mapSelectedVectorIdx<0||!mapVectorDetections[mapSelectedVectorIdx])return;
+  const z=mapVectorDetections[mapSelectedVectorIdx];
+  const nextClass=prompt('Reassign class or type DELETE:',z?.className||'')||'';
+  if(nextClass.toUpperCase()==='DELETE'){
+    mapVectorDetections.splice(mapSelectedVectorIdx,1);
+    mapSelectedVectorIdx=Math.min(mapSelectedVectorIdx,mapVectorDetections.length-1);
+  }else if(nextClass.trim()){
+    z.className=nextClass.trim();
+  }
+  syncMapVectorDetectionsToRaw();
+  drawMapOverlay();
+});
+window.addEventListener('mousemove',e=>{
+  if(mapVectorDrag){
+    const rect=mapPreviewCanvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+    const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+    const local={x:mx/sx,y:my/sy};
+    const z=mapVectorDetections[mapVectorDrag.idx];
+    if(z&&Array.isArray(z.points)&&z.points[mapVectorDrag.ptIdx]){
+      z.points[mapVectorDrag.ptIdx]=local;
+      syncMapVectorDetectionsToRaw();
+      drawMapOverlay();
+    }
+    return;
+  }
+  if(mapVectorDragEdge){
+    const rect=mapPreviewCanvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+    const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+    const local={x:mx/sx,y:my/sy};
+    const z=mapVectorDetections[mapVectorDragEdge.idx];
+    const moveIdxs=(Array.isArray(mapVectorDragEdge.chainIdxs)&&mapVectorDragEdge.chainIdxs.length)
+      ? mapVectorDragEdge.chainIdxs
+      : [mapVectorDragEdge.aIdx,mapVectorDragEdge.bIdx];
+    const canMove=!!(z&&Array.isArray(z.points)&&moveIdxs.every(i=>z.points[i]));
+    if(canMove){
+      const dx=local.x-mapVectorDragEdge.lastX,dy=local.y-mapVectorDragEdge.lastY;
+      moveIdxs.forEach(i=>{
+        z.points[i]={x:z.points[i].x+dx,y:z.points[i].y+dy};
+      });
+      mapVectorDragEdge.lastX=local.x;mapVectorDragEdge.lastY=local.y;
+      syncMapVectorDetectionsToRaw();
+      drawMapOverlay();
+    }
+    return;
+  }
+  if(!mapInteraction.dragging)return;
+  if(mapReviewState.active){
+    const dx=e.clientX-mapInteraction.startX;
+    const dy=e.clientY-mapInteraction.startY;
+    mapReviewState.tx=mapInteraction.startTx+dx;
+    mapReviewState.ty=mapInteraction.startTy+dy;
+    renderDetectionReview();
+    setImportStatus('Review mode: panning detections…');
+    return;
+  }
+  const dx=e.clientX-mapInteraction.startX;
+  const dy=e.clientY-mapInteraction.startY;
+  const c={
+    x:mapInteraction.startWorld.x-dx,
+    y:mapInteraction.startWorld.y-dy
+  };
+  const ll=worldPixelToLatLng(c.x,c.y,mapViewState.zoom);
+  mapViewState.lat=Math.max(-85.05112878,Math.min(85.05112878,ll.lat));
+  mapViewState.lng=normalizeLng(ll.lng);
+  syncMapInputsFromState();
+  mapRenderReqId++;
+  setImportStatus('Panning map…');
+});
+window.addEventListener('mouseup',()=>{
+  if(mapVectorDrag){mapVectorDrag=null;return;}
+  if(mapVectorDragEdge){mapVectorDragEdge=null;mapPreviewCanvas.style.cursor='grab';return;}
+  if(!mapInteraction.dragging)return;
+  mapInteraction.dragging=false;
+  mapPreviewCanvas.style.cursor='grab';
+  if(mapReviewState.active){
+    renderDetectionReview();
+    return;
+  }
+  loadMapPreview({fromInputs:false,reason:'Loading panned imagery…'});
+});
+mapPreviewCanvas.style.cursor='grab';
+if(mapRenderStyleSel)mapRenderStyleSel.value=mapRenderStyle;
+if(mapDrawClassSel)mapVectorDrawState.cls=mapDrawClassSel.value||mapVectorDrawState.cls;
+syncMapDebugBwButton();
+syncMapDebugSnapButton();
+populateWaybackYearsDropdown();
+updateHistoricalControls();
+
+// Upload zone drag/drop and canvas drop
+const uzFull=document.querySelector('.upload-zone-full');
+if(uzFull){
+  uzFull.addEventListener('dragover',e=>{e.preventDefault();uzFull.style.borderColor='var(--accent)'});
+  uzFull.addEventListener('dragleave',()=>{uzFull.style.borderColor=''});
+  uzFull.addEventListener('drop',e=>{e.preventDefault();uzFull.style.borderColor='';if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0])});
+}
+cview.addEventListener('dragover',e=>e.preventDefault());
+cview.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0])});
+
+function onPlanLoaded(isPdf,opts={}){
   loadedAsPdf=isPdf;
   imgW=bgc.width;imgH=bgc.height;
   dc.width=imgW;dc.height=imgH;
@@ -1541,7 +3706,14 @@ function onPlanLoaded(isPdf){
   inProg=[];inHatch=[];inLinear=[];
   activeZone=zones.length>0?zones[zones.length-1]:null;
   calibrated=false;rulerPos=null;
-  updateCalibBadge();fitZoom();renderAll();
+  fitZoom();renderAll();
+  const autoScaleFeet=opts.autoScaleFeetPerPx||pendingAutoScaleFeetPerPx;
+  if((opts.skipCalibration||pendingAutoScaleFeetPerPx!=null)&&autoScaleFeet){
+    pendingAutoScaleFeetPerPx=null;
+    applyAutoImageryScale(autoScaleFeet);
+    return;
+  }
+  updateCalibBadge();
   // Update DPI note in calibration
   const note=document.getElementById('wr-dpi-note');
   if(note)note.textContent=isPdf?'PDF detected — 144 dpi recommended.':'Image detected — try 150 or 300 dpi.';
@@ -1626,6 +3798,19 @@ ic.addEventListener('mousemove',e=>{
   if(isPanning) return; // pan handled by window listener
   if(dragging){
     if(dragging.type==='zone'){zones.find(z=>z.id===dragging.id).pts[dragging.idx]={x:p.x,y:p.y}}
+    else if(dragging.type==='zone-edge-move'){
+      const z=zones.find(zo=>zo.id===dragging.id);
+      const moveIdxs=(Array.isArray(dragging.chainIdxs)&&dragging.chainIdxs.length)
+        ? dragging.chainIdxs
+        : [((dragging.afterIdx% (z?.pts?.length||1))+ (z?.pts?.length||1))%(z?.pts?.length||1),((((dragging.afterIdx% (z?.pts?.length||1))+ (z?.pts?.length||1))%(z?.pts?.length||1))+1)% (z?.pts?.length||1)];
+      if(z&&Array.isArray(z.pts)&&moveIdxs.every(i=>z.pts[i])){
+        const dx=p.x-dragging.lastX,dy=p.y-dragging.lastY;
+        moveIdxs.forEach(i=>{
+          z.pts[i]={x:z.pts[i].x+dx,y:z.pts[i].y+dy};
+        });
+        dragging.lastX=p.x;dragging.lastY=p.y;
+      }
+    }
     else if(dragging.type==='hatch'){hatchZones.find(h=>h.id===dragging.id).pts[dragging.idx]={x:p.x,y:p.y}}
     else if(dragging.type==='marker'){markers[dragging.idx]={...markers[dragging.idx],x:p.x,y:p.y}}
     else if(dragging.type==='linear'){linearSegs[dragging.idx].pts[dragging.ptIdx]={x:p.x,y:p.y}}
@@ -1647,7 +3832,7 @@ ic.addEventListener('mousemove',e=>{
 
     updateStats();renderAll();return;
   }
-  hovering=findNear(p.x,p.y);
+  hovering=findNear(p.x,p.y,{allowEdgeInsert:e.ctrlKey||e.metaKey});
   // Show crosshair+ when ctrl held and near an edge
   let _edgeNear=null;
   if(e.ctrlKey||e.metaKey)_edgeNear=findNearEdge(p.x,p.y);
@@ -1699,6 +3884,34 @@ ic.addEventListener('mousedown',e=>{
     return;
   }
   const p=getPos(e);
+  // Shift+drag edge to move whole line; Ctrl/Cmd+click inserts a point.
+  const nearEdgeOnly=findNearEdge(p.x,p.y);
+  if(nearEdgeOnly&&nearEdgeOnly.type==='zone-edge'){
+    const zo=zones.find(z=>z.id===nearEdgeOnly.id);
+    if(!zo)return;
+    if(e.shiftKey){
+      let moveIdxs=[nearEdgeOnly.afterIdx,(nearEdgeOnly.afterIdx+1)%((zo?.pts?.length)||1)];
+      if(Array.isArray(zo.pts)&&zo.pts.length>=3){
+        moveIdxs=collectCollinearChainIndices(zo.pts,nearEdgeOnly.afterIdx);
+      }
+      dragging={type:'zone-edge-move',id:nearEdgeOnly.id,afterIdx:nearEdgeOnly.afterIdx,moveIdxs,lastX:p.x,lastY:p.y};
+      activeZone=zo;setFocusedZone(zo.id);
+      ic.style.cursor='grabbing';
+      renderAll();
+      return;
+    }
+    if(e.ctrlKey||e.metaKey){
+      // Explicit insertion only (prevents accidental new dots while editing vertices).
+      zo.pts.splice(nearEdgeOnly.afterIdx+1,0,{x:nearEdgeOnly.x,y:nearEdgeOnly.y});
+      activeZone=zo;setFocusedZone(zo.id);
+      dragging={type:'zone',id:zo.id,idx:nearEdgeOnly.afterIdx+1};
+      ic.style.cursor='grabbing';
+      updateStats();renderAll();
+      return;
+    }
+    // Plain click near edge should not auto-insert a new vertex.
+    // Continue to vertex hit-testing so existing points are draggable first.
+  }
   const now=Date.now();
   const isDbl=now-lastClick<280;
   lastClick=now;
@@ -1721,12 +3934,14 @@ ic.addEventListener('mousedown',e=>{
     render();return;
   }
 
-  const near=findNear(p.x,p.y);
+  const near=findNear(p.x,p.y,{allowEdgeInsert:e.ctrlKey||e.metaKey});
   if(near){
-    if(near.type==='zone-edge'){
-      // Insert new vertex at this edge point then drag it
+    if(near.type==='zone-edge-insert'){
+      // Ctrl/Cmd+click on edge inserts a new vertex for fine tuning.
       const zo=zones.find(z=>z.id===near.id);
       if(zo){
+        activeZone=zo;
+        setFocusedZone(zo.id);
         zo.pts.splice(near.afterIdx+1,0,{x:near.x,y:near.y});
         dragging={type:'zone',id:zo.id,idx:near.afterIdx+1};
         ic.style.cursor='grabbing';
@@ -1734,19 +3949,25 @@ ic.addEventListener('mousedown',e=>{
       }
       return;
     }
+    if(near.type==='zone-edge'){
+      // Keep edge drag logic in the dedicated early block above.
+      return;
+    }
     dragging=near;ic.style.cursor='grabbing';return;
   }
 
   if(mode==='draw'||mode==='obstruct'){
-    // Editing existing zone: activeZone has pts (not cleared) and not closed
-    const editingZone = activeZone && !activeZone.closed && activeZone.pts.length>=3 && inProg.length===0;
+    // Editing existing zone: active zone is unlocked with stable closed geometry.
+    const editingZone = activeZone && activeZone.closed && !activeZone.locked && activeZone.pts.length>=3 && inProg.length===0;
     if(editingZone){
       // In edit mode: check if clicking on an edge to insert a new vertex
-      const near2=findNear(p.x,p.y);
-      if(near2&&near2.type==='zone-edge'){
+      const near2=findNear(p.x,p.y,{allowEdgeInsert:e.ctrlKey||e.metaKey});
+      if(near2&&near2.type==='zone-edge-insert'&&(e.ctrlKey||e.metaKey)){
         // Insert new vertex at click point
         const zo=zones.find(z=>z.id===near2.id);
         if(zo){
+          activeZone=zo;
+          setFocusedZone(zo.id);
           zo.pts.splice(near2.afterIdx+1,0,{x:near2.x,y:near2.y});
           // Immediately start dragging the new vertex
           dragging={type:'zone',id:zo.id,idx:near2.afterIdx+1};
@@ -1844,6 +4065,7 @@ function findNearEdge(ix,iy){
   // Check zone edges
   for(let z=zones.length-1;z>=0;z--){
     const zo=zones[z];
+    if(focusedZoneId&&zo.id!==focusedZoneId)continue;
     if(zo.pts.length<3)continue; // need at least 3 pts for edges
     for(let i=0;i<zo.pts.length;i++){
       const a=zo.pts[i],b=zo.pts[(i+1)%zo.pts.length];
@@ -1875,7 +4097,8 @@ function ptOnSeg(px,py,ax,ay,bx,by){
   return{x:ax+t*dx,y:ay+t*dy,t};
 }
 
-function findNear(ix,iy){
+function findNear(ix,iy,opts={}){
+  const allowEdgeInsert=!!opts.allowEdgeInsert;
   const t=8/zoom;
 
   for(let i=markers.length-1;i>=0;i--)if(dist({x:ix,y:iy},markers[i])<t)return{type:'marker',idx:i};
@@ -1886,15 +4109,19 @@ function findNear(ix,iy){
   for(let h=hatchZones.length-1;h>=0;h--)for(let i=0;i<hatchZones[h].pts.length;i++)if(dist({x:ix,y:iy},hatchZones[h].pts[i])<t)return{type:'hatch',id:hatchZones[h].id,idx:i};
   for(let mi=measurements.length-1;mi>=0;mi--)for(let i=0;i<measurements[mi].pts.length;i++)if(dist({x:ix,y:iy},measurements[mi].pts[i])<t)return{type:'meas',id:measurements[mi].id,idx:i};
   for(let s=linearSegs.length-1;s>=0;s--)for(let i=0;i<linearSegs[s].pts.length;i++)if(dist({x:ix,y:iy},linearSegs[s].pts[i])<t)return{type:'linear',idx:s,ptIdx:i};
-  // Edge insertion: check active unlocked zone edges
-  if(activeZone&&!activeZone.locked&&activeZone.pts.length>=3){
+  // Edge insertion: prioritize focused zone, then active zone (even if locked)
+  const edgeZone=(focusedZoneId?zones.find(z=>z.id===focusedZoneId):null)||activeZone;
+  if(edgeZone&&edgeZone.pts.length>=3){
     const te=Math.max(10,14/zoom);
-    const pts=activeZone.pts;
+    const pts=edgeZone.pts;
     for(let i=0;i<pts.length;i++){
       const a=pts[i],b=pts[(i+1)%pts.length];
       const p=ptOnSeg(ix,iy,a.x,a.y,b.x,b.y);
       if(dist({x:ix,y:iy},p)<te&&p.t>0.02&&p.t<0.98){
-        return{type:'zone-edge',id:activeZone.id,afterIdx:i,x:p.x,y:p.y};
+        if(allowEdgeInsert){
+          return{type:'zone-edge-insert',id:edgeZone.id,afterIdx:i,x:p.x,y:p.y};
+        }
+        return{type:'zone-edge',id:edgeZone.id,afterIdx:i,x:p.x,y:p.y};
       }
     }
   }
@@ -1914,6 +4141,20 @@ function findNear(ix,iy){
   return null;
 }
 
+function findNearZoneEdge(ix,iy,zone){
+  if(!zone||!Array.isArray(zone.pts)||zone.pts.length<3)return null;
+  const te=Math.max(10,14/zoom);
+  const pts=zone.pts;
+  for(let i=0;i<pts.length;i++){
+    const a=pts[i],b=pts[(i+1)%pts.length];
+    const p=ptOnSeg(ix,iy,a.x,a.y,b.x,b.y);
+    if(dist({x:ix,y:iy},p)<te&&p.t>0.02&&p.t<0.98){
+      return{type:'zone-edge',id:zone.id,afterIdx:i,x:p.x,y:p.y};
+    }
+  }
+  return null;
+}
+
 // ── ZONES ──
 function addZone(isObs=false){
   const id='z'+Date.now();
@@ -1922,13 +4163,14 @@ function addZone(isObs=false){
   const name=isObs?`Obstruction ${zones.filter(z=>z.obstruct).length+1}`:`Zone ${nz+1}`;
   zones.push({id,name,color,pts:[],closed:false,locked:false,showFill:true,obstruct:isObs,labelSize:12,opacity:15,lineWidth:2,lineDashed:false});
   activeZone=zones[zones.length-1];
+  setFocusedZone(activeZone.id);
   inProg=[];renderZoneList();
 }
 function getZone(id){return zones.find(z=>z.id===id)}
 function closeZone(){
-  // Edit mode: inProg is empty, pts has the vertices - just close
-  if(activeZone&&!activeZone.closed&&activeZone.pts.length>=3&&inProg.length===0){
-    activeZone.closed=true;activeZone.locked=true;
+  // Edit mode: zone stays closed; lock to finish editing
+  if(activeZone&&activeZone.closed&&!activeZone.locked&&activeZone.pts.length>=3&&inProg.length===0){
+    activeZone.locked=true;
     renderZoneList();updateStats();renderAll();
     return;
   }
@@ -1961,7 +4203,7 @@ function renderZoneList(){
     const sqft=z.closed?(polyArea(z.pts)*sc*sc).toLocaleString('en-US',{maximumFractionDigits:0})+' sq ft':'drawing…';
     const el=document.createElement('div');
     el.className='zi'+(z.id===activeZone?.id?' active':'')+(z.locked?' locked':'');
-    const _isEditing=(!z.closed&&z.pts.length>=3);
+    const _isEditing=(z.closed&&z.pts.length>=3&&!z.locked&&z.id===activeZone?.id);
   const _eb=`<span data-act="edit" data-id="${z.id}" style="font-family:monospace;font-size:8px;color:${_isEditing?'#000':'var(--accent)'};background:${_isEditing?'var(--accent)':'var(--accent-bg)'};border:1px solid var(--accent-dim);padding:1px 4px;margin-left:3px;cursor:pointer" title="${_isEditing?'Click to stop editing':'Click to edit zone'}">${_isEditing?'EDITING':'EDIT'}</span>`;
     el.innerHTML=`<div style="display:flex;align-items:center;gap:7px;width:100%"><div class="zsw" data-act="color" title="Change color" style="background:${z.color};${z.obstruct?'border-radius:50%':''}"></div><input type='color' class='zci' data-id='${z.id}' value='${z.color}' style='position:absolute;width:0;height:0;opacity:0;pointer-events:none'><div class="zinfo"><div class="zn">${z.name}${z.obstruct?' <span style="font-size:9px;color:var(--red)">⊖</span>':''}${_eb}</div><div class="zsq">${z.obstruct&&z.closed?'− ':''}${sqft}</div></div><div class="zbtns"><span class="zb" data-id="${z.id}" data-act="fill" title="Toggle fill">${z.showFill!==false?'◼':'◻'}</span><span class="zb" data-id="${z.id}" data-act="lock" title="${z.locked?'Unlock':'Lock'}">${z.locked?'🔒':'🔓'}</span><span class="zb" data-id="${z.id}" data-act="del" title="Delete" style="color:var(--red)">✕</span></div></div>
 ${z.closed ? `<div style="display:flex;align-items:center;gap:4px;padding:2px 8px 4px">
@@ -1976,7 +4218,12 @@ ${z.closed ? `<div style="display:flex;align-items:center;gap:4px;padding:2px 8p
 </div>` : ''}`;
     el.addEventListener('click',ev=>{
       const act=ev.target.dataset.act, id=ev.target.dataset.id;
-      if(act==='del'){zones=zones.filter(x=>x.id!==id);if(activeZone?.id===id){activeZone=zones[zones.length-1]||null;inProg=[]}renderZoneList();updateStats();renderAll();return}
+      if(act==='del'){
+        zones=zones.filter(x=>x.id!==id);
+        if(activeZone?.id===id){activeZone=zones[zones.length-1]||null;inProg=[]}
+        if(focusedZoneId===id)setFocusedZone(null);
+        renderZoneList();updateStats();renderAll();return
+      }
       if(act==='lock'){const z2=getZone(id);if(z2)z2.locked=!z2.locked;renderZoneList();renderAll();return}
       if(act==='fill'){const z2=getZone(id);if(z2)z2.showFill=z2.showFill===false?true:false;renderZoneList();renderAll();return}
       // Only enter edit mode when EDIT badge is clicked
@@ -1984,21 +4231,23 @@ ${z.closed ? `<div style="display:flex;align-items:center;gap:4px;padding:2px 8p
         const z2=getZone(id);
         if(!z2)return;
         // Already in edit mode — click again to confirm and exit
-        if(!z2.closed&&z2.pts.length>=3){
-          z2.closed=true;z2.locked=true;inProg=[];
+        if(z2.closed&&z2.pts.length>=3&&!z2.locked&&z2.id===activeZone?.id){
+          z2.locked=true;inProg=[];
           renderZoneList();updateStats();renderAll();
           return;
         }
         // Enter edit mode
         activeZone=z2;
+        setFocusedZone(z2.id);
         z2.locked=false;
-        inProg=[];z2.closed=false;
+        inProg=[];
         setMode(z2.obstruct?'obstruct':'draw');
         renderZoneList();renderAll();
         return;
       }
       // Clicking zone row just selects it as active (no edit)
       activeZone=z;
+      setFocusedZone(z.id);
       renderZoneList();renderAll();
     });
     // Color picker
@@ -2332,16 +4581,48 @@ function polyArea(pts){
   return Math.abs(a)/2;
 }
 function polyPerim(pts){let p=0;for(let i=0;i<pts.length;i++)p+=dist(pts[i],pts[(i+1)%pts.length]);return p}
+function polyCentroid(pts){
+  if(!Array.isArray(pts)||!pts.length)return {x:0,y:0};
+  let x=0,y=0;
+  pts.forEach(p=>{x+=p.x;y+=p.y;});
+  return {x:x/pts.length,y:y/pts.length};
+}
+function pointInPolygon2(pt,poly){
+  if(!pt||!Array.isArray(poly)||poly.length<3)return false;
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const a=poly[i],b=poly[j];
+    const hit=((a.y>pt.y)!==(b.y>pt.y))&&(pt.x<((b.x-a.x)*(pt.y-a.y))/((b.y-a.y)||1e-9)+a.x);
+    if(hit)inside=!inside;
+  }
+  return inside;
+}
+function obstructionInsideLot(obs,lot){
+  if(!obs||!lot||!Array.isArray(obs.pts)||!Array.isArray(lot.pts)||obs.pts.length<3||lot.pts.length<3)return false;
+  const c=polyCentroid(obs.pts);
+  if(pointInPolygon2(c,lot.pts))return true;
+  return obs.pts.some(p=>pointInPolygon2(p,lot.pts));
+}
 function calcTons(sqft,d,c){return sqft*(d/12)*145/2000*c}
 function calcBase(sqft,d){return sqft*(d/12)*110/2000}
 
 // ── STATS ──
 function updateStats(){
   const sc=getScale(),u=document.getElementById('scale-unit').value;
-  const closed=zones.filter(z=>z.closed&&!z.obstruct);
-  const obst=zones.filter(z=>z.closed&&z.obstruct);
+  if(focusedZoneId&&!zones.some(z=>z.id===focusedZoneId&&z.closed))focusedZoneId=null;
+  const allClosed=zones.filter(z=>z.closed&&!z.obstruct);
+  const allObst=zones.filter(z=>z.closed&&z.obstruct);
+  const closed=allClosed;
+  const obst=allObst;
   let area=0,perim=0,obArea=0;
-  closed.forEach(z=>{area+=polyArea(z.pts)*sc*sc;perim+=polyPerim(z.pts)*sc});
+  closed.forEach(lot=>{
+    area+=polyArea(lot.pts)*sc*sc;
+    let lotPerim=polyPerim(lot.pts)*sc;
+    // Treat in-lot obstructions as holes: add their inner boundary length.
+    const insideObs=allObst.filter(o=>obstructionInsideLot(o,lot));
+    insideObs.forEach(o=>{lotPerim+=polyPerim(o.pts)*sc;});
+    perim+=lotPerim;
+  });
   obst.forEach(z=>{obArea+=polyArea(z.pts)*sc*sc});
   const net=Math.max(0,area-obArea);
   let hatchA=0,cwA=0,adaHA=0;
@@ -2385,14 +4666,25 @@ function updateStats(){
   renderLinearList();
 }
 
+function drawZonePath(ctx,pts){
+  if(!Array.isArray(pts)||pts.length<3)return;
+  ctx.beginPath();
+  pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));
+  ctx.closePath();
+}
+
 // ── RENDER ──
 function renderAll(){renderZones();render()}
 
 function renderZones(){
   dCtx.clearRect(0,0,dc.width,dc.height);
   const sc=getScale();
+  const isEditingLineDrag=!!(dragging&&dragging.type==='zone-edge-move');
+  const focusedZone=focusedZoneId?zones.find(z=>z.id===focusedZoneId):null;
+  const hasZoneFocus=!!focusedZone;
+  const visibleZoneIds=hasZoneFocus?new Set([focusedZone.id]):null;
   // Hatch zones
-  hatchZones.forEach(h=>{
+  if(!hasZoneFocus)hatchZones.forEach(h=>{
     if(h.pts.length<3)return;
     const col=h.type==='ada-hatch'?'#3b82f6':'#22c55e';
     dCtx.save();
@@ -2410,7 +4702,7 @@ function renderZones(){
     h.pts.forEach((p,i)=>{dCtx.beginPath();dCtx.arc(p.x,p.y,3,0,Math.PI*2);dCtx.fillStyle=col;dCtx.fill()});
   });
   // Linear segs
-  linearSegs.forEach(s=>{
+  if(!hasZoneFocus)linearSegs.forEach(s=>{
     if(s.pts.length<2)return;
     const lCol=s.color||'#06b6d4';
     const lw=s.lineWidth||2;
@@ -2435,8 +4727,21 @@ function renderZones(){
   };
 
   // Zones
+  const lotsById=new Map(zones.filter(z=>z.closed&&!z.obstruct).map(z=>[z.id,z]));
+  const lotObstructions=new Map();
+  zones.filter(z=>z.closed&&z.obstruct).forEach(obs=>{
+    const c=polyCentroid(obs.pts);
+    for(const lot of lotsById.values()){
+      if(pointInPolygon2(c,lot.pts)||obs.pts.some(p=>pointInPolygon2(p,lot.pts))){
+        if(!lotObstructions.has(lot.id))lotObstructions.set(lot.id,[]);
+        lotObstructions.get(lot.id).push(obs);
+        break;
+      }
+    }
+  });
   if(_layerOn('zones')) zones.forEach(z=>{
     if(z.pts.length<3)return;
+    if(hasZoneFocus&&!visibleZoneIds.has(z.id))return;
     // Search: if searching, dim non-matching zones
     const _searching=searchTerm&&searchMatches.length>=0;
     const _zMatch=!_searching||!searchTerm||searchMatches.some(m=>m.type==='zone'&&m.id===z.id);
@@ -2448,9 +4753,12 @@ function renderZones(){
       dCtx.restore();return;
     }
     const isA=z.id===activeZone?.id;
-    dCtx.beginPath();z.pts.forEach((p,i)=>i===0?dCtx.moveTo(p.x,p.y):dCtx.lineTo(p.x,p.y));dCtx.closePath();
+    const isFocused=focusedZoneId===z.id;
+    drawZonePath(dCtx,z.pts);
     if(z.obstruct){
-      dCtx.fillStyle='rgba(239,68,68,.1)';dCtx.fill();
+      if(!isEditingLineDrag){
+        dCtx.fillStyle='rgba(239,68,68,.1)';dCtx.fill();
+      }
       dCtx.save();dCtx.clip();
       const xs=z.pts.map(p=>p.x),ys=z.pts.map(p=>p.y);
       const mx2=Math.min(...xs)-10,Mx=Math.max(...xs)+10,my2=Math.min(...ys)-10,My=Math.max(...ys)+10;
@@ -2460,21 +4768,37 @@ function renderZones(){
       dCtx.restore();
       // Re-draw the zone outline cleanly (separate path to avoid clip artifact)
       dCtx.beginPath();z.pts.forEach((p,i)=>i===0?dCtx.moveTo(p.x,p.y):dCtx.lineTo(p.x,p.y));dCtx.closePath();
-      dCtx.strokeStyle='#ef4444';dCtx.lineWidth=isA?2:1.5;dCtx.setLineDash([6,4]);dCtx.stroke();dCtx.setLineDash([]);
+      dCtx.strokeStyle='#ef4444';
+      dCtx.lineWidth=isFocused?2.4:(isA?2:1.5);
+      dCtx.setLineDash([6,4]);dCtx.stroke();dCtx.setLineDash([]);
     }else{
-      if(z.showFill!==false){
+      if(z.showFill!==false&&!isEditingLineDrag){
         const alpha=Math.round((z.opacity!=null?z.opacity:15)/100*255).toString(16).padStart(2,'0');
-        dCtx.fillStyle=z.color+alpha;dCtx.fill();
+        dCtx.save();
+        drawZonePath(dCtx,z.pts);
+        dCtx.fillStyle=z.color+alpha;
+        dCtx.fill('evenodd');
+        const holes=lotObstructions.get(z.id)||[];
+        if(holes.length){
+          dCtx.globalCompositeOperation='destination-out';
+          holes.forEach(h=>{
+            drawZonePath(dCtx,h.pts);
+            dCtx.fillStyle='rgba(0,0,0,1)';
+            dCtx.fill();
+          });
+        }
+        dCtx.restore();
       }
-      dCtx.strokeStyle=z.color;
+      // Lot editable line should remain the visible source of truth.
+      dCtx.strokeStyle=z.obstruct?'#ef4444':'#d4a843';
       const lw=z.lineWidth||2;
-      dCtx.lineWidth=isA?lw+0.5:lw;
+      dCtx.lineWidth=isFocused?lw+1.2:(isA?lw+0.5:lw);
       dCtx.setLineDash(z.lineDashed?[10,5]:[]);
       dCtx.stroke();dCtx.setLineDash([]);
     }
-    if(!z.locked)z.pts.forEach((p,i)=>{
+    if(!z.locked&&(z.id===activeZone?.id||z.id===focusedZoneId))z.pts.forEach((p,i)=>{
       const isH=hovering&&hovering.type==='zone'&&hovering.id===z.id&&hovering.idx===i;
-      dCtx.beginPath();dCtx.arc(p.x,p.y,isH?5:2.5,0,Math.PI*2);
+      dCtx.beginPath();dCtx.arc(p.x,p.y,isH?4.5:2,0,Math.PI*2);
       dCtx.fillStyle=isH?'#fff':(z.obstruct?'#ef4444':z.color);dCtx.fill();
     });
     // Label
@@ -2487,9 +4811,11 @@ function renderZones(){
     const lbl=(z.obstruct?'⊖ ':'')+area.toLocaleString('en-US',{maximumFractionDigits:0})+' sq ft';
     const tw=dCtx.measureText(lbl).width;
     const _isMatch=searchTerm&&searchMatches.some(m=>m.type==='zone'&&m.id===z.id);
-    dCtx.fillStyle=_isMatch?'rgba(212,168,67,.9)':'rgba(0,0,0,.82)';dCtx.fillRect(cx2-tw/2-8,cy2-10,tw+16,20);
+    dCtx.fillStyle=_isMatch?'rgba(212,168,67,.9)':'rgba(0,0,0,.82)';
+    dCtx.fillRect(cx2-tw/2-8,cy2-10,tw+16,20);
     if(_isMatch){dCtx.strokeStyle='#d4a843';dCtx.lineWidth=3;dCtx.strokeRect(cx2-tw/2-8,cy2-10,tw+16,20);}
-    dCtx.fillStyle=_isMatch?'#000':(z.obstruct?'#ef4444':z.color);dCtx.fillText(lbl,cx2,cy2);
+    dCtx.fillStyle=_isMatch?'#000':(z.obstruct?'#ef4444':z.color);
+    dCtx.fillText(lbl,cx2,cy2);
     // Drag grip dots
     dCtx.fillStyle='rgba(255,255,255,.25)';
     dCtx.fillRect(cx2-tw/2-6,cy2-10,4,20);
@@ -2502,9 +4828,11 @@ function renderZones(){
     dCtx.fillText(z.name,cx2,cy2-lblSz*1.2);
   });
   // Measurements
-  renderMeasurementShapes(dCtx);
+  if(!hasZoneFocus)renderMeasurementShapes(dCtx);
   // Markers
   markers.forEach((m,idx)=>{
+    // Keep detection dots editable even in focused-zone mode.
+    if(hasZoneFocus&&!(m.type==='stall'||m.type==='ada'||m.type==='stencil'))return;
     const isH=hovering&&hovering.type==='marker'&&hovering.idx===idx;
     const col={stall:'#f5c842',ada:'#3b82f6',bollard:'#f97316',stopblock:'#ef4444',stencil:'#a855f7','bollard-sign':'#f97316'}[m.type]||'#fff';
     const r=Math.max(5,Math.min(12,8/zoom))*(isH?1.4:1);
@@ -2728,6 +5056,7 @@ document.getElementById('btn-undo').onclick=()=>{
     if(last.type==='zone'){
       zones=zones.filter(z=>z.id!==last.id);
       if(activeZone?.id===last.id)activeZone=zones.filter(z=>z.closed).slice(-1)[0]||null;
+      if(focusedZoneId===last.id)focusedZoneId=activeZone?.id||null;
       renderZoneList();
     } else if(last.type==='marker'){
       markers.splice(last.idx,1);
@@ -2757,7 +5086,12 @@ document.getElementById('btn-clear').onclick=()=>{
   if(measurements.length>0){measurements.pop();renderMeasurements();renderAll();return;}
   if(zones.length>1){
     const lastClosed=[...zones].reverse().find(z=>z.closed);
-    if(lastClosed){zones=zones.filter(z=>z.id!==lastClosed.id);if(activeZone?.id===lastClosed.id)activeZone=zones[zones.length-1]||null;renderZoneList();updateStats();renderAll();}
+    if(lastClosed){
+      zones=zones.filter(z=>z.id!==lastClosed.id);
+      if(activeZone?.id===lastClosed.id)activeZone=zones[zones.length-1]||null;
+      if(focusedZoneId===lastClosed.id)focusedZoneId=activeZone?.id||null;
+      renderZoneList();updateStats();renderAll();
+    }
   }
 };
 document.getElementById('btn-add-zone').onclick=()=>{
@@ -3040,6 +5374,11 @@ async function doSave(){
       if(!error&&res.data?.[0]?.id){currentProjectId=res.data[0].id;savedId=currentProjectId;}
     }
     if(error)throw new Error(error.message||JSON.stringify(error));
+    try{
+      if(savedId)await captureLearningFeedbackOnConfirm(savedId);
+    }catch(_lfErr){
+      console.warn('Learning feedback capture failed:',_lfErr);
+    }
     if(btn){btn.textContent='Saved ✓';setTimeout(()=>{btn.textContent='Save';btn.disabled=false;},2000);}
     if(btn2)btn2.disabled=false;
     return savedId;
