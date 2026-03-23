@@ -1562,6 +1562,12 @@ function classStyleForVector(cls){
   if(c.includes('building'))return {stroke:'#fff',lineWidth:1.5,dash:[],fill:'rgba(55,65,81,0.35)'};
   return {stroke:'#000',lineWidth:2,dash:[],fill:'rgba(17,17,17,0.06)'};
 }
+function mapVectorSimplifyTarget(cls){
+  const c=String(cls||'').toLowerCase();
+  if(c.includes('lot'))return 42;
+  if(c.includes('island')||c.includes('obstruct')||c.includes('building'))return 36;
+  return 28;
+}
 
 function normalizeRoboflowPredictionToPolygon(p){
   if(Array.isArray(p?.points)&&p.points.length>=3){
@@ -1758,7 +1764,9 @@ function drawMapVectorOverlay(){
       mapPreviewCtx.strokeStyle='#38bdf8';
       mapPreviewCtx.lineWidth=2;
       mapPreviewCtx.stroke();
-      z.points.forEach(pt=>{
+      const step=Math.max(1,Math.ceil(z.points.length/28));
+      z.points.forEach((pt,ptIdx)=>{
+        if(ptIdx%step!==0&&ptIdx!==z.points.length-1)return;
         const x=(pt.x||0)*sx,y=(pt.y||0)*sy;
         mapPreviewCtx.beginPath();
         mapPreviewCtx.arc(x,y,4,0,Math.PI*2);
@@ -1950,7 +1958,7 @@ function detectionToZone(det){
         {x:det.x-det.width/2,y:det.y+det.height/2}
       ];
   if(pts.length<3)return null;
-  const simplifiedPts=simplifyClosedPolygon(pts,80);
+  const simplifiedPts=simplifyClosedPolygon(pts,36);
   if(simplifiedPts.length<3)return null;
   const isObs=classIsObstruction(det.class);
   const idx=isObs?zones.filter(z=>z.obstruct).length+1:zones.filter(z=>!z.obstruct).length+1;
@@ -1962,7 +1970,7 @@ function detectionToZone(det){
     color,
     pts:simplifiedPts,
     closed:true,
-    locked:false,
+    locked:true,
     showFill:true,
     obstruct:isObs,
     labelSize:12,
@@ -2488,12 +2496,16 @@ async function runRoboflowDetection(){
     const data=await res.json();
     if(!res.ok)throw new Error(data?.error||'Detection failed');
     mapDetections=Array.isArray(data?.predictions)?data.predictions:[];
-    mapVectorDetections=mapDetections.map((p,idx)=>({
+    mapVectorDetections=mapDetections.map((p,idx)=>{
+      const cls=String(p.class||'lot_boundary');
+      const rawPts=normalizeRoboflowPredictionToPolygon(p);
+      const simpPts=simplifyClosedPolygon(rawPts,mapVectorSimplifyTarget(cls));
+      return{
       id:p.id||('rf-'+idx+'-'+Date.now()),
-      className:String(p.class||'lot_boundary'),
+      className:cls,
       confidence:Number(p.confidence||0),
-      points:normalizeRoboflowPredictionToPolygon(p),
-    })).filter(z=>Array.isArray(z.points)&&z.points.length>=3);
+      points:simpPts,
+    }}).filter(z=>Array.isArray(z.points)&&z.points.length>=3);
     mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
     mapDetectionRenderSize={w:data?.image?.width||mapPreviewCanvas.width,h:data?.image?.height||mapPreviewCanvas.height};
     await loadMapPreview({fromInputs:false,preserveDetections:true,reason:`Detections: ${mapDetections.length}`});
@@ -3939,9 +3951,9 @@ function renderZones(){
       dCtx.setLineDash(z.lineDashed?[10,5]:[]);
       dCtx.stroke();dCtx.setLineDash([]);
     }
-    if(!z.locked)z.pts.forEach((p,i)=>{
+    if(!z.locked&&(z.id===activeZone?.id||z.id===focusedZoneId))z.pts.forEach((p,i)=>{
       const isH=hovering&&hovering.type==='zone'&&hovering.id===z.id&&hovering.idx===i;
-      dCtx.beginPath();dCtx.arc(p.x,p.y,isH?5:2.5,0,Math.PI*2);
+      dCtx.beginPath();dCtx.arc(p.x,p.y,isH?4.5:2,0,Math.PI*2);
       dCtx.fillStyle=isH?'#fff':(z.obstruct?'#ef4444':z.color);dCtx.fill();
     });
     // Label
