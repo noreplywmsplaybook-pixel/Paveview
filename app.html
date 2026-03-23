@@ -3703,7 +3703,7 @@ ic.addEventListener('mousedown',e=>{
     return;
   }
   const p=getPos(e);
-  // Shift+drag edge to move whole line; plain click inserts a point for editing.
+  // Shift+drag edge to move whole line; Ctrl/Cmd+click inserts a point.
   const nearEdgeOnly=findNearEdge(p.x,p.y);
   if(nearEdgeOnly&&nearEdgeOnly.type==='zone-edge'){
     const zo=zones.find(z=>z.id===nearEdgeOnly.id);
@@ -3719,13 +3719,17 @@ ic.addEventListener('mousedown',e=>{
       renderAll();
       return;
     }
-    // Default line edit action: add a dot on the clicked edge, then drag it.
-    zo.pts.splice(nearEdgeOnly.afterIdx+1,0,{x:nearEdgeOnly.x,y:nearEdgeOnly.y});
-    activeZone=zo;setFocusedZone(zo.id);
-    dragging={type:'zone',id:zo.id,idx:nearEdgeOnly.afterIdx+1};
-    ic.style.cursor='grabbing';
-    updateStats();renderAll();
-    return;
+    if(e.ctrlKey||e.metaKey){
+      // Explicit insertion only (prevents accidental new dots while editing vertices).
+      zo.pts.splice(nearEdgeOnly.afterIdx+1,0,{x:nearEdgeOnly.x,y:nearEdgeOnly.y});
+      activeZone=zo;setFocusedZone(zo.id);
+      dragging={type:'zone',id:zo.id,idx:nearEdgeOnly.afterIdx+1};
+      ic.style.cursor='grabbing';
+      updateStats();renderAll();
+      return;
+    }
+    // Plain click near edge should not auto-insert a new vertex.
+    // Continue to vertex hit-testing so existing points are draggable first.
   }
   const now=Date.now();
   const isDbl=now-lastClick<280;
