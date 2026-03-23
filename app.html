@@ -2880,7 +2880,6 @@ importFileInput.addEventListener('change',e=>{if(e.target.files[0])startImportFr
 btnImportBack.addEventListener('click',()=>setPageModalView('source'));
 document.getElementById('btn-page-cancel').onclick=()=>{closeModal('page-modal');setPageModalView('source');};
 document.getElementById('btn-map-search').addEventListener('click',geocodeMapSearch);
-if(btnMapRefresh)btnMapRefresh.addEventListener('click',()=>loadMapPreview({fromInputs:true,reason:'Refreshing imagery…'}));
 document.getElementById('map-search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();geocodeMapSearch();}});
 if(mapRenderStyleSel){
   mapRenderStyleSel.addEventListener('change',()=>{
