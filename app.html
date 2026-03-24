@@ -1902,7 +1902,9 @@ function classUsesBoundarySnapPriority(cls){
 function boundaryPrioritySnapRadius(cls){
   const c=String(cls||'').toLowerCase();
   if(c.includes('lot'))return 44;
-  if(c.includes('obstruct')||c.includes('island'))return 34;
+  // Obstructions should lock harder to B/W edges than Roboflow geometry.
+  if(c.includes('obstruct')||c.includes('island'))return 56;
+  if(c.includes('building'))return 36;
   return Math.max(classSnapRadius(cls)+10,24);
 }
 function snapPriorityBoundaryPolygon(points,bw,cls){
@@ -5651,7 +5653,10 @@ function renderZones(){
     if(hasZoneFocus&&!(m.type==='stall'||m.type==='ada'||m.type==='stencil'))return;
     const isH=hovering&&hovering.type==='marker'&&hovering.idx===idx;
     const col={stall:'#f5c842',ada:'#3b82f6',bollard:'#f97316',stopblock:'#ef4444',stencil:'#a855f7','bollard-sign':'#f97316'}[m.type]||'#fff';
-    const r=Math.max(5,Math.min(12,8/zoom))*(isH?1.4:1);
+    const markerBase=(m.type==='stall'||m.type==='ada')?5.8:8;
+    const markerMin=(m.type==='stall'||m.type==='ada')?3.6:5;
+    const markerMax=(m.type==='stall'||m.type==='ada')?9:12;
+    const r=Math.max(markerMin,Math.min(markerMax,markerBase/zoom))*(isH?1.32:1);
     dCtx.save();
     if(m.type==='bollard'){
       dCtx.beginPath();dCtx.arc(m.x,m.y,r,0,Math.PI*2);dCtx.fillStyle=col+'33';dCtx.fill();dCtx.strokeStyle=col;dCtx.lineWidth=2;dCtx.stroke();
@@ -5761,7 +5766,8 @@ function render(){
   // Marker preview
   if(['stall','ada','bollard','stopblock','stencil','bollard-sign'].includes(mode)){
     const col={stall:'#f5c842',ada:'#3b82f6',bollard:'#f97316',stopblock:'#ef4444',stencil:'#a855f7','bollard-sign':'#f97316'}[mode];
-    iCtx.beginPath();iCtx.arc(mx,my,5,0,Math.PI*2);iCtx.fillStyle=col+'99';iCtx.fill();iCtx.strokeStyle=col;iCtx.lineWidth=1.5;iCtx.stroke();
+    const previewR=(mode==='stall'||mode==='ada')?3.8:5;
+    iCtx.beginPath();iCtx.arc(mx,my,previewR,0,Math.PI*2);iCtx.fillStyle=col+'99';iCtx.fill();iCtx.strokeStyle=col;iCtx.lineWidth=1.5;iCtx.stroke();
     if(mode==='stencil'){iCtx.font='8px JetBrains Mono,monospace';iCtx.textAlign='center';iCtx.textBaseline='top';iCtx.fillStyle=col;iCtx.fillText(currentStencil.substring(0,6),mx,my+7)}
   }
 }
