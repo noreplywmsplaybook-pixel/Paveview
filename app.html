@@ -3785,72 +3785,19 @@ async function runRoboflowDetection(){
     if(!res.ok)throw new Error(data?.error||'Detection failed');
 
     const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
-    const detW=Number(data?.image?.width)||mapPreviewCanvas.width;
-    const detH=Number(data?.image?.height)||mapPreviewCanvas.height;
-    // Build strict B/W snap layer immediately so lot/obstruction boundaries can
-    // drive downstream lot-gating and zoom-tile planning.
-    const bwCanvas=preprocessImageDataForSnapBw(inferCanvas);
-    mapSnapBwImage=bwCanvas;
-    mapBaseProcessedImage=bwCanvas;
-    const bw=readBwMask(bwCanvas);
-    const bwAligned=(bw&&bw.w===detW&&bw.h===detH)?bw:(()=>{
-      const ac=document.createElement('canvas');
-      ac.width=detW;ac.height=detH;
-      ac.getContext('2d').drawImage(bwCanvas,0,0,detW,detH);
-      return readBwMask(ac);
-    })();
-    // Snap-priority seed detections: refine area boundaries first, then use those
-    // refined boundaries as the lot gate for stall filtering and zoom scans.
-    const seededBase=rawPredictions.filter(pred=>{
-      const cls=String(pred?.class||'').toLowerCase();
-      const conf=Number(pred?.confidence||0);
-      // Keep area polygons even at lower confidence so lot/obstruction seeds survive.
-      if(classUsesBoundarySnapPriority(cls))return conf>=0.08;
-      return conf>=confidenceThresholdForClass(cls);
-    });
-    let boundaryPriorityAreas=0;
-    const seededDetections=seededBase.map((pred,idx)=>{
-      const cls=String(pred?.class||'');
-      if(!classUsesBoundarySnapPriority(cls))return pred;
-      const rawPts=normalizeRoboflowPredictionToPolygon(pred);
-      if(!Array.isArray(rawPts)||rawPts.length<3)return pred;
-      // Keep lot polygon-first to avoid ROI/ellipse-shaped perimeters, but let
-      // obstructions/islands/buildings use stronger seed envelopes for snapping.
-      const useExpandedSeed=classIsObstruction(cls);
-      const seedPts=useExpandedSeed?buildBoundarySeedPolygonForDetection(pred,rawPts):rawPts;
-      const refinedRes=snapPriorityBoundaryPolygon(seedPts,bwAligned,cls);
-      let refined=Array.isArray(refinedRes?.points)?refinedRes.points:[];
-      if(!refined.length||refined.length<3)return pred;
-      refined=smoothBoundaryPolygon(refined,cls);
-      if(!Array.isArray(refined)||refined.length<3)return pred;
-      boundaryPriorityAreas++;
-      const ctr=detectionCenterPoint({points:refined});
-      const bb=polygonBounds(refined);
-      return{
-        ...pred,
-        id:pred?.id||`seed-${idx}-${Date.now()}`,
-        x:ctr.x||0,
-        y:ctr.y||0,
-        width:Math.max(0,bb?.w||0),
-        height:Math.max(0,bb?.h||0),
-        points:refined
-      };
-    });
-    let baseLotPoly=primaryLotPolygonFromDetections(seededDetections);
-    const scanRoi=mapCurrentScanRoi(baseLotPoly);
-    // ROI should focus stall scanning, not overwrite/draw lot perimeter geometry.
-    // If lot is missing, use ROI only as stall gate (no synthetic lot polygon).
-    // Lot perimeter must come from detection/snap result, never from scan ROI.
-    // ROI is only for focus-scanning stalls.
-    const lotGatePoly=baseLotPoly;
-    // Store draft detections from Roboflow pass 1 (boundary-snap prioritized).
+    // Production baseline: use RF + current filtering as source-of-truth.
     let draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
-      keepStallLikeDetectionsInsideLot(seededDetections,lotGatePoly)
+      keepStallLikeDetectionsInsideLot(
+        filterDetectionsByClassConfidence(rawPredictions)
+      )
     )));
+    const baseLotPoly=primaryLotPolygonFromDetections(draftDetections);
+    const scanRoi=mapCurrentScanRoi(baseLotPoly);
+    const stallScanPoly=(scanRoi&&scanRoi.w>20&&scanRoi.h>20)?roiRectToPolygon(scanRoi):baseLotPoly;
     let tileStats={tilesPlanned:0,tilesRan:0,added:0};
-    const scanFocusPoly=(scanRoi&&scanRoi.w>20&&scanRoi.h>20)?roiRectToPolygon(scanRoi):lotGatePoly;
-    if(scanFocusPoly){
-      const zoomScan=await runLotStallZoomScan(inferCanvas,scanFocusPoly,{
+    // Add only stall zoom phases on top of production baseline.
+    if(stallScanPoly){
+      const zoomScan=await runLotStallZoomScan(inferCanvas,stallScanPoly,{
         lat:mapViewState?.lat,
         lng:mapViewState?.lng,
         zoom:mapViewState?.zoom,
@@ -3867,7 +3814,7 @@ async function runRoboflowDetection(){
         draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
           keepStallLikeDetectionsInsideLot(
             filterDetectionsByClassConfidence(merged),
-            scanFocusPoly
+            stallScanPoly
           )
         )));
         tileStats.added=Math.max(0,draftDetections.length-beforeCount);
@@ -3883,12 +3830,26 @@ async function runRoboflowDetection(){
       mapYear:String(mapViewState?.year||''),
       modelId:String(data?.meta?.model_id||data?.meta?.model||'my-first-project-ug0a7/4'),
       modelVersion:String(data?.meta?.model_version||''),
-      imageWidth:Number(detW||0)||null,
-      imageHeight:Number(detH||0)||null,
+      imageWidth:Number(data?.image?.width||mapPreviewCanvas.width||0)||null,
+      imageHeight:Number(data?.image?.height||mapPreviewCanvas.height||0)||null,
       address:String(document.getElementById('map-search')?.value||'')
     };
 
-    // PASS 2: snap final editable vectors to the same strict B/W layer.
+    // PASS 2: preprocess to strict B/W and snap draft vertices to nearest white clusters.
+    const bwCanvas=preprocessImageDataForSnapBw(inferCanvas);
+    mapSnapBwImage=bwCanvas;
+    // keep blueprint mode base coherent with correction pass while preserving existing toggle behavior.
+    mapBaseProcessedImage=bwCanvas;
+    const bw=readBwMask(bwCanvas);
+    const detW=Number(data?.image?.width)||mapPreviewCanvas.width;
+    const detH=Number(data?.image?.height)||mapPreviewCanvas.height;
+    // Align pass-2 B/W mask to Roboflow coordinate space if dimensions differ.
+    const bwAligned=(bw&&bw.w===detW&&bw.h===detH)?bw:(()=>{
+      const ac=document.createElement('canvas');
+      ac.width=detW;ac.height=detH;
+      ac.getContext('2d').drawImage(bwCanvas,0,0,detW,detH);
+      return readBwMask(ac);
+    })();
     let snapMoved=0,snapTotal=0;
     mapSnapDebugMoves=[];
     const draftVectors=draftDetections.map((p,idx)=>{
@@ -3910,16 +3871,7 @@ async function runRoboflowDetection(){
           });
         }
       }
-      let workingPts=snapRes.points;
-      // Snap-priority refinement for area boundaries: after vertex snap,
-      // densify + resnap along edges so the final perimeter hugs painted lines.
-      if(classUsesBoundarySnapPriority(cls)&&Array.isArray(workingPts)&&workingPts.length>=3){
-        workingPts=refineAreaBoundaryByBw(workingPts,bwAligned,cls);
-        workingPts=smoothBoundaryPolygon(workingPts,cls);
-      }
-      const simpPts=classUsesBoundarySnapPriority(cls)
-        ? workingPts
-        : simplifyClosedPolygon(workingPts,mapVectorSimplifyTarget(cls));
+      const simpPts=simplifyClosedPolygon(snapRes.points,mapVectorSimplifyTarget(cls));
       return{
         id:p.id||('rf-'+idx+'-'+Date.now()),
         className:cls,
@@ -3941,7 +3893,7 @@ async function runRoboflowDetection(){
     }));
 
     const allVectors=draftVectors.concat(assistVectors);
-    mapVectorDetections=keepStallLikeVectorsInsideLot(allVectors,lotGatePoly);
+    mapVectorDetections=keepStallLikeVectorsInsideLot(allVectors);
     mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
     mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
     mapDetectionRenderSize={w:data?.image?.width||mapPreviewCanvas.width,h:data?.image?.height||mapPreviewCanvas.height};
@@ -3956,8 +3908,7 @@ async function runRoboflowDetection(){
     const zoomLabel=tileStats.tilesPlanned
       ? ` Zoom scan ${tileStats.tilesRan}/${tileStats.tilesPlanned} tiles, +${tileStats.added} merged stalls.`
       : '';
-    const boundaryLabel=boundaryPriorityAreas>0?` Boundary-priority refined ${boundaryPriorityAreas} area zones.`:'';
-    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%).${zoomLabel}${boundaryLabel} ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
+    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%).${zoomLabel} ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
   }catch(e){
     console.error(e);
     setImportStatus(`Detection failed: ${e.message}`,true);
