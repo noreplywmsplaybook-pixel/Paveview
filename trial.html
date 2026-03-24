@@ -64,14 +64,14 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
 
 <div class="card" id="trial-card" style="display:none">
   <div class="title">Trial is Active</div>
-  <div class="sub">You have full access right now. When you're ready, upgrade to lifetime access.</div>
+  <div class="sub">You have full access right now. When you're ready, choose your monthly or annual subscription tier.</div>
   <div class="email" id="active-email">—</div>
   <div class="timer-wrap">
     <div class="timer-lbl">Time Remaining</div>
     <div class="timer" id="countdown">24:00:00</div>
     <div class="timer-sub" id="countdown-sub">Full access ends automatically when timer reaches 0.</div>
   </div>
-  <a class="btn y" id="upgrade-link" href="https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z">Upgrade to Lifetime Access →</a>
+  <a class="btn y" id="upgrade-link" href="/#pricing">View Subscription Tiers →</a>
   <button class="btn" id="btn-activate-paid" onclick="activatePaidAccess(false)">I Already Paid — Activate Lifetime</button>
   <button class="btn" onclick="goToDashboard()">Open Dashboard</button>
   <button class="btn" onclick="signOut()">Sign Out</button>
@@ -89,14 +89,14 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
 
 <div class="card" id="expired-card" style="display:none">
   <div class="title">Trial Expired</div>
-  <div class="sub">Your 24-hour free access ended. Upgrade now to continue with lifetime access.</div>
+  <div class="sub">Your 24-hour free access ended. Upgrade now and choose a subscription tier to continue.</div>
   <div class="email" id="expired-email">—</div>
   <div class="timer-wrap">
     <div class="timer-lbl">Trial Status</div>
     <div class="timer" style="color:#ef4444">00:00:00</div>
     <div class="timer-sub">Upgrade to restore full access instantly.</div>
   </div>
-  <a class="btn y" id="upgrade-link-expired" href="https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z">Upgrade to Lifetime Access →</a>
+  <a class="btn y" id="upgrade-link-expired" href="/#pricing">View Subscription Tiers →</a>
   <button class="btn" id="btn-activate-paid-expired" onclick="activatePaidAccess(false)">I Already Paid — Activate Lifetime</button>
   <button class="btn" onclick="signOut()">Sign Out</button>
   <div class="msg" id="expired-msg"></div>
@@ -105,7 +105,7 @@ body{background:#0a0a0a;color:#e8e4dc;font-family:'IBM Plex Sans',sans-serif;min
 <script>
 const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
-const STRIPE_LINK = 'https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z';
+const PRICING_LINK = '/#pricing';
 const TRIAL_DURATION_MS = 24 * 60 * 60 * 1000;
 const PENDING_UPGRADE_KEY = 'paveview_trial_upgrade_pending_v1';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -183,12 +183,10 @@ function clearPendingUpgrade() {
 }
 
 function updateUpgradeLinks(email) {
-  let link = STRIPE_LINK;
-  try {
-    const url = new URL(STRIPE_LINK);
-    if (email) url.searchParams.set('prefilled_email', normalizeEmail(email));
-    link = url.toString();
-  } catch (e) {}
+  let link = PRICING_LINK;
+  if (email) {
+    link = `/?prefilled_email=${encodeURIComponent(normalizeEmail(email))}#pricing`;
+  }
   const activeLink = document.getElementById('upgrade-link');
   const expiredLink = document.getElementById('upgrade-link-expired');
   if (activeLink) activeLink.href = link;
