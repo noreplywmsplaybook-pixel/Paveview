@@ -4843,16 +4843,20 @@ mapPreviewCanvas.addEventListener('wheel',e=>{
 },{passive:false});
 mapPreviewCanvas.addEventListener('mousedown',e=>{
   if(pageModalView!=='map')return;
+  const rect=mapPreviewCanvas.getBoundingClientRect();
+  const scaleCssToCanvasX=mapPreviewCanvas.width/Math.max(1,rect.width);
+  const scaleCssToCanvasY=mapPreviewCanvas.height/Math.max(1,rect.height);
+  const mxCss=e.clientX-rect.left;
+  const myCss=e.clientY-rect.top;
+  const mxCanvasFromCss=mxCss*scaleCssToCanvasX;
+  const myCanvasFromCss=myCss*scaleCssToCanvasY;
+  const sxDetGlobal=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+  const syDetGlobal=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  const localFromCss={x:mxCanvasFromCss/sxDetGlobal,y:myCanvasFromCss/syDetGlobal};
   if(!mapReviewState.active){
-    const rect=mapPreviewCanvas.getBoundingClientRect();
-    const mx=e.clientX-rect.left;
-    const my=e.clientY-rect.top;
-    const sxDet=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
-    const syDet=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
-    const local={x:mx/sxDet,y:my/syDet};
     if(mapLayoutInputState.mode==='scale'&&e.button===0){
       if(mapLayoutInputState.scalePts.length>=2)mapLayoutInputState.scalePts=[];
-      mapLayoutInputState.scalePts.push(local);
+      mapLayoutInputState.scalePts.push(localFromCss);
       if(mapLayoutInputState.scalePts.length===2){
         const pxDist=dist(mapLayoutInputState.scalePts[0],mapLayoutInputState.scalePts[1]);
         const ft=Number(mapScaleDistanceFtInp?.value||0);
@@ -4871,7 +4875,7 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
     }
     if(mapLayoutInputState.mode==='guide'&&e.button===0){
       if(mapLayoutInputState.guidePts.length>=2)mapLayoutInputState.guidePts=[];
-      mapLayoutInputState.guidePts.push(local);
+      mapLayoutInputState.guidePts.push(localFromCss);
       if(mapLayoutInputState.guidePts.length===2){
         setImportStatus('Guide line captured.');
         setMapLayoutMode('none');
@@ -4886,13 +4890,13 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
         mapLayoutInputState.boundaryPts=[];
         mapLayoutInputState.boundaryClosed=false;
       }
-      mapLayoutInputState.boundaryPts.push(local);
+      mapLayoutInputState.boundaryPts.push(localFromCss);
       setImportStatus(`Boundary points: ${mapLayoutInputState.boundaryPts.length}. Click Finish Boundary when done.`);
       drawMapOverlay();
       return;
     }
     if(mapLayoutInputState.mode==='entrance'&&e.button===0){
-      mapLayoutInputState.entrance=local;
+      mapLayoutInputState.entrance=localFromCss;
       setMapLayoutMode('none');
       setImportStatus('Entrance point captured.');
       drawMapOverlay();
@@ -4903,8 +4907,7 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
     mapDebugSnapOverlay=false;
     syncMapDebugSnapButton();
   }
-  const rect=mapPreviewCanvas.getBoundingClientRect();
-  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  const mx=mxCss,my=myCss;
   // Convert CSS pixels -> canvas pixels so ROI starts exactly at cursor.
   const scaleX=mapPreviewCanvas.width/Math.max(1,rect.width);
   const scaleY=mapPreviewCanvas.height/Math.max(1,rect.height);
@@ -4912,7 +4915,7 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
   const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
   const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
   const toDet=(x,y)=>({x:x/sx,y:y/sy});
-  const local=toDet(mx,my);
+  const local=toDet(mxCanvas,myCanvas);
   if(!mapReviewState.active&&(mapRoiDrawMode||(e.shiftKey&&e.button===0))){
     const roiStart=toDet(mxCanvas,myCanvas);
     mapRoiDragState={mode:'new',startX:roiStart.x,startY:roiStart.y};
