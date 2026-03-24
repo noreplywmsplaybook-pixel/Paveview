@@ -2061,11 +2061,12 @@ function buildLotZoomScanTiles(lotPoly,imageW,imageH,opts={}){
   const maxY=clampNum(Math.ceil(bb.maxY+pad),0,Math.max(1,imageH));
   const boxW=Math.max(1,maxX-minX);
   const boxH=Math.max(1,maxY-minY);
-  const maxTiles=Math.max(2,Math.min(16,Number(opts.maxTiles)||10));
+  const maxTiles=Math.max(2,Math.min(28,Number(opts.maxTiles)||12));
   const overlap=Math.max(0.15,Math.min(0.7,Number(opts.overlap)||0.42));
   const minCoverage=Math.max(0.02,Math.min(0.45,Number(opts.minCoverage)||0.12));
-  const baseSize=Math.round(Math.min(imageW,imageH)*0.46);
-  const tileSrc=Math.max(320,Math.min(700,baseSize));
+  // Use smaller source tiles so deep zoom phases can resolve dense stall fields.
+  const baseSize=Math.round(Math.min(imageW,imageH)*0.34);
+  const tileSrc=Math.max(240,Math.min(560,baseSize));
   const step=Math.max(120,Math.round(tileSrc*(1-overlap)));
   const cols=Math.max(1,Math.ceil((Math.max(0,boxW-tileSrc))/step)+1);
   const rows=Math.max(1,Math.ceil((Math.max(0,boxH-tileSrc))/step)+1);
@@ -2116,7 +2117,7 @@ function buildLotZoomScanTiles(lotPoly,imageW,imageH,opts={}){
   });
   const uniq=[];
   for(const c of cands){
-    const near=uniq.some(u=>Math.hypot((u.x+u.w/2)-(c.x+c.w/2),(u.y+u.h/2)-(c.y+c.h/2))<=Math.min(u.w,u.h)*0.26);
+    const near=uniq.some(u=>Math.hypot((u.x+u.w/2)-(c.x+c.w/2),(u.y+u.h/2)-(c.y+c.h/2))<=Math.min(u.w,u.h)*0.18);
     if(!near)uniq.push(c);
     if(uniq.length>=maxTiles)break;
   }
@@ -2160,37 +2161,42 @@ function buildAutoZoomPhases(baseZoom){
   const z=Math.max(0,Math.floor(Number(baseZoom)||0));
   if(z<=16){
     return[
-      {name:'crop',useRaw:true,maxTiles:12,overlap:0.5,spanScale:1},
-      {name:'z+3',dz:3,maxTiles:10,overlap:0.52,spanScale:0.92},
-      {name:'z+4',dz:4,maxTiles:10,overlap:0.55,spanScale:0.78},
-      {name:'z+5',dz:5,maxTiles:10,overlap:0.58,spanScale:0.66}
+      {name:'crop',useRaw:true,maxTiles:16,overlap:0.56,spanScale:1},
+      {name:'z+3',dz:3,maxTiles:16,overlap:0.58,spanScale:0.88},
+      {name:'z+4',dz:4,maxTiles:16,overlap:0.6,spanScale:0.74},
+      {name:'z+5',dz:5,maxTiles:18,overlap:0.62,spanScale:0.6},
+      {name:'z+6',dz:6,maxTiles:18,overlap:0.64,spanScale:0.5}
     ];
   }
   if(z===17){
     return[
-      {name:'crop',useRaw:true,maxTiles:12,overlap:0.5,spanScale:1},
-      {name:'z+2',dz:2,maxTiles:10,overlap:0.5,spanScale:0.95},
-      {name:'z+3',dz:3,maxTiles:10,overlap:0.54,spanScale:0.82},
-      {name:'z+4',dz:4,maxTiles:10,overlap:0.56,spanScale:0.7}
+      {name:'crop',useRaw:true,maxTiles:16,overlap:0.56,spanScale:1},
+      {name:'z+2',dz:2,maxTiles:16,overlap:0.58,spanScale:0.9},
+      {name:'z+3',dz:3,maxTiles:16,overlap:0.6,spanScale:0.78},
+      {name:'z+4',dz:4,maxTiles:18,overlap:0.62,spanScale:0.66},
+      {name:'z+5',dz:5,maxTiles:18,overlap:0.64,spanScale:0.54}
     ];
   }
   if(z===18){
     return[
-      {name:'crop',useRaw:true,maxTiles:12,overlap:0.5,spanScale:1},
-      {name:'z+2',dz:2,maxTiles:10,overlap:0.5,spanScale:0.9},
-      {name:'z+3',dz:3,maxTiles:10,overlap:0.55,spanScale:0.72}
+      {name:'crop',useRaw:true,maxTiles:16,overlap:0.56,spanScale:1},
+      {name:'z+2',dz:2,maxTiles:16,overlap:0.58,spanScale:0.86},
+      {name:'z+3',dz:3,maxTiles:16,overlap:0.6,spanScale:0.7},
+      {name:'z+4',dz:4,maxTiles:18,overlap:0.62,spanScale:0.58}
     ];
   }
   if(z===19){
     return[
-      {name:'crop',useRaw:true,maxTiles:11,overlap:0.48,spanScale:1},
-      {name:'z+1',dz:1,maxTiles:10,overlap:0.5,spanScale:0.9},
-      {name:'z+2',dz:2,maxTiles:10,overlap:0.54,spanScale:0.78}
+      {name:'crop',useRaw:true,maxTiles:15,overlap:0.54,spanScale:1},
+      {name:'z+1',dz:1,maxTiles:16,overlap:0.58,spanScale:0.86},
+      {name:'z+2',dz:2,maxTiles:16,overlap:0.6,spanScale:0.72},
+      {name:'z+3',dz:3,maxTiles:18,overlap:0.62,spanScale:0.6}
     ];
   }
   return[
-    {name:'crop',useRaw:true,maxTiles:10,overlap:0.46,spanScale:1},
-    {name:'z+1',dz:1,maxTiles:9,overlap:0.5,spanScale:0.86}
+    {name:'crop',useRaw:true,maxTiles:14,overlap:0.52,spanScale:1},
+    {name:'z+1',dz:1,maxTiles:14,overlap:0.56,spanScale:0.86},
+    {name:'z+2',dz:2,maxTiles:16,overlap:0.6,spanScale:0.72}
   ];
 }
 function mapTileUrlForMode(mode,year,zoomLv,ty,wrappedTx){
@@ -2331,30 +2337,31 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
     phases=phases.map(ph=>({
       ...ph,
       useRaw:(ph?.useRaw===true), // preserve crop baseline
-      maxTiles:Math.max(Number(ph?.maxTiles)||0,14),
+      maxTiles:Math.max(Number(ph?.maxTiles)||0,18),
       overlap:Math.max(Number(ph?.overlap)||0.45,0.56),
       spanScale:Math.max(0.5,Math.min(1.2,(Number(ph?.spanScale)||0.9)*0.9))
     }));
     const maxDz=phases.reduce((m,ph)=>Math.max(m,Number(ph?.dz)||0),0);
     if(maxDz<6){
-      phases.push({name:'z+6',dz:6,maxTiles:16,overlap:0.6,spanScale:0.56});
+      phases.push({name:'z+6',dz:6,maxTiles:20,overlap:0.64,spanScale:0.5});
     }
   }
-  const scanPoly=(roi&&roi.w>20&&roi.h>20)?roiRectToPolygon(roi):lotPoly;
+  // Stall zoom must stay bounded by the detected lot perimeter.
+  const scanPoly=lotPoly;
   const lotBb=polygonBounds(scanPoly)||{w:0,h:0};
   const lotAreaPx=Math.max(1,(Number(lotBb.w)||0)*(Number(lotBb.h)||0));
   const lotAreaFrac=Math.max(0,Math.min(1,lotAreaPx/Math.max(1,rawCanvas.width*rawCanvas.height)));
   const maxDetectCalls=(()=>{
     if(roi){
-      if(baseZoom<=17)return 72;
-      if(baseZoom===18)return 64;
-      if(baseZoom===19)return 56;
-      return 48;
+      if(baseZoom<=17)return 120;
+      if(baseZoom===18)return 108;
+      if(baseZoom===19)return 96;
+      return 84;
     }
-    if(baseZoom<=17)return 44;
-    if(baseZoom===18)return 38;
-    if(baseZoom===19)return 32;
-    return (lotAreaFrac>0.45)?30:26;
+    if(baseZoom<=17)return 96;
+    if(baseZoom===18)return 84;
+    if(baseZoom===19)return 72;
+    return (lotAreaFrac>0.45)?64:56;
   })();
   for(let p=0;p<phases.length;p++){
     const phase=phases[p];
@@ -2363,9 +2370,9 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
       rawCanvas.width,
       rawCanvas.height,
       {
-        maxTiles:Number(phase?.maxTiles)||(roi?14:8),
-        overlap:Number(phase?.overlap)||0.45,
-        minCoverage:roi?0.02:(baseZoom<=18?0.07:0.1),
+        maxTiles:Number(phase?.maxTiles)||(roi?18:14),
+        overlap:Number(phase?.overlap)||0.56,
+        minCoverage:roi?0.015:(baseZoom<=18?0.04:0.05),
         cornerBoost:true
       }
     );
@@ -2397,7 +2404,7 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
         const payload={
           imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),
           mode:'detect',
-          confidence:18,
+          confidence:14,
           overlap:30
         };
         const res=await fetch('/api/roboflow-detect',{
@@ -3000,8 +3007,8 @@ function markerLikelyDuplicate(a,b,pxTol=12){
 function confidenceThresholdForClass(cls){
   const c=String(cls||'').toLowerCase();
   // Keep stall-like detections visible while filtering low-confidence noise.
-  if(c.includes('stall'))return 0.22;
-  if(c.includes('ada')||c.includes('handicap'))return 0.2;
+  if(c.includes('stall'))return 0.18;
+  if(c.includes('ada')||c.includes('handicap'))return 0.17;
   if(c.includes('arrow')||c.includes('stencil'))return 0.18;
   return 0.25;
 }
