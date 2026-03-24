@@ -1057,11 +1057,13 @@ select.sc-inp{cursor:pointer;width:40px}
           </select>
           <label>Year</label>
           <select id="map-historical-year"></select>
+          <button class="btn" id="btn-map-roi-draw" title="Draw a scan box over the lot">Draw Scan Box</button>
+          <button class="btn" id="btn-map-roi-clear" title="Clear scan box">Clear Box</button>
           <button class="btn" id="btn-map-debug-bw" title="Debug only: preview pass-2 snap layer">Preview B&W</button>
           <button class="btn" id="btn-map-debug-snap" title="Debug only: show before/after vertex snap deltas">Show Snap Changes</button>
           <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
         </div>
-        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows) before running AI detect.</div>
+        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Use <strong>Draw Scan Box</strong> to focus zoom phases on a selected lot area.</div>
         <div id="map-import-status">Pick a location and click Refresh.</div>
         <canvas id="map-preview" width="1024" height="1024"></canvas>
       </div>
@@ -1504,6 +1506,8 @@ const mapImageryModeSel=document.getElementById('map-imagery-mode');
 const mapHistoricalYearSel=document.getElementById('map-historical-year');
 const btnMapDebugBw=document.getElementById('btn-map-debug-bw');
 const btnMapDebugSnap=document.getElementById('btn-map-debug-snap');
+const btnMapRoiDraw=document.getElementById('btn-map-roi-draw');
+const btnMapRoiClear=document.getElementById('btn-map-roi-clear');
 const mapRenderStyleSel=document.getElementById('map-render-style');
 const mapDrawClassSel=document.getElementById('map-draw-class');
 const btnMapDrawStart=document.getElementById('btn-map-draw-start');
@@ -1543,6 +1547,7 @@ let mapScanRoi=null; // detection ROI in detection-coordinate space: {x,y,w,h}
 let mapRoiDragState=null; // {mode:'new'|'move'|'resize',edge?,startX,startY,orig}
 let mapRoiBox=null; // optional scan ROI in detection coords {x,y,w,h}
 let mapRoiDrawState=null; // {startX,startY}
+let mapRoiDrawMode=false; // explicit ROI draw mode toggle
 let mapWheelCarry=0;
 let mapWheelLockUntil=0;
 
@@ -2157,7 +2162,7 @@ function buildAutoZoomPhases(baseZoom){
   const z=Math.max(0,Math.floor(Number(baseZoom)||0));
   if(z<=16){
     return[
-      {name:'crop',useRaw:true,maxTiles:10,overlap:0.5,spanScale:1},
+      {name:'crop',useRaw:false,maxTiles:12,overlap:0.52,spanScale:0.98},
       {name:'z+3',dz:3,maxTiles:10,overlap:0.52,spanScale:0.92},
       {name:'z+4',dz:4,maxTiles:10,overlap:0.55,spanScale:0.78},
       {name:'z+5',dz:5,maxTiles:10,overlap:0.58,spanScale:0.66}
@@ -2165,7 +2170,7 @@ function buildAutoZoomPhases(baseZoom){
   }
   if(z===17){
     return[
-      {name:'crop',useRaw:true,maxTiles:10,overlap:0.5,spanScale:1},
+      {name:'crop',useRaw:false,maxTiles:12,overlap:0.52,spanScale:0.98},
       {name:'z+2',dz:2,maxTiles:10,overlap:0.5,spanScale:0.95},
       {name:'z+3',dz:3,maxTiles:10,overlap:0.54,spanScale:0.82},
       {name:'z+4',dz:4,maxTiles:10,overlap:0.56,spanScale:0.7}
@@ -2173,20 +2178,20 @@ function buildAutoZoomPhases(baseZoom){
   }
   if(z===18){
     return[
-      {name:'crop',useRaw:true,maxTiles:10,overlap:0.5,spanScale:1},
+      {name:'crop',useRaw:false,maxTiles:12,overlap:0.52,spanScale:0.98},
       {name:'z+2',dz:2,maxTiles:10,overlap:0.5,spanScale:0.9},
       {name:'z+3',dz:3,maxTiles:10,overlap:0.55,spanScale:0.72}
     ];
   }
   if(z===19){
     return[
-      {name:'crop',useRaw:true,maxTiles:10,overlap:0.48,spanScale:1},
+      {name:'crop',useRaw:false,maxTiles:11,overlap:0.5,spanScale:0.98},
       {name:'z+1',dz:1,maxTiles:10,overlap:0.5,spanScale:0.9},
       {name:'z+2',dz:2,maxTiles:10,overlap:0.54,spanScale:0.78}
     ];
   }
   return[
-    {name:'crop',useRaw:true,maxTiles:9,overlap:0.46,spanScale:1},
+    {name:'crop',useRaw:false,maxTiles:10,overlap:0.5,spanScale:0.96},
     {name:'z+1',dz:1,maxTiles:9,overlap:0.5,spanScale:0.86}
   ];
 }
@@ -2302,7 +2307,7 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
     return{detections:[],tilesPlanned:0,tilesRan:0,phasesPlanned:0,phasesRan:0};
   }
   const baseZoom=Number.isFinite(Number(mapCtx?.zoom))?Number(mapCtx.zoom):Number(mapViewState?.zoom)||20;
-  const phases=buildAutoZoomPhases(baseZoom);
+  let phases=buildAutoZoomPhases(baseZoom);
   if(!phases.length)return{detections:[],tilesPlanned:0,tilesRan:0,phasesPlanned:0,phasesRan:0};
   const outW=1024,outH=1024;
   const all=[];
@@ -2322,10 +2327,33 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
     canvasH:rawCanvas.height,
     baseCenterWorld
   };
-  const lotBb=polygonBounds(lotPoly)||{w:0,h:0};
+  const roi=normalizeRoiBox(mapCtx?.roi,rawCanvas.width,rawCanvas.height);
+  if(roi){
+    // Box-focused scan: skip low-value crop phase and emphasize deeper zoom phases.
+    phases=phases
+      .filter(ph=>!ph?.useRaw)
+      .map(ph=>({
+        ...ph,
+        maxTiles:Math.max(Number(ph?.maxTiles)||0,14),
+        overlap:Math.max(Number(ph?.overlap)||0.45,0.56),
+        spanScale:Math.max(0.5,Math.min(1.2,(Number(ph?.spanScale)||0.9)*0.86))
+      }));
+    const maxDz=phases.reduce((m,ph)=>Math.max(m,Number(ph?.dz)||0),0);
+    if(maxDz<6){
+      phases.push({name:'z+6',dz:6,maxTiles:16,overlap:0.6,spanScale:0.56});
+    }
+  }
+  const scanPoly=(roi&&roi.w>20&&roi.h>20)?roiRectToPolygon(roi):lotPoly;
+  const lotBb=polygonBounds(scanPoly)||{w:0,h:0};
   const lotAreaPx=Math.max(1,(Number(lotBb.w)||0)*(Number(lotBb.h)||0));
   const lotAreaFrac=Math.max(0,Math.min(1,lotAreaPx/Math.max(1,rawCanvas.width*rawCanvas.height)));
   const maxDetectCalls=(()=>{
+    if(roi){
+      if(baseZoom<=17)return 72;
+      if(baseZoom===18)return 64;
+      if(baseZoom===19)return 56;
+      return 48;
+    }
     if(baseZoom<=17)return 44;
     if(baseZoom===18)return 38;
     if(baseZoom===19)return 32;
@@ -2334,13 +2362,13 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
   for(let p=0;p<phases.length;p++){
     const phase=phases[p];
     const tiles=buildLotZoomScanTiles(
-      lotPoly,
+      scanPoly,
       rawCanvas.width,
       rawCanvas.height,
       {
-        maxTiles:Number(phase?.maxTiles)||8,
+        maxTiles:Number(phase?.maxTiles)||(roi?14:8),
         overlap:Number(phase?.overlap)||0.45,
-        minCoverage:baseZoom<=18?0.07:0.1,
+        minCoverage:roi?0.02:(baseZoom<=18?0.07:0.1),
         cornerBoost:true
       }
     );
@@ -2389,7 +2417,7 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
           const mapped=remapFn(pred,pIdx);
           if(!mapped)return;
           const ctr=detectionCenterPoint(mapped);
-          if(pointInPolygon(ctr,lotPoly))all.push(mapped);
+          if(pointInPolygon(ctr,scanPoly))all.push(mapped);
         });
       }catch(e){
         console.warn('Tile stall scan failed:',e);
@@ -2737,6 +2765,16 @@ function syncMapDebugSnapButton(){
   btnMapDebugSnap.classList.toggle('y',mapDebugSnapOverlay);
   btnMapDebugSnap.textContent=mapDebugSnapOverlay?'Snap Changes: ON':'Show Snap Changes';
 }
+function syncMapRoiButtons(){
+  if(btnMapRoiDraw){
+    btnMapRoiDraw.classList.toggle('y',!!mapRoiDrawMode);
+    btnMapRoiDraw.textContent=mapRoiDrawMode?'Drawing Box: ON':'Draw Scan Box';
+  }
+  if(btnMapRoiClear){
+    btnMapRoiClear.disabled=!mapScanRoi;
+    btnMapRoiClear.style.opacity=mapScanRoi?'1':'0.6';
+  }
+}
 function clearMapDetections(){
   mapDetections=[];
   mapDetectionRenderSize={w:0,h:0};
@@ -2749,6 +2787,8 @@ function clearMapDetections(){
   mapVectorDragEdge=null;
   mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
   mapSnapDebugMoves=[];
+  mapRoiDragState=null;
+  syncMapRoiButtons();
 }
 function detKind(p){
   const c=String(p?.class||'').toLowerCase();
@@ -3795,9 +3835,14 @@ async function runRoboflowDetection(){
       if(!classUsesBoundarySnapPriority(cls))return pred;
       const rawPts=normalizeRoboflowPredictionToPolygon(pred);
       if(!Array.isArray(rawPts)||rawPts.length<3)return pred;
-      const refinedRes=snapPriorityBoundaryPolygon(rawPts,bwAligned,cls);
-      const refined=Array.isArray(refinedRes?.points)?refinedRes.points:[];
+      // For lot + obstruction classes, always seed from ROI-aware boundary helper
+      // and keep the snapped result as source-of-truth geometry.
+      const seedPts=buildBoundarySeedPolygonForDetection(pred,rawPts);
+      const refinedRes=snapPriorityBoundaryPolygon(seedPts,bwAligned,cls);
+      let refined=Array.isArray(refinedRes?.points)?refinedRes.points:[];
       if(!refined.length||refined.length<3)return pred;
+      refined=smoothBoundaryPolygon(refined,cls);
+      if(!Array.isArray(refined)||refined.length<3)return pred;
       boundaryPriorityAreas++;
       const ctr=detectionCenterPoint({points:refined});
       const bb=polygonBounds(refined);
@@ -4126,6 +4171,28 @@ if(btnMapExportSvg){
 if(btnMapExportPdf){
   btnMapExportPdf.addEventListener('click',exportMapVectorsAsPdf);
 }
+if(btnMapRoiDraw){
+  btnMapRoiDraw.addEventListener('click',()=>{
+    mapRoiDrawMode=!mapRoiDrawMode;
+    if(mapRoiDrawMode){
+      setImportStatus('Scan box mode ON. Click-drag on the map to draw the lot box.');
+    }else{
+      setImportStatus('Scan box mode OFF.');
+    }
+    syncMapRoiButtons();
+    drawMapOverlay();
+  });
+}
+if(btnMapRoiClear){
+  btnMapRoiClear.addEventListener('click',()=>{
+    mapScanRoi=null;
+    mapRoiDrawMode=false;
+    mapRoiDragState=null;
+    syncMapRoiButtons();
+    setImportStatus('Scan ROI box cleared.');
+    drawMapOverlay();
+  });
+}
 mapImageryModeSel.addEventListener('change',async()=>{
   mapViewState.mode=mapImageryModeSel.value;
   updateHistoricalControls();
@@ -4196,10 +4263,10 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
   const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
   const toDet=(x,y)=>({x:x/sx,y:y/sy});
   const local=toDet(mx,my);
-  if(!mapReviewState.active&&e.shiftKey&&e.button===0){
+  if(!mapReviewState.active&&(mapRoiDrawMode||(e.shiftKey&&e.button===0))){
     mapRoiDragState={mode:'new',startX:local.x,startY:local.y};
     mapScanRoi={x:local.x,y:local.y,w:0,h:0};
-    setImportStatus('Drawing scan ROI… (Shift+drag). Shift+right-click to clear.');
+    setImportStatus('Drawing scan ROI… drag to draw. Click Draw Scan Box again to exit.');
     drawMapOverlay();
     return;
   }
