@@ -459,6 +459,41 @@ select.sc-inp{cursor:pointer;width:40px}
   font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);
   border:1px solid var(--border);background:var(--surface2);padding:6px 8px;margin-bottom:8px;min-height:30px;
 }
+#map-reconstruct-metrics{
+  display:none;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  margin-bottom:8px;
+  padding:8px;
+}
+.map-metric-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:6px;
+}
+.map-metric-card{
+  border:1px solid var(--border);
+  background:var(--surface);
+  padding:6px;
+}
+.map-metric-card .k{
+  font-family:'JetBrains Mono',monospace;
+  font-size:8px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--text3);
+  margin-bottom:3px;
+}
+.map-metric-card .v{
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px;
+  color:var(--accent);
+  font-weight:600;
+}
+.map-input-row .btn{
+  padding:3px 9px;
+  font-size:8px;
+}
 #map-preview{
   width:100%;height:420px;border:1px solid var(--border);background:var(--canvas);
 }
@@ -1061,10 +1096,22 @@ select.sc-inp{cursor:pointer;width:40px}
           <button class="btn" id="btn-map-roi-clear" title="Clear scan box">Clear Box</button>
           <button class="btn" id="btn-map-debug-bw" title="Debug only: preview pass-2 snap layer">Preview B&W</button>
           <button class="btn" id="btn-map-debug-snap" title="Debug only: show before/after vertex snap deltas">Show Snap Changes</button>
-          <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
+          <button class="btn" id="btn-map-ai-detect">Reconstruct Layout</button>
         </div>
-        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Use <strong>Draw Scan Box</strong> to focus zoom phases on a selected lot area.</div>
+        <div class="map-row map-input-row">
+          <label>Layout Inputs</label>
+          <input id="map-scale-distance-ft" type="number" min="1" step="1" value="40" title="Real-world distance for the 2-point scale line" style="width:86px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3)">ft</span>
+          <button class="btn" id="btn-map-set-scale" title="Click two points matching known distance">Scale 2 PTS</button>
+          <button class="btn" id="btn-map-set-guide" title="Click two points along one parking row">Guide Line</button>
+          <button class="btn" id="btn-map-draw-boundary" title="Click to draw lot boundary polygon">Boundary</button>
+          <button class="btn" id="btn-map-finish-boundary" title="Finish boundary polygon">Finish Boundary</button>
+          <button class="btn" id="btn-map-set-entrance" title="Click building entrance point for ADA allocation">Entrance</button>
+          <button class="btn" id="btn-map-clear-layout-inputs" title="Clear all layout input points">Clear Inputs</button>
+        </div>
+        <div class="import-hint">Deterministic workflow: set scale points, set a guide line, optionally draw lot boundary and entrance, then click <strong>Reconstruct Layout</strong>. No AI detection is used.</div>
         <div id="map-import-status">Pick a location and click Refresh.</div>
+        <div id="map-reconstruct-metrics"></div>
         <canvas id="map-preview" width="1024" height="1024"></canvas>
       </div>
       <div id="page-thumbs"></div>
@@ -1073,7 +1120,7 @@ select.sc-inp{cursor:pointer;width:40px}
       <span id="page-footer-text" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)"><strong id="page-sel-count" style="color:var(--stripe)">0</strong> selected</span>
       <span id="map-footer-text" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);display:none">Capture current map imagery into takeoff</span>
       <div style="margin-left:auto;display:flex;gap:6px">
-        <button class="btn" id="btn-map-detect" style="display:none">Run AI Detect</button>
+        <button class="btn" id="btn-map-detect" style="display:none">Reconstruct Layout</button>
         <button class="btn y" id="btn-map-capture" style="display:none">Use Imagery →</button>
         <button class="btn y" id="btn-page-load">Load Selected →</button>
       </div>
@@ -1499,9 +1546,17 @@ const btnPageLoad=document.getElementById('btn-page-load');
 const btnMapCapture=document.getElementById('btn-map-capture');
 const btnMapDetect=document.getElementById('btn-map-detect');
 const btnMapAiDetect=document.getElementById('btn-map-ai-detect');
+const btnMapSetScale=document.getElementById('btn-map-set-scale');
+const btnMapSetGuide=document.getElementById('btn-map-set-guide');
+const btnMapDrawBoundary=document.getElementById('btn-map-draw-boundary');
+const btnMapFinishBoundary=document.getElementById('btn-map-finish-boundary');
+const btnMapSetEntrance=document.getElementById('btn-map-set-entrance');
+const btnMapClearLayoutInputs=document.getElementById('btn-map-clear-layout-inputs');
+const mapScaleDistanceFtInp=document.getElementById('map-scale-distance-ft');
 const mapPreviewCanvas=document.getElementById('map-preview');
 const mapPreviewCtx=mapPreviewCanvas.getContext('2d');
 const mapImportStatus=document.getElementById('map-import-status');
+const mapReconstructMetricsEl=document.getElementById('map-reconstruct-metrics');
 const mapImageryModeSel=document.getElementById('map-imagery-mode');
 const mapHistoricalYearSel=document.getElementById('map-historical-year');
 const btnMapDebugBw=document.getElementById('btn-map-debug-bw');
@@ -1550,9 +1605,27 @@ let mapRoiDrawState=null; // {startX,startY}
 let mapRoiDrawMode=false; // explicit ROI draw mode toggle
 let mapWheelCarry=0;
 let mapWheelLockUntil=0;
+let mapLayoutInputState={
+  mode:'none', // none | scale | guide | boundary | entrance
+  scalePts:[],
+  guidePts:[],
+  boundaryPts:[],
+  boundaryClosed:false,
+  entrance:null,
+  feetPerPx:null,
+};
+let mapReconstructResult={
+  rows:[],          // [{a:{x,y},b:{x,y}}]
+  stalls:[],        // [{center,widthPx,depthPx,isAda,poly:[{x,y}]}]
+  accessAisles:[],  // [{poly:[{x,y}]}]
+  metrics:null,     // computed metrics object
+};
 
 function classStyleForVector(cls){
   const c=String(cls||'').toLowerCase();
+  if(c.includes('access_aisle'))return {stroke:'#60a5fa',lineWidth:1.3,dash:[5,4],fill:'rgba(59,130,246,0.16)'};
+  if(c.includes('ada_stall')||c==='ada')return {stroke:'#3b82f6',lineWidth:1.4,dash:[],fill:'rgba(59,130,246,0.14)'};
+  if(c.includes('row_line'))return {stroke:'#f1f5f9',lineWidth:1,dash:[4,4],fill:'rgba(0,0,0,0)'};
   if(c.includes('lot'))return {stroke:'#d4a843',lineWidth:3,dash:[],fill:'rgba(20,20,20,0.08)'};
   if(c.includes('parking_stall')||c.includes('stall'))return {stroke:'#fff8b8',lineWidth:1.1,dash:[],fill:'rgba(255,255,255,0.02)'};
   if(c.includes('fire_lane')||c.includes('fire'))return {stroke:'#ef4444',lineWidth:2,dash:[8,5],fill:'rgba(239,68,68,0.08)'};
@@ -2468,7 +2541,7 @@ function downloadTextFile(filename,text,mime='image/svg+xml'){
 }
 function exportMapVectorsAsSvg(){
   if(!mapVectorDetections.length){
-    setImportStatus('No vector zones to export yet. Run AI Detect first.',true);
+    setImportStatus('No vector zones to export yet. Run Reconstruct Layout first.',true);
     return;
   }
   const svg=buildMapVectorSvgDocument({includeBase:true});
@@ -2478,7 +2551,7 @@ function exportMapVectorsAsSvg(){
 }
 function openVectorPrintWindow(){
   if(!mapVectorDetections.length){
-    setImportStatus('No vector zones to print. Run AI Detect first.',true);
+    setImportStatus('No vector zones to print. Run Reconstruct Layout first.',true);
     return;
   }
   const svg=buildMapVectorSvgDocument({includeBase:true});
@@ -2749,6 +2822,390 @@ function syncMapRoiButtons(){
     btnMapRoiClear.disabled=!mapScanRoi;
     btnMapRoiClear.style.opacity=mapScanRoi?'1':'0.6';
   }
+}
+function mapLayoutDefaultFeetPerPx(){
+  if(Number.isFinite(mapLayoutInputState.feetPerPx)&&mapLayoutInputState.feetPerPx>0){
+    return mapLayoutInputState.feetPerPx;
+  }
+  const mpp=metersPerPixel(mapViewState.lat,mapViewState.zoom);
+  return Math.max(0.001,mpp*3.28084);
+}
+function pointAlongLine(a,b,d){
+  const dx=(b.x||0)-(a.x||0);
+  const dy=(b.y||0)-(a.y||0);
+  const len=Math.hypot(dx,dy)||1;
+  return{x:(a.x||0)+(dx/len)*d,y:(a.y||0)+(dy/len)*d};
+}
+function lineIntersectionPoint(a,b,c,d){
+  const r={x:(b.x||0)-(a.x||0),y:(b.y||0)-(a.y||0)};
+  const s={x:(d.x||0)-(c.x||0),y:(d.y||0)-(c.y||0)};
+  const denom=(r.x*s.y)-(r.y*s.x);
+  if(Math.abs(denom)<1e-9)return null;
+  const u=(((c.x||0)-(a.x||0))*r.y-((c.y||0)-(a.y||0))*r.x)/denom;
+  const t=(((c.x||0)-(a.x||0))*s.y-((c.y||0)-(a.y||0))*s.x)/denom;
+  if(t<0||t>1||u<0||u>1)return null;
+  return{x:(a.x||0)+t*r.x,y:(a.y||0)+t*r.y,t,u};
+}
+function projectScalarOnDir(p,origin,dir){
+  return ((p.x-origin.x)*dir.x)+((p.y-origin.y)*dir.y);
+}
+function snapParkingAngle(rad){
+  const options=[0,45,60,90].map(d=>d*Math.PI/180);
+  let best=options[0],bestDiff=Infinity;
+  options.forEach(o=>{
+    let d=Math.abs(rad-o);
+    while(d>Math.PI)d=Math.abs(d-(2*Math.PI));
+    if(d>Math.PI/2)d=Math.abs(Math.PI-d);
+    if(d<bestDiff){bestDiff=d;best=o;}
+  });
+  return best;
+}
+function polygonAreaSqPx(pts){
+  if(!Array.isArray(pts)||pts.length<3)return 0;
+  let a=0;
+  for(let i=0;i<pts.length;i++){
+    const p=pts[i],q=pts[(i+1)%pts.length];
+    a+=((p.x||0)*(q.y||0))-((q.x||0)*(p.y||0));
+  }
+  return Math.abs(a)/2;
+}
+function clipInfiniteLineToPolygon(anchor,dir,poly){
+  if(!Array.isArray(poly)||poly.length<3)return null;
+  const far=200000;
+  const a={x:anchor.x-dir.x*far,y:anchor.y-dir.y*far};
+  const b={x:anchor.x+dir.x*far,y:anchor.y+dir.y*far};
+  const hits=[];
+  for(let i=0;i<poly.length;i++){
+    const p1=poly[i],p2=poly[(i+1)%poly.length];
+    const hit=lineIntersectionPoint(a,b,p1,p2);
+    if(hit){
+      const dup=hits.some(h=>Math.hypot(h.x-hit.x,h.y-hit.y)<0.5);
+      if(!dup)hits.push(hit);
+    }
+  }
+  if(hits.length<2)return null;
+  hits.sort((h1,h2)=>h1.t-h2.t);
+  return{
+    a:{x:hits[0].x,y:hits[0].y},
+    b:{x:hits[hits.length-1].x,y:hits[hits.length-1].y}
+  };
+}
+function createRotatedRect(center,widthPx,depthPx,dir,sideSign){
+  const halfW=widthPx/2;
+  const halfD=depthPx/2;
+  const n={x:-dir.y,y:dir.x};
+  const dsgn=(sideSign>=0)?1:-1;
+  const offset={x:n.x*dsgn*halfD,y:n.y*dsgn*halfD};
+  const c={x:center.x+offset.x,y:center.y+offset.y};
+  const p1={x:c.x-dir.x*halfW-n.x*halfD,y:c.y-dir.y*halfW-n.y*halfD};
+  const p2={x:c.x+dir.x*halfW-n.x*halfD,y:c.y+dir.y*halfW-n.y*halfD};
+  const p3={x:c.x+dir.x*halfW+n.x*halfD,y:c.y+dir.y*halfW+n.y*halfD};
+  const p4={x:c.x-dir.x*halfW+n.x*halfD,y:c.y-dir.y*halfW+n.y*halfD};
+  return[p1,p2,p3,p4];
+}
+function renderMapReconstructMetrics(metrics){
+  if(!mapReconstructMetricsEl)return;
+  if(!metrics){
+    mapReconstructMetricsEl.style.display='none';
+    mapReconstructMetricsEl.innerHTML='';
+    return;
+  }
+  const fmt=(n,dec=0)=>Number(n||0).toLocaleString('en-US',{maximumFractionDigits:dec,minimumFractionDigits:dec});
+  mapReconstructMetricsEl.style.display='block';
+  mapReconstructMetricsEl.innerHTML=`
+    <div class="map-metric-grid">
+      <div class="map-metric-card"><div class="k">Stalls</div><div class="v">${fmt(metrics.totalStalls,0)}</div></div>
+      <div class="map-metric-card"><div class="k">ADA</div><div class="v">${fmt(metrics.adaStalls,0)}</div></div>
+      <div class="map-metric-card"><div class="k">Striping (ft)</div><div class="v">${fmt(metrics.stripingLengthFt,0)}</div></div>
+      <div class="map-metric-card"><div class="k">Lot Area (sq ft)</div><div class="v">${fmt(metrics.lotAreaSqFt,0)}</div></div>
+    </div>
+  `;
+}
+function mapLayoutInputStatusText(){
+  const sPts=mapLayoutInputState.scalePts.length;
+  const gPts=mapLayoutInputState.guidePts.length;
+  const bPts=mapLayoutInputState.boundaryPts.length;
+  const entrance=mapLayoutInputState.entrance?'yes':'no';
+  const fpp=mapLayoutInputState.feetPerPx;
+  const scaleLbl=(Number.isFinite(fpp)&&fpp>0)?`${fpp.toFixed(3)} ft/px`:'auto';
+  return `Inputs → scale:${sPts}/2, guide:${gPts}/2, boundary:${bPts}${mapLayoutInputState.boundaryClosed?' (closed)':''}, entrance:${entrance}, feet/px:${scaleLbl}`;
+}
+function drawLineInDetectionSpace(a,b,color,width=2,dash=[]){
+  const pa=mapDetectionToCanvasPt(a.x,a.y);
+  const pb=mapDetectionToCanvasPt(b.x,b.y);
+  mapPreviewCtx.save();
+  mapPreviewCtx.strokeStyle=color;
+  mapPreviewCtx.lineWidth=width;
+  mapPreviewCtx.setLineDash(dash);
+  mapPreviewCtx.beginPath();
+  mapPreviewCtx.moveTo(pa.x,pa.y);
+  mapPreviewCtx.lineTo(pb.x,pb.y);
+  mapPreviewCtx.stroke();
+  mapPreviewCtx.restore();
+}
+function drawPolyInDetectionSpace(poly,opts={}){
+  if(!Array.isArray(poly)||poly.length<3)return;
+  mapPreviewCtx.save();
+  mapPreviewCtx.beginPath();
+  poly.forEach((pt,i)=>{
+    const cp=mapDetectionToCanvasPt(pt.x,pt.y);
+    if(i===0)mapPreviewCtx.moveTo(cp.x,cp.y);else mapPreviewCtx.lineTo(cp.x,cp.y);
+  });
+  mapPreviewCtx.closePath();
+  mapPreviewCtx.fillStyle=opts.fill||'transparent';
+  mapPreviewCtx.strokeStyle=opts.stroke||'#fff';
+  mapPreviewCtx.lineWidth=opts.lineWidth||1.5;
+  mapPreviewCtx.setLineDash(opts.dash||[]);
+  if(opts.fill)mapPreviewCtx.fill();
+  mapPreviewCtx.stroke();
+  mapPreviewCtx.restore();
+}
+function drawPointInDetectionSpace(pt,color,label=''){
+  if(!pt)return;
+  const cp=mapDetectionToCanvasPt(pt.x,pt.y);
+  mapPreviewCtx.save();
+  mapPreviewCtx.beginPath();
+  mapPreviewCtx.arc(cp.x,cp.y,4,0,Math.PI*2);
+  mapPreviewCtx.fillStyle=color;
+  mapPreviewCtx.fill();
+  mapPreviewCtx.strokeStyle='#111';
+  mapPreviewCtx.lineWidth=1;
+  mapPreviewCtx.stroke();
+  if(label){
+    mapPreviewCtx.fillStyle='rgba(0,0,0,0.7)';
+    mapPreviewCtx.fillRect(cp.x+7,cp.y-13,50,14);
+    mapPreviewCtx.fillStyle=color;
+    mapPreviewCtx.font='10px JetBrains Mono,monospace';
+    mapPreviewCtx.fillText(label,cp.x+11,cp.y-3);
+  }
+  mapPreviewCtx.restore();
+}
+function drawMapLayoutInputOverlay(){
+  const li=mapLayoutInputState;
+  if(Array.isArray(li.scalePts)&&li.scalePts.length){
+    li.scalePts.forEach((p,i)=>drawPointInDetectionSpace(p,'#22c55e',`S${i+1}`));
+    if(li.scalePts.length===2)drawLineInDetectionSpace(li.scalePts[0],li.scalePts[1],'#22c55e',2,[4,3]);
+  }
+  if(Array.isArray(li.guidePts)&&li.guidePts.length){
+    li.guidePts.forEach((p,i)=>drawPointInDetectionSpace(p,'#f59e0b',`G${i+1}`));
+    if(li.guidePts.length===2)drawLineInDetectionSpace(li.guidePts[0],li.guidePts[1],'#f59e0b',2,[8,4]);
+  }
+  if(Array.isArray(li.boundaryPts)&&li.boundaryPts.length){
+    drawPolyInDetectionSpace(li.boundaryPts,{
+      stroke:'#38bdf8',
+      fill:li.boundaryClosed?'rgba(56,189,248,0.1)':'',
+      lineWidth:2,
+      dash:li.boundaryClosed?[]:[5,3],
+    });
+    li.boundaryPts.forEach((p,i)=>drawPointInDetectionSpace(p,'#38bdf8',`B${i+1}`));
+  }
+  if(li.entrance)drawPointInDetectionSpace(li.entrance,'#2563eb','ENT');
+}
+function drawMapReconstructResultOverlay(){
+  if(!mapReconstructResult)return;
+  const rows=Array.isArray(mapReconstructResult.rows)?mapReconstructResult.rows:[];
+  rows.forEach(r=>drawLineInDetectionSpace(r.a,r.b,'rgba(245,200,66,0.7)',1,[4,4]));
+  const stalls=Array.isArray(mapReconstructResult.stalls)?mapReconstructResult.stalls:[];
+  stalls.forEach(s=>{
+    drawPolyInDetectionSpace(s.poly,{
+      stroke:s.isAda?'#3b82f6':'#ffffff',
+      fill:s.isAda?'rgba(59,130,246,0.15)':'rgba(255,255,255,0.02)',
+      lineWidth:1.2,
+      dash:[],
+    });
+  });
+  const aisles=Array.isArray(mapReconstructResult.accessAisles)?mapReconstructResult.accessAisles:[];
+  aisles.forEach(a=>{
+    drawPolyInDetectionSpace(a.poly,{
+      stroke:'#3b82f6',
+      fill:'rgba(59,130,246,0.18)',
+      lineWidth:1.2,
+      dash:[4,3],
+    });
+  });
+}
+function runDeterministicLayoutReconstruction(){
+  const li=mapLayoutInputState;
+  if(!Array.isArray(li.guidePts)||li.guidePts.length<2){
+    setImportStatus('Need guide line: click Guide Line and place 2 points.',true);
+    return;
+  }
+  const baseA=li.guidePts[0],baseB=li.guidePts[1];
+  const guideLen=dist(baseA,baseB);
+  if(guideLen<2){
+    setImportStatus('Guide line is too short. Use two farther points.',true);
+    return;
+  }
+  let feetPerPx=mapLayoutDefaultFeetPerPx();
+  if(Array.isArray(li.scalePts)&&li.scalePts.length===2){
+    const pxDist=dist(li.scalePts[0],li.scalePts[1]);
+    const ft=Number(mapScaleDistanceFtInp?.value||0);
+    if(pxDist>1&&ft>0){
+      feetPerPx=ft/pxDist;
+      li.feetPerPx=feetPerPx;
+    }
+  }
+  if(!Number.isFinite(feetPerPx)||feetPerPx<=0){
+    setImportStatus('Scale calculation failed. Provide scale points and distance.',true);
+    return;
+  }
+  const dimsFt={stallWidth:9,stallDepth:18,aisleWidth:24,adaWidth:12,accessAisle:8};
+  const stallWidthPx=dimsFt.stallWidth/feetPerPx;
+  const stallDepthPx=dimsFt.stallDepth/feetPerPx;
+  const aisleWidthPx=dimsFt.aisleWidth/feetPerPx;
+  const adaWidthPx=dimsFt.adaWidth/feetPerPx;
+  const accessAislePx=dimsFt.accessAisle/feetPerPx;
+  const rowSpacingPx=stallDepthPx+aisleWidthPx;
+  const dx=baseB.x-baseA.x,dy=baseB.y-baseA.y;
+  const dir={x:dx/guideLen,y:dy/guideLen};
+  const perp={x:-dir.y,y:dir.x};
+  const angle=Math.atan2(dy,dx);
+  const snapAngle=snapParkingAngle(angle);
+  const defaultBoundary=[
+    {x:0,y:0},
+    {x:mapDetectionRenderSize.w||mapPreviewCanvas.width,y:0},
+    {x:mapDetectionRenderSize.w||mapPreviewCanvas.width,y:mapDetectionRenderSize.h||mapPreviewCanvas.height},
+    {x:0,y:mapDetectionRenderSize.h||mapPreviewCanvas.height},
+  ];
+  const hasUserBoundary=Array.isArray(li.boundaryPts)&&li.boundaryPts.length>=3&&li.boundaryClosed;
+  const boundary=hasUserBoundary
+    ? li.boundaryPts.map(p=>({x:p.x,y:p.y}))
+    : defaultBoundary;
+  const boundaryAreaSqPx=polygonAreaSqPx(boundary);
+  const maxOffset=Math.max(
+    mapPreviewCanvas.width,
+    mapPreviewCanvas.height,
+    mapDetectionRenderSize.w||0,
+    mapDetectionRenderSize.h||0
+  )*1.5;
+  const rows=[];
+  const stalls=[];
+  const accessAisles=[];
+  const maxRowCount=220;
+  for(let i=-maxRowCount;i<=maxRowCount;i++){
+    const off=i*rowSpacingPx;
+    if(Math.abs(off)>maxOffset)continue;
+    const anchor={x:baseA.x+perp.x*off,y:baseA.y+perp.y*off};
+    const seg=clipInfiniteLineToPolygon(anchor,dir,boundary);
+    if(!seg)continue;
+    const segLen=dist(seg.a,seg.b);
+    if(segLen<stallWidthPx*1.2)continue;
+    rows.push(seg);
+    const n=Math.max(0,Math.floor(segLen/stallWidthPx));
+    for(let si=0;si<n;si++){
+      const center=pointAlongLine(seg.a,seg.b,si*stallWidthPx+(stallWidthPx/2));
+      const poly=createRotatedRect(center,stallWidthPx,stallDepthPx,dir,1);
+      stalls.push({
+        center,
+        widthPx:stallWidthPx,
+        depthPx:stallDepthPx,
+        angle:snapAngle,
+        isAda:false,
+        poly,
+      });
+    }
+  }
+  if(li.entrance&&stalls.length){
+    stalls.sort((a,b)=>dist(a.center,li.entrance)-dist(b.center,li.entrance));
+    const adaCount=Math.max(1,Math.round(stalls.length*0.08));
+    for(let i=0;i<stalls.length;i++){
+      if(i<adaCount){
+        stalls[i].isAda=true;
+        stalls[i].widthPx=adaWidthPx;
+        stalls[i].poly=createRotatedRect(stalls[i].center,adaWidthPx,stallDepthPx,dir,1);
+        const aisleCenter={x:stalls[i].center.x+(perp.x*(adaWidthPx/2+accessAislePx/2)),y:stalls[i].center.y+(perp.y*(adaWidthPx/2+accessAislePx/2))};
+        accessAisles.push({poly:createRotatedRect(aisleCenter,accessAislePx,stallDepthPx,dir,1)});
+      }
+    }
+  }
+  const totalStalls=stalls.length;
+  const adaStalls=stalls.reduce((s,v)=>s+(v.isAda?1:0),0);
+  const stripingLengthFt=totalStalls*dimsFt.stallDepth*2;
+  const lotAreaSqFt=hasUserBoundary?(boundaryAreaSqPx*(feetPerPx*feetPerPx)):0;
+  const vectorRows=rows.map((r,idx)=>({
+    id:`row-${idx}-${Date.now()}`,
+    className:'row_line',
+    confidence:1,
+    points:segmentToThinStallPolygon(r,1.2),
+  }));
+  const vectorStalls=stalls.map((s,idx)=>({
+    id:`stall-${idx}-${Date.now()}`,
+    className:s.isAda?'ada_stall':'parking_stall',
+    confidence:1,
+    points:s.poly.map(p=>({x:p.x,y:p.y})),
+  }));
+  const vectorAisles=accessAisles.map((a,idx)=>({
+    id:`aisle-${idx}-${Date.now()}`,
+    className:'ada_access_aisle',
+    confidence:1,
+    points:a.poly.map(p=>({x:p.x,y:p.y})),
+  }));
+  const reconstructedDetections=stalls.map((s,idx)=>{
+    const bb=polygonBounds(s.poly);
+    return{
+      id:`rd-${idx}-${Date.now()}`,
+      class:s.isAda?'ada':'stall',
+      confidence:1,
+      x:s.center.x,
+      y:s.center.y,
+      width:Number(bb?.w)||0,
+      height:Number(bb?.h)||0,
+      points:s.poly.map(p=>({x:p.x,y:p.y})),
+    };
+  });
+  if(hasUserBoundary){
+    const bb=polygonBounds(boundary);
+    const ctr=detectionCenterPoint({points:boundary});
+    reconstructedDetections.unshift({
+      id:`lot-${Date.now()}`,
+      class:'lot_boundary',
+      confidence:1,
+      x:Number(ctr?.x)||0,
+      y:Number(ctr?.y)||0,
+      width:Number(bb?.w)||0,
+      height:Number(bb?.h)||0,
+      points:boundary.map(p=>({x:p.x,y:p.y})),
+    });
+  }
+  mapReconstructResult={
+    rows,
+    stalls,
+    accessAisles,
+    metrics:{
+      totalStalls,
+      adaStalls,
+      stripingLengthFt,
+      lotAreaSqFt,
+      feetPerPx,
+      rowSpacingPx,
+      stallWidthPx,
+      stallDepthPx,
+      aisleWidthPx,
+    }
+  };
+  mapDetections=reconstructedDetections;
+  aiDetectionsForTransfer=JSON.parse(JSON.stringify(reconstructedDetections));
+  pendingDetectionTransfer=reconstructedDetections.length>0;
+  mapVectorDetections=[...vectorRows,...vectorStalls,...vectorAisles];
+  mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
+  renderMapReconstructMetrics(mapReconstructResult.metrics);
+  drawMapOverlay();
+  setImportStatus(
+    `Reconstructed ${totalStalls} stalls (${adaStalls} ADA). ${mapLayoutInputStatusText()} Click "Use Imagery" to import into the takeoff canvas.`
+  );
+}
+function setMapLayoutMode(mode){
+  mapLayoutInputState.mode=mode;
+  const mapping=[
+    [btnMapSetScale,'scale'],
+    [btnMapSetGuide,'guide'],
+    [btnMapDrawBoundary,'boundary'],
+    [btnMapSetEntrance,'entrance'],
+  ];
+  mapping.forEach(([btn,m])=>{
+    if(!btn)return;
+    btn.classList.toggle('y',mode===m);
+  });
 }
 function clearMapDetections(){
   mapDetections=[];
@@ -3287,7 +3744,7 @@ function transferDetectionsWhenPlanReady(tries=0){
   }
   const moved=transferDetectionsToEditableObjects();
   if((moved.zonesAdded||0)+(moved.markersAdded||0)>0){
-    setImportStatus(`Transferred AI detections: ${moved.zonesAdded} zones, ${moved.markersAdded} markers. Edit them, then finish/report.`);
+    setImportStatus(`Transferred reconstructed layout: ${moved.zonesAdded} zones, ${moved.markersAdded} markers. Edit them, then finish/report.`);
   }
 }
 
@@ -3568,6 +4025,8 @@ function drawMapOverlay(){
     });
     mapPreviewCtx.restore();
   }
+  drawMapReconstructResultOverlay();
+  drawMapLayoutInputOverlay();
   drawMapRoiOverlay();
 }
 function drawMapRoiOverlay(){
@@ -4052,7 +4511,7 @@ if(btnMapDebugSnap){
     syncMapDebugSnapButton();
     drawMapOverlay();
     if(mapDebugSnapOverlay&&!mapSnapDebugMoves.length){
-      setImportStatus('Snap change overlay ON. Run AI Detect to populate moved-vertex lines.');
+      setImportStatus('Snap change overlay ON. Run Reconstruct Layout to populate moved-vertex lines.');
     }else{
       setImportStatus(mapDebugSnapOverlay?'Snap change overlay ON.':'Snap change overlay OFF.');
     }
@@ -4129,6 +4588,68 @@ if(btnMapRoiClear){
     drawMapOverlay();
   });
 }
+if(btnMapSetScale){
+  btnMapSetScale.addEventListener('click',()=>{
+    mapLayoutInputState.scalePts=[];
+    setMapLayoutMode('scale');
+    setImportStatus('Scale mode: click 2 points for known distance.');
+    drawMapOverlay();
+  });
+}
+if(btnMapSetGuide){
+  btnMapSetGuide.addEventListener('click',()=>{
+    mapLayoutInputState.guidePts=[];
+    setMapLayoutMode('guide');
+    setImportStatus('Guide line mode: click 2 points along one parking row.');
+    drawMapOverlay();
+  });
+}
+if(btnMapDrawBoundary){
+  btnMapDrawBoundary.addEventListener('click',()=>{
+    mapLayoutInputState.boundaryPts=[];
+    mapLayoutInputState.boundaryClosed=false;
+    setMapLayoutMode('boundary');
+    setImportStatus('Boundary mode: click polygon vertices, then Finish Boundary.');
+    drawMapOverlay();
+  });
+}
+if(btnMapFinishBoundary){
+  btnMapFinishBoundary.addEventListener('click',()=>{
+    if(mapLayoutInputState.boundaryPts.length>=3){
+      mapLayoutInputState.boundaryClosed=true;
+      setMapLayoutMode('none');
+      setImportStatus(`Boundary closed with ${mapLayoutInputState.boundaryPts.length} points.`);
+      drawMapOverlay();
+    }else{
+      setImportStatus('Boundary needs at least 3 points.',true);
+    }
+  });
+}
+if(btnMapSetEntrance){
+  btnMapSetEntrance.addEventListener('click',()=>{
+    setMapLayoutMode('entrance');
+    setImportStatus('Entrance mode: click building entrance point.');
+    drawMapOverlay();
+  });
+}
+if(btnMapClearLayoutInputs){
+  btnMapClearLayoutInputs.addEventListener('click',()=>{
+    mapLayoutInputState={
+      mode:'none',
+      scalePts:[],
+      guidePts:[],
+      boundaryPts:[],
+      boundaryClosed:false,
+      entrance:null,
+      feetPerPx:null,
+    };
+    mapReconstructResult={rows:[],stalls:[],accessAisles:[],metrics:null};
+    renderMapReconstructMetrics(null);
+    setMapLayoutMode('none');
+    setImportStatus('Layout inputs cleared.');
+    drawMapOverlay();
+  });
+}
 mapImageryModeSel.addEventListener('change',async()=>{
   mapViewState.mode=mapImageryModeSel.value;
   updateHistoricalControls();
@@ -4137,8 +4658,8 @@ mapImageryModeSel.addEventListener('change',async()=>{
 });
 mapHistoricalYearSel.addEventListener('change',()=>{mapViewState.year=mapHistoricalYearSel.value;loadMapPreview({fromInputs:false,reason:'Loading selected year…'});});
 btnMapCapture.addEventListener('click',captureMapImageryIntoPlan);
-if(btnMapDetect)btnMapDetect.addEventListener('click',runRoboflowDetection);
-if(btnMapAiDetect)btnMapAiDetect.addEventListener('click',runRoboflowDetection);
+if(btnMapDetect)btnMapDetect.addEventListener('click',runDeterministicLayoutReconstruction);
+if(btnMapAiDetect)btnMapAiDetect.addEventListener('click',runDeterministicLayoutReconstruction);
 
 mapPreviewCanvas.addEventListener('wheel',e=>{
   if(pageModalView!=='map')return;
@@ -4189,6 +4710,62 @@ mapPreviewCanvas.addEventListener('wheel',e=>{
 },{passive:false});
 mapPreviewCanvas.addEventListener('mousedown',e=>{
   if(pageModalView!=='map')return;
+  if(!mapReviewState.active){
+    const rect=mapPreviewCanvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left;
+    const my=e.clientY-rect.top;
+    const sxDet=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
+    const syDet=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+    const local={x:mx/sxDet,y:my/syDet};
+    if(mapLayoutInputState.mode==='scale'&&e.button===0){
+      if(mapLayoutInputState.scalePts.length>=2)mapLayoutInputState.scalePts=[];
+      mapLayoutInputState.scalePts.push(local);
+      if(mapLayoutInputState.scalePts.length===2){
+        const pxDist=dist(mapLayoutInputState.scalePts[0],mapLayoutInputState.scalePts[1]);
+        const ft=Number(mapScaleDistanceFtInp?.value||0);
+        if(pxDist>1&&ft>0){
+          mapLayoutInputState.feetPerPx=ft/pxDist;
+          setImportStatus(`Scale set: ${ft.toFixed(1)} ft / ${pxDist.toFixed(1)} px = ${mapLayoutInputState.feetPerPx.toFixed(3)} ft/px`);
+          setMapLayoutMode('none');
+        }else{
+          setImportStatus('Scale points captured; enter positive distance in feet.',true);
+        }
+      }else{
+        setImportStatus('Scale point 1 captured. Click second point.');
+      }
+      drawMapOverlay();
+      return;
+    }
+    if(mapLayoutInputState.mode==='guide'&&e.button===0){
+      if(mapLayoutInputState.guidePts.length>=2)mapLayoutInputState.guidePts=[];
+      mapLayoutInputState.guidePts.push(local);
+      if(mapLayoutInputState.guidePts.length===2){
+        setImportStatus('Guide line captured.');
+        setMapLayoutMode('none');
+      }else{
+        setImportStatus('Guide point 1 captured. Click second point.');
+      }
+      drawMapOverlay();
+      return;
+    }
+    if(mapLayoutInputState.mode==='boundary'&&e.button===0){
+      if(mapLayoutInputState.boundaryClosed){
+        mapLayoutInputState.boundaryPts=[];
+        mapLayoutInputState.boundaryClosed=false;
+      }
+      mapLayoutInputState.boundaryPts.push(local);
+      setImportStatus(`Boundary points: ${mapLayoutInputState.boundaryPts.length}. Click Finish Boundary when done.`);
+      drawMapOverlay();
+      return;
+    }
+    if(mapLayoutInputState.mode==='entrance'&&e.button===0){
+      mapLayoutInputState.entrance=local;
+      setMapLayoutMode('none');
+      setImportStatus('Entrance point captured.');
+      drawMapOverlay();
+      return;
+    }
+  }
   if(mapDebugSnapOverlay){
     mapDebugSnapOverlay=false;
     syncMapDebugSnapButton();
@@ -4404,7 +4981,7 @@ window.addEventListener('mouseup',()=>{
     mapScanRoi=normalizeRoiBox(mapScanRoi,mapDetectionRenderSize.w||mapPreviewCanvas.width,mapDetectionRenderSize.h||mapPreviewCanvas.height);
     mapRoiDragState=null;
     if(!mapScanRoi)setImportStatus('Scan ROI cleared (too small).');
-    else setImportStatus('Scan ROI set. AI detect will prioritize this box.');
+    else setImportStatus('Scan ROI set. Reconstruction will prioritize this box.');
     drawMapOverlay();
     return;
   }
