@@ -1542,6 +1542,7 @@ const mapLngInp=document.getElementById('map-lng');
 const mapZoomInp=document.getElementById('map-zoom');
 let pageModalView='source'; // source | pdf | map
 let waybackByYear={...WAYBACK_FALLBACK_BY_YEAR}; // { [year]: {m, date, label} }
+let waybackYearsHydrated=false;
 let mapViewState={lat:37.4219999,lng:-122.0840575,zoom:20,mode:'google',year:''};
 let mapInteraction={dragging:false,startX:0,startY:0,startLat:0,startLng:0,startWorld:null,startTx:0,startTy:0};
 let mapRenderReqId=0;
@@ -3421,8 +3422,19 @@ function syncMapInputsFromState(){
   // Lat/Lng/Zoom inputs intentionally hidden in simplified UI.
 }
 function populateWaybackYearsDropdown(){
+  const prevValue=String(mapHistoricalYearSel.value||mapViewState.year||'');
   const years=listWaybackYears();
-  mapHistoricalYearSel.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  mapHistoricalYearSel.innerHTML=years.map(y=>{
+    const rel=waybackByYear?.[y];
+    const suffix=rel?.date?` (${rel.date})`:'';
+    return `<option value="${y}">${y}${suffix}</option>`;
+  }).join('');
+  if(prevValue&&waybackByYear?.[prevValue]){
+    mapHistoricalYearSel.value=prevValue;
+  }else if(years.length){
+    mapHistoricalYearSel.value=years[0];
+    if(!mapViewState.year)mapViewState.year=years[0];
+  }
 }
 function ensureFallbackWaybackYears(){
   if(!waybackByYear)waybackByYear={...WAYBACK_FALLBACK_BY_YEAR};
@@ -3433,7 +3445,7 @@ function listWaybackYears(){
   return Object.keys(waybackByYear||{}).sort((a,b)=>b.localeCompare(a));
 }
 async function ensureWaybackYears(){
-  if(waybackByYear&&Object.keys(waybackByYear).length>0){
+  if(waybackYearsHydrated&&waybackByYear&&Object.keys(waybackByYear).length>0){
     populateWaybackYearsDropdown();
     return;
   }
@@ -3445,13 +3457,16 @@ async function ensureWaybackYears(){
     (data.Selection||[]).forEach(row=>{
       const m=String(row.M||'').trim();
       const name=String(row.Name||'');
+      const id=String(row.ID||'');
       const dateMatch=name.match(/(\d{4}-\d{2}-\d{2})/);
       if(!m||!dateMatch)return;
       const date=dateMatch[1];
-      const year=date.slice(0,4);
+      const idYearMatch=id.match(/^WB_(\d{4})_/);
+      const year=(idYearMatch&&idYearMatch[1])?idYearMatch[1]:date.slice(0,4);
       if(!byYear[year]||date>byYear[year].date)byYear[year]={m,date,label:name};
     });
     waybackByYear={...WAYBACK_FALLBACK_BY_YEAR,...byYear};
+    waybackYearsHydrated=true;
     populateWaybackYearsDropdown();
   }catch(e){
     console.warn('Falling back to bundled historical years:',e);
@@ -3460,18 +3475,23 @@ async function ensureWaybackYears(){
 }
 
 async function drawTilePreview(mode,lat,lng,zoomLv,year){
+  const renderCanvas=document.createElement('canvas');
+  renderCanvas.width=mapPreviewCanvas.width;
+  renderCanvas.height=mapPreviewCanvas.height;
+  const renderCtx=renderCanvas.getContext('2d');
   const tileSize=256;
   const world=latLngToWorldPixel(lat,lng,zoomLv);
-  const startX=world.x-mapPreviewCanvas.width/2;
-  const startY=world.y-mapPreviewCanvas.height/2;
-  const endX=startX+mapPreviewCanvas.width;
-  const endY=startY+mapPreviewCanvas.height;
+  const startX=world.x-renderCanvas.width/2;
+  const startY=world.y-renderCanvas.height/2;
+  const endX=startX+renderCanvas.width;
+  const endY=startY+renderCanvas.height;
   const minTx=Math.floor(startX/tileSize),maxTx=Math.floor((endX-1)/tileSize);
   const minTy=Math.floor(startY/tileSize),maxTy=Math.floor((endY-1)/tileSize);
   const n=Math.pow(2,zoomLv);
-  mapPreviewCtx.fillStyle='#151515';
-  mapPreviewCtx.fillRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  renderCtx.fillStyle='#151515';
+  renderCtx.fillRect(0,0,renderCanvas.width,renderCanvas.height);
   const tasks=[];
+  let loadedTiles=0;
   for(let ty=minTy;ty<=maxTy;ty++){
     if(ty<0||ty>=n)continue;
     for(let tx=minTx;tx<=maxTx;tx++){
@@ -3486,18 +3506,21 @@ async function drawTilePreview(mode,lat,lng,zoomLv,year){
       }else{
         url=`https://mt1.google.com/vt/lyrs=s&x=${wrapped}&y=${ty}&z=${zoomLv}`;
       }
-      tasks.push(loadImageFromUrl(url).then(img=>mapPreviewCtx.drawImage(img,dx,dy,tileSize,tileSize)).catch(()=>{}));
+      tasks.push(loadImageFromUrl(url).then(img=>{
+        renderCtx.drawImage(img,dx,dy,tileSize,tileSize);
+        loadedTiles++;
+      }).catch(()=>{}));
     }
   }
   await Promise.all(tasks);
-  mapDetectionRenderSize={w:mapPreviewCanvas.width,h:mapPreviewCanvas.height};
-  // Capture raw tile render for preprocess/blueprint rendering.
-  const rawCanvas=document.createElement('canvas');
-  rawCanvas.width=mapPreviewCanvas.width;rawCanvas.height=mapPreviewCanvas.height;
-  rawCanvas.getContext('2d').drawImage(mapPreviewCanvas,0,0);
-  mapBaseRawImage=rawCanvas;
-  mapBaseProcessedImage=preprocessImageDataForBlueprint(rawCanvas);
-  mapSnapBwImage=preprocessImageDataForSnapBw(rawCanvas);
+  const processedCanvas=preprocessImageDataForBlueprint(renderCanvas);
+  const snapCanvas=preprocessImageDataForSnapBw(renderCanvas);
+  return{
+    rawCanvas:renderCanvas,
+    processedCanvas,
+    snapCanvas,
+    loadedTiles
+  };
 }
 
 function drawMapOverlay(){
@@ -3694,20 +3717,28 @@ async function loadMapPreview(opts={}){
   if(!Number.isFinite(lat)||!Number.isFinite(lng)){setImportStatus('Enter valid latitude and longitude.',true);return;}
   setImportStatus(opts.reason||'Loading map imagery…');
   try{
-    if(!waybackByYear){
-      try{await ensureWaybackYears();}catch(e){console.warn('Wayback year list unavailable:',e);}
-    }
     if(mapViewState.mode==='historical'){
+      try{await ensureWaybackYears();}catch(e){console.warn('Wayback year list unavailable:',e);}
       if(!mapViewState.year){
         const first=listWaybackYears()[0];
         mapViewState.year=first||'';
       }
       if(mapHistoricalYearSel.value!==mapViewState.year)mapHistoricalYearSel.value=mapViewState.year;
     }
-    await drawTilePreview(mapViewState.mode,lat,lng,zoomLv,mapViewState.year);
+    const preview=await drawTilePreview(mapViewState.mode,lat,lng,zoomLv,mapViewState.year);
     if(reqId!==mapRenderReqId)return;
+    if(preview){
+      mapBaseRawImage=preview.rawCanvas;
+      mapBaseProcessedImage=preview.processedCanvas;
+      mapSnapBwImage=preview.snapCanvas;
+      mapDetectionRenderSize={w:mapPreviewCanvas.width,h:mapPreviewCanvas.height};
+    }
     drawMapOverlay();
     syncMapInputsFromState();
+    if(mapViewState.mode==='historical'&&preview&&preview.loadedTiles===0){
+      setImportStatus('No tiles found for that historical year at this zoom/location. Try zooming out or another year.',true);
+      return;
+    }
     setImportStatus('Drag to pan, scroll to zoom, then click "Use Imagery".');
   }catch(e){
     console.error(e);
