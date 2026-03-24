@@ -3814,8 +3814,11 @@ async function runRoboflowDetection(){
       if(!classUsesBoundarySnapPriority(cls))return pred;
       const rawPts=normalizeRoboflowPredictionToPolygon(pred);
       if(!Array.isArray(rawPts)||rawPts.length<3)return pred;
-      // Use Roboflow geometry as the primary seed to avoid over-rounded/oval perimeters.
-      const refinedRes=snapPriorityBoundaryPolygon(rawPts,bwAligned,cls);
+      // Keep lot polygon-first to avoid ROI/ellipse-shaped perimeters, but let
+      // obstructions/islands/buildings use stronger seed envelopes for snapping.
+      const useExpandedSeed=classIsObstruction(cls);
+      const seedPts=useExpandedSeed?buildBoundarySeedPolygonForDetection(pred,rawPts):rawPts;
+      const refinedRes=snapPriorityBoundaryPolygon(seedPts,bwAligned,cls);
       let refined=Array.isArray(refinedRes?.points)?refinedRes.points:[];
       if(!refined.length||refined.length<3)return pred;
       refined=smoothBoundaryPolygon(refined,cls);
@@ -3835,40 +3838,19 @@ async function runRoboflowDetection(){
     });
     let baseLotPoly=primaryLotPolygonFromDetections(seededDetections);
     const scanRoi=mapCurrentScanRoi(baseLotPoly);
-    // If Roboflow misses the lot entirely, synthesize a lot from ROI then snap it
-    // to B/W boundaries so the user still gets an editable perimeter.
-    if(!baseLotPoly&&scanRoi&&scanRoi.w>20&&scanRoi.h>20){
-      let fallbackPts=roiRectToPolygon(scanRoi)||[];
-      if(Array.isArray(fallbackPts)&&fallbackPts.length>=3){
-        fallbackPts=refineAreaBoundaryByBw(fallbackPts,bwAligned,'lot_boundary');
-        fallbackPts=smoothBoundaryPolygon(fallbackPts,'lot_boundary');
-      }
-      if(!Array.isArray(fallbackPts)||fallbackPts.length<3){
-        fallbackPts=roiRectToPolygon(scanRoi)||[];
-      }
-      baseLotPoly=(Array.isArray(fallbackPts)&&fallbackPts.length>=3)?fallbackPts:null;
-      if(baseLotPoly){
-        seededDetections.push({
-          id:'roi-lot-fallback-'+Date.now(),
-          class:'lot_boundary',
-          confidence:0.5,
-          x:scanRoi.x+(scanRoi.w/2),
-          y:scanRoi.y+(scanRoi.h/2),
-          width:scanRoi.w,
-          height:scanRoi.h,
-          points:baseLotPoly
-        });
-        boundaryPriorityAreas++;
-      }
-    }
-    const lotGatePoly=(scanRoi&&scanRoi.w>20&&scanRoi.h>20)?roiRectToPolygon(scanRoi):baseLotPoly;
+    // ROI should focus stall scanning, not overwrite/draw lot perimeter geometry.
+    // If lot is missing, use ROI only as stall gate (no synthetic lot polygon).
+    // Lot perimeter must come from detection/snap result, never from scan ROI.
+    // ROI is only for focus-scanning stalls.
+    const lotGatePoly=baseLotPoly;
     // Store draft detections from Roboflow pass 1 (boundary-snap prioritized).
     let draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
       keepStallLikeDetectionsInsideLot(seededDetections,lotGatePoly)
     )));
     let tileStats={tilesPlanned:0,tilesRan:0,added:0};
-    if(lotGatePoly){
-      const zoomScan=await runLotStallZoomScan(inferCanvas,lotGatePoly,{
+    const scanFocusPoly=(scanRoi&&scanRoi.w>20&&scanRoi.h>20)?roiRectToPolygon(scanRoi):lotGatePoly;
+    if(scanFocusPoly){
+      const zoomScan=await runLotStallZoomScan(inferCanvas,scanFocusPoly,{
         lat:mapViewState?.lat,
         lng:mapViewState?.lng,
         zoom:mapViewState?.zoom,
@@ -3885,7 +3867,7 @@ async function runRoboflowDetection(){
         draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
           keepStallLikeDetectionsInsideLot(
             filterDetectionsByClassConfidence(merged),
-            lotGatePoly
+            scanFocusPoly
           )
         )));
         tileStats.added=Math.max(0,draftDetections.length-beforeCount);
