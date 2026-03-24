@@ -3395,6 +3395,35 @@ function worldPixelToLatLng(x,y,zoomLv){
   const lat=(180/Math.PI)*Math.atan(0.5*(Math.exp(n)-Math.exp(-n)));
   return{lat,lng};
 }
+function mercatorYAtZoom0(lat){
+  const clamped=Math.max(-85.05112878,Math.min(85.05112878,Number(lat)||0));
+  const sin=Math.sin(clamped*Math.PI/180);
+  return (0.5-Math.log((1+sin)/(1-sin))/(4*Math.PI))*256;
+}
+function lngSpanDegrees(a,b){
+  const av=Number(a)||0,bv=Number(b)||0;
+  const raw=Math.abs(av-bv);
+  return raw>180?(360-raw):raw;
+}
+function mapRecommendedZoomForViewport(viewport){
+  const ne=viewport?.northeast||viewport?.ne;
+  const sw=viewport?.southwest||viewport?.sw;
+  if(!ne||!sw)return null;
+  const canvasW=Math.max(320,mapPreviewCanvas?.width||1024);
+  const canvasH=Math.max(320,mapPreviewCanvas?.height||1024);
+  const padX=Math.max(36,Math.min(150,canvasW*0.16));
+  const padY=Math.max(36,Math.min(150,canvasH*0.16));
+  const usableW=Math.max(120,canvasW-(padX*2));
+  const usableH=Math.max(120,canvasH-(padY*2));
+  const lngSpan=Math.max(1e-6,lngSpanDegrees(ne.lng,sw.lng));
+  const latSpanPx0=Math.max(1e-6,Math.abs(mercatorYAtZoom0(ne.lat)-mercatorYAtZoom0(sw.lat)));
+  const zoomX=Math.log2((usableW*360)/(256*lngSpan));
+  const zoomY=Math.log2(usableH/latSpanPx0);
+  if(!Number.isFinite(zoomX)||!Number.isFinite(zoomY))return null;
+  // Keep one level wider than strict fit so large lots are fully visible.
+  const fitZoom=Math.floor(Math.min(zoomX,zoomY))-1;
+  return Math.max(14,Math.min(21,fitZoom));
+}
 function metersPerPixel(lat,zoomLv){
   return (156543.03392*Math.cos(lat*Math.PI/180))/Math.pow(2,zoomLv);
 }
@@ -3725,8 +3754,23 @@ async function loadMapPreview(opts={}){
       }
       if(mapHistoricalYearSel.value!==mapViewState.year)mapHistoricalYearSel.value=mapViewState.year;
     }
-    const preview=await drawTilePreview(mapViewState.mode,lat,lng,zoomLv,mapViewState.year);
+    let usedZoom=zoomLv;
+    let preview=await drawTilePreview(mapViewState.mode,lat,lng,usedZoom,mapViewState.year);
     if(reqId!==mapRenderReqId)return;
+    if(mapViewState.mode==='historical'&&preview&&preview.loadedTiles===0&&opts.autoZoomHistorical!==false){
+      // Some Wayback releases are unavailable at very high zoom levels.
+      for(let z=Math.max(14,usedZoom-1);z>=14;z--){
+        if(reqId!==mapRenderReqId)return;
+        const p=await drawTilePreview(mapViewState.mode,lat,lng,z,mapViewState.year);
+        if(reqId!==mapRenderReqId)return;
+        if(p&&p.loadedTiles>0){
+          preview=p;
+          usedZoom=z;
+          mapViewState.zoom=z;
+          break;
+        }
+      }
+    }
     if(preview){
       mapBaseRawImage=preview.rawCanvas;
       mapBaseProcessedImage=preview.processedCanvas;
@@ -3737,6 +3781,10 @@ async function loadMapPreview(opts={}){
     syncMapInputsFromState();
     if(mapViewState.mode==='historical'&&preview&&preview.loadedTiles===0){
       setImportStatus('No tiles found for that historical year at this zoom/location. Try zooming out or another year.',true);
+      return;
+    }
+    if(mapViewState.mode==='historical'&&usedZoom!==zoomLv){
+      setImportStatus(`Historical imagery loaded. Auto-adjusted zoom from z${zoomLv} to z${usedZoom} for coverage.`);
       return;
     }
     setImportStatus('Drag to pan, scroll to zoom, then click "Use Imagery".');
@@ -3755,12 +3803,15 @@ async function geocodeMapSearch(){
     const url='https://maps.googleapis.com/maps/api/geocode/json?address='+encodeURIComponent(q)+'&key='+encodeURIComponent(GOOGLE_MAPS_API_KEY);
     const res=await fetch(url);
     const data=await res.json();
-    const loc=data?.results?.[0]?.geometry?.location;
+    const result=data?.results?.[0];
+    const loc=result?.geometry?.location;
     if(!loc)throw new Error('No location found');
     if(mapLatInp)mapLatInp.value=loc.lat.toFixed(7);
     if(mapLngInp)mapLngInp.value=loc.lng.toFixed(7);
     mapViewState.lat=loc.lat;
     mapViewState.lng=loc.lng;
+    const recZoom=mapRecommendedZoomForViewport(result?.geometry?.viewport);
+    if(Number.isFinite(recZoom))mapViewState.zoom=recZoom;
     syncMapInputsFromState();
     await loadMapPreview({fromInputs:false,reason:'Loading searched location…'});
   }catch(e){
