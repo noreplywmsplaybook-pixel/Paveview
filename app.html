@@ -1664,38 +1664,12 @@ function normalizeRoboflowPredictionToPolygon(p){
   ];
 }
 function buildBoundarySeedPolygonForDetection(det,rawPts=[]){
-  const cls=String(det?.class||'').toLowerCase();
   const pts=Array.isArray(rawPts)&&rawPts.length>=3
     ? rawPts.map(p=>({x:Number(p?.x)||0,y:Number(p?.y)||0}))
     : normalizeRoboflowPredictionToPolygon(det);
-  const bb=polygonBounds(pts);
-  const rw=mapDetectionRenderSize.w||mapPreviewCanvas.width||0;
-  const rh=mapDetectionRenderSize.h||mapPreviewCanvas.height||0;
-  const roi=(cls.includes('lot')&&mapScanRoi)?normalizeRoiBox(mapScanRoi,rw,rh):null;
-  const roiBb=roi?{minX:roi.x,maxX:roi.x+roi.w,minY:roi.y,maxY:roi.y+roi.h,w:roi.w,h:roi.h}:null;
-  const mergedBb=(bb&&roiBb)
-    ? {
-      minX:Math.min(bb.minX,roiBb.minX),
-      maxX:Math.max(bb.maxX,roiBb.maxX),
-      minY:Math.min(bb.minY,roiBb.minY),
-      maxY:Math.max(bb.maxY,roiBb.maxY),
-      w:Math.max(bb.maxX,roiBb.maxX)-Math.min(bb.minX,roiBb.minX),
-      h:Math.max(bb.maxY,roiBb.maxY)-Math.min(bb.minY,roiBb.minY)
-    }
-    : (bb||roiBb);
-  const cx=Number.isFinite((mergedBb?.minX+mergedBb?.maxX)/2)?((mergedBb.minX+mergedBb.maxX)/2):(Number(det?.x)||0);
-  const cy=Number.isFinite((mergedBb?.minY+mergedBb?.maxY)/2)?((mergedBb.minY+mergedBb.maxY)/2):(Number(det?.y)||0);
-  const bw=Math.max(8,Number(mergedBb?.w)||Number(det?.width)||8);
-  const bh=Math.max(8,Number(mergedBb?.h)||Number(det?.height)||8);
-  const rx=Math.max(10,(bw*0.56)+8);
-  const ry=Math.max(10,(bh*0.56)+8);
-  const steps=cls.includes('lot')?56:44;
-  const seed=[];
-  for(let i=0;i<steps;i++){
-    const t=(i/steps)*Math.PI*2;
-    seed.push({x:cx+Math.cos(t)*rx,y:cy+Math.sin(t)*ry});
-  }
-  return seed.length>=3?seed:pts;
+  // Keep the true model polygon as the primary seed to avoid synthetic oval shapes.
+  if(Array.isArray(pts)&&pts.length>=3)return pts;
+  return [];
 }
 function applySnapPriorityToAreaDetections(detections,bw){
   if(!Array.isArray(detections)||!detections.length||!bw)return Array.isArray(detections)?detections.slice():[];
@@ -3838,10 +3812,8 @@ async function runRoboflowDetection(){
       if(!classUsesBoundarySnapPriority(cls))return pred;
       const rawPts=normalizeRoboflowPredictionToPolygon(pred);
       if(!Array.isArray(rawPts)||rawPts.length<3)return pred;
-      // For lot + obstruction classes, always seed from ROI-aware boundary helper
-      // and keep the snapped result as source-of-truth geometry.
-      const seedPts=buildBoundarySeedPolygonForDetection(pred,rawPts);
-      const refinedRes=snapPriorityBoundaryPolygon(seedPts,bwAligned,cls);
+      // Use Roboflow geometry as the primary seed to avoid over-rounded/oval perimeters.
+      const refinedRes=snapPriorityBoundaryPolygon(rawPts,bwAligned,cls);
       let refined=Array.isArray(refinedRes?.points)?refinedRes.points:[];
       if(!refined.length||refined.length<3)return pred;
       refined=smoothBoundaryPolygon(refined,cls);
@@ -3861,20 +3833,31 @@ async function runRoboflowDetection(){
     });
     let baseLotPoly=primaryLotPolygonFromDetections(seededDetections);
     const scanRoi=mapCurrentScanRoi(baseLotPoly);
-    // If Roboflow misses the lot entirely, fall back to the ROI box as lot gate.
+    // If Roboflow misses the lot entirely, synthesize a lot from ROI then snap it
+    // to B/W boundaries so the user still gets an editable perimeter.
     if(!baseLotPoly&&scanRoi&&scanRoi.w>20&&scanRoi.h>20){
-      baseLotPoly=roiRectToPolygon(scanRoi);
-      seededDetections.push({
-        id:'roi-lot-fallback-'+Date.now(),
-        class:'lot_boundary',
-        confidence:0.5,
-        x:scanRoi.x+(scanRoi.w/2),
-        y:scanRoi.y+(scanRoi.h/2),
-        width:scanRoi.w,
-        height:scanRoi.h,
-        points:roiRectToPolygon(scanRoi)
-      });
-      boundaryPriorityAreas++;
+      let fallbackPts=roiRectToPolygon(scanRoi)||[];
+      if(Array.isArray(fallbackPts)&&fallbackPts.length>=3){
+        fallbackPts=refineAreaBoundaryByBw(fallbackPts,bwAligned,'lot_boundary');
+        fallbackPts=smoothBoundaryPolygon(fallbackPts,'lot_boundary');
+      }
+      if(!Array.isArray(fallbackPts)||fallbackPts.length<3){
+        fallbackPts=roiRectToPolygon(scanRoi)||[];
+      }
+      baseLotPoly=(Array.isArray(fallbackPts)&&fallbackPts.length>=3)?fallbackPts:null;
+      if(baseLotPoly){
+        seededDetections.push({
+          id:'roi-lot-fallback-'+Date.now(),
+          class:'lot_boundary',
+          confidence:0.5,
+          x:scanRoi.x+(scanRoi.w/2),
+          y:scanRoi.y+(scanRoi.h/2),
+          width:scanRoi.w,
+          height:scanRoi.h,
+          points:baseLotPoly
+        });
+        boundaryPriorityAreas++;
+      }
     }
     const lotGatePoly=(scanRoi&&scanRoi.w>20&&scanRoi.h>20)?roiRectToPolygon(scanRoi):baseLotPoly;
     // Store draft detections from Roboflow pass 1 (boundary-snap prioritized).
