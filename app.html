@@ -1923,7 +1923,7 @@ function removeNearDuplicatePathPoints(points,minDist=1.8){
 }
 function classUsesBoundarySnapPriority(cls){
   const c=String(cls||'').toLowerCase();
-  return c.includes('lot')||c.includes('obstruct')||c.includes('island');
+  return c.includes('lot')||c.includes('obstruct')||c.includes('island')||c.includes('building');
 }
 function boundaryPrioritySnapRadius(cls){
   const c=String(cls||'').toLowerCase();
@@ -2162,7 +2162,7 @@ function buildAutoZoomPhases(baseZoom){
   const z=Math.max(0,Math.floor(Number(baseZoom)||0));
   if(z<=16){
     return[
-      {name:'crop',useRaw:false,maxTiles:12,overlap:0.52,spanScale:0.98},
+      {name:'crop',useRaw:true,maxTiles:12,overlap:0.5,spanScale:1},
       {name:'z+3',dz:3,maxTiles:10,overlap:0.52,spanScale:0.92},
       {name:'z+4',dz:4,maxTiles:10,overlap:0.55,spanScale:0.78},
       {name:'z+5',dz:5,maxTiles:10,overlap:0.58,spanScale:0.66}
@@ -2170,7 +2170,7 @@ function buildAutoZoomPhases(baseZoom){
   }
   if(z===17){
     return[
-      {name:'crop',useRaw:false,maxTiles:12,overlap:0.52,spanScale:0.98},
+      {name:'crop',useRaw:true,maxTiles:12,overlap:0.5,spanScale:1},
       {name:'z+2',dz:2,maxTiles:10,overlap:0.5,spanScale:0.95},
       {name:'z+3',dz:3,maxTiles:10,overlap:0.54,spanScale:0.82},
       {name:'z+4',dz:4,maxTiles:10,overlap:0.56,spanScale:0.7}
@@ -2178,20 +2178,20 @@ function buildAutoZoomPhases(baseZoom){
   }
   if(z===18){
     return[
-      {name:'crop',useRaw:false,maxTiles:12,overlap:0.52,spanScale:0.98},
+      {name:'crop',useRaw:true,maxTiles:12,overlap:0.5,spanScale:1},
       {name:'z+2',dz:2,maxTiles:10,overlap:0.5,spanScale:0.9},
       {name:'z+3',dz:3,maxTiles:10,overlap:0.55,spanScale:0.72}
     ];
   }
   if(z===19){
     return[
-      {name:'crop',useRaw:false,maxTiles:11,overlap:0.5,spanScale:0.98},
+      {name:'crop',useRaw:true,maxTiles:11,overlap:0.48,spanScale:1},
       {name:'z+1',dz:1,maxTiles:10,overlap:0.5,spanScale:0.9},
       {name:'z+2',dz:2,maxTiles:10,overlap:0.54,spanScale:0.78}
     ];
   }
   return[
-    {name:'crop',useRaw:false,maxTiles:10,overlap:0.5,spanScale:0.96},
+    {name:'crop',useRaw:true,maxTiles:10,overlap:0.46,spanScale:1},
     {name:'z+1',dz:1,maxTiles:9,overlap:0.5,spanScale:0.86}
   ];
 }
@@ -2329,15 +2329,14 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
   };
   const roi=normalizeRoiBox(mapCtx?.roi,rawCanvas.width,rawCanvas.height);
   if(roi){
-    // Box-focused scan: skip low-value crop phase and emphasize deeper zoom phases.
-    phases=phases
-      .filter(ph=>!ph?.useRaw)
-      .map(ph=>({
-        ...ph,
-        maxTiles:Math.max(Number(ph?.maxTiles)||0,14),
-        overlap:Math.max(Number(ph?.overlap)||0.45,0.56),
-        spanScale:Math.max(0.5,Math.min(1.2,(Number(ph?.spanScale)||0.9)*0.86))
-      }));
+    // Box-focused scan: keep baseline crop + add deeper phases for stall recall.
+    phases=phases.map(ph=>({
+      ...ph,
+      useRaw:(ph?.useRaw===true), // preserve crop baseline
+      maxTiles:Math.max(Number(ph?.maxTiles)||0,14),
+      overlap:Math.max(Number(ph?.overlap)||0.45,0.56),
+      spanScale:Math.max(0.5,Math.min(1.2,(Number(ph?.spanScale)||0.9)*0.9))
+    }));
     const maxDz=phases.reduce((m,ph)=>Math.max(m,Number(ph?.dz)||0),0);
     if(maxDz<6){
       phases.push({name:'z+6',dz:6,maxTiles:16,overlap:0.6,spanScale:0.56});
@@ -3826,9 +3825,13 @@ async function runRoboflowDetection(){
     })();
     // Snap-priority seed detections: refine area boundaries first, then use those
     // refined boundaries as the lot gate for stall filtering and zoom scans.
-    const seededBase=rawPredictions.filter(pred=>(
-      classUsesBoundarySnapPriority(pred?.class) || Number(pred?.confidence||0)>=confidenceThresholdForClass(pred?.class)
-    ));
+    const seededBase=rawPredictions.filter(pred=>{
+      const cls=String(pred?.class||'').toLowerCase();
+      const conf=Number(pred?.confidence||0);
+      // Keep area polygons even at lower confidence so lot/obstruction seeds survive.
+      if(classUsesBoundarySnapPriority(cls))return conf>=0.08;
+      return conf>=confidenceThresholdForClass(cls);
+    });
     let boundaryPriorityAreas=0;
     const seededDetections=seededBase.map((pred,idx)=>{
       const cls=String(pred?.class||'');
@@ -3856,8 +3859,23 @@ async function runRoboflowDetection(){
         points:refined
       };
     });
-    const baseLotPoly=primaryLotPolygonFromDetections(seededDetections);
+    let baseLotPoly=primaryLotPolygonFromDetections(seededDetections);
     const scanRoi=mapCurrentScanRoi(baseLotPoly);
+    // If Roboflow misses the lot entirely, fall back to the ROI box as lot gate.
+    if(!baseLotPoly&&scanRoi&&scanRoi.w>20&&scanRoi.h>20){
+      baseLotPoly=roiRectToPolygon(scanRoi);
+      seededDetections.push({
+        id:'roi-lot-fallback-'+Date.now(),
+        class:'lot_boundary',
+        confidence:0.5,
+        x:scanRoi.x+(scanRoi.w/2),
+        y:scanRoi.y+(scanRoi.h/2),
+        width:scanRoi.w,
+        height:scanRoi.h,
+        points:roiRectToPolygon(scanRoi)
+      });
+      boundaryPriorityAreas++;
+    }
     const lotGatePoly=(scanRoi&&scanRoi.w>20&&scanRoi.h>20)?roiRectToPolygon(scanRoi):baseLotPoly;
     // Store draft detections from Roboflow pass 1 (boundary-snap prioritized).
     let draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
