@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PaveView Takeoff — Asphalt Estimating Software</title>
-<meta name="description" content="Stop guessing square footage. PaveView Takeoff lets asphalt contractors upload any job plan, measure lot areas precisely, and generate professional proposals in minutes.">
+<meta name="description" content="Stop guessing square footage. PaveView Takeoff helps asphalt contractors upload plans and imagery, auto-suggest parking lot features, edit takeoffs quickly, and generate professional proposals in minutes.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=Barlow:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
 <style>
@@ -164,13 +164,21 @@ h1 em { color: var(--stripe); font-style:normal; }
 
 /* ── PRICING ── */
 #pricing { padding: 100px 40px; }
-.pricing-wrap { max-width: 560px; margin: 56px auto 0; }
+.pricing-wrap {
+  max-width: 1100px;
+  margin: 56px auto 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
 .price-card {
   background: var(--asphalt3);
   border: 1px solid rgba(245,200,66,.3);
-  padding: 48px;
+  padding: 36px;
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .price-card::before {
   content: '';
@@ -178,9 +186,9 @@ h1 em { color: var(--stripe); font-style:normal; }
   background: linear-gradient(90deg, transparent, var(--stripe), transparent);
 }
 .price-label { font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.25em; text-transform:uppercase; color:var(--stripe); margin-bottom:20px; }
-.price-main { font-family:'Bebas Neue',sans-serif; font-size:72px; color:var(--white); line-height:1; margin-bottom:4px; }
+.price-main { font-family:'Bebas Neue',sans-serif; font-size:62px; color:var(--white); line-height:1; margin-bottom:4px; }
 .price-main span { font-size:28px; vertical-align:top; margin-top:12px; display:inline-block; color:var(--dim); }
-.price-sub { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--dim); margin-bottom:32px; }
+.price-sub { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--dim); margin-bottom:20px; }
 .price-features { list-style:none; margin-bottom:36px; }
 .price-features li {
   padding: 10px 0; border-bottom: 1px solid #1e1e1e;
@@ -249,7 +257,7 @@ h1 { animation-delay:.2s; }
     <a href="#pricing" class="nav-link">Pricing</a>
     <a href="/login.html" class="nav-link">Login</a>
     <a href="/trial.html" class="nav-link">24h Free</a>
-    <a href="https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z" class="nav-cta js-buy-link">Get Access</a>
+    <a href="/trial.html" class="nav-cta">Start Free Access</a>
   </div>
 </nav>
 
@@ -260,16 +268,16 @@ h1 { animation-delay:.2s; }
     <div class="hero-eyebrow">Asphalt Takeoff Software</div>
     <h1>Stop<br>Guessing<br><em>Square Footage.</em></h1>
     <p class="hero-sub">
-      PaveView Takeoff lets asphalt contractors upload any job plan, <strong>measure lot areas precisely</strong>, count stalls and site features, and generate professional proposals — in minutes, not hours.
+      PaveView Takeoff lets asphalt contractors upload any job plan or imagery, <strong>measure lot areas precisely</strong>, auto-suggest parking lot features you can quickly edit, and generate professional proposals — in minutes, not hours.
     </p>
     <div class="hero-cta-wrap">
       <a href="/trial.html" class="btn-primary">
         Start 24-Hour Free Access
-        <span class="price">Full access now · upgrade anytime</span>
+        <span class="price">Full access now · choose a plan later</span>
       </a>
-      <a href="https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z" class="btn-primary js-buy-link">
-        Get PaveView Takeoff
-        <span class="price">$5,000 one-time · no subscription</span>
+      <a href="#pricing" class="btn-primary">
+        View Subscription Plans
+        <span class="price">Monthly or annual pricing</span>
       </a>
       <a href="#how" class="btn-secondary">See how it works →</a>
     </div>
@@ -283,8 +291,8 @@ h1 { animation-delay:.2s; }
         <div class="proof-label">measurement accuracy</div>
       </div>
       <div class="proof-item">
-        <div class="proof-num">$5,000</div>
-        <div class="proof-label">one time. yours forever.</div>
+        <div class="proof-num">15-60</div>
+        <div class="proof-label">proposals per month across plans</div>
       </div>
     </div>
   </div>
@@ -359,9 +367,9 @@ h1 { animation-delay:.2s; }
       </div>
       <div class="feat-card">
         <div class="feat-num">06</div>
-        <div class="feat-title">Yours Forever</div>
-        <div class="feat-body">One-time purchase. No monthly fees, no per-job charges, no license renewals. Pay once, use it on every bid for as long as you're in business.</div>
-        <span class="feat-tag">No Subscription</span>
+        <div class="feat-title">Auto-Suggestive Imagery Tools</div>
+        <div class="feat-body">Use site imagery with auto-suggested parking lot features, then quickly edit points, lines, and counts so each proposal matches real-world field conditions.</div>
+        <span class="feat-tag">Editable Suggestions</span>
       </div>
     </div>
   </div>
@@ -401,27 +409,49 @@ h1 { animation-delay:.2s; }
 <section id="pricing">
   <div class="section-inner" style="text-align:center">
     <div class="section-tag">Pricing</div>
-    <div class="section-title">One Price.<br>No Surprises.</div>
+    <div class="section-title">Pick the Plan That Fits<br>Your Monthly Proposal Volume</div>
     <div class="pricing-wrap">
       <div class="price-card">
-        <div class="price-label">PaveView Takeoff — Lifetime Access</div>
-        <div class="price-main"><span>$</span>5,000</div>
-        <div class="price-sub">One-time payment · No subscription · No per-job fees</div>
+        <div class="price-label">Tier 1 — Starter</div>
+        <div class="price-main"><span>$</span>99.99</div>
+        <div class="price-sub">$999 annually · up to 15 proposals / month</div>
         <ul class="price-features">
-          <li>Upload PDF and image job plans</li>
-          <li>Precise scale calibration — click or enter ratio</li>
-          <li>Unlimited zone measurements per project</li>
-          <li>Stall counting (standard + ADA), bollards, stop blocks, stencils</li>
-          <li>Linear ft measurement for curb painting</li>
-          <li>Automatic material quantity calculations</li>
-          <li>Client-ready PDF proposals with plan snapshots</li>
-          <li>Client view + contractor cost breakdown</li>
-          <li>Access to all future updates</li>
+          <li>15 proposals per month</li>
+          <li>Upload PDF plans and site imagery</li>
+          <li>Auto-suggestive parking lot features</li>
+          <li>Easily editable stalls, markings, and site features</li>
+          <li>Professional proposal exports</li>
         </ul>
-        <a href="https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z" class="price-cta js-buy-link" id="buy-btn">Get Access Now — $5,000</a>
-        <p class="price-note">Secure payment via Stripe · Instant access after purchase<br>Questions? Email <a href="/cdn-cgi/l/email-protection#3f4c4a4f4f504d4b7f4f5e495a49565a48115650" style="color:var(--stripe)"><span class="__cf_email__" data-cfemail="72010702021d00063202130417041b17055c1b1d">[email&#160;protected]</span></a></p>
+        <a href="/trial.html" class="price-cta">Start 24-Hour Free Access</a>
+      </div>
+      <div class="price-card">
+        <div class="price-label">Tier 2 — Growth</div>
+        <div class="price-main"><span>$</span>199.99</div>
+        <div class="price-sub">$1999.99 annually · up to 30 proposals / month</div>
+        <ul class="price-features">
+          <li>30 proposals per month</li>
+          <li>Upload PDF plans and site imagery</li>
+          <li>Auto-suggestive parking lot features</li>
+          <li>Easily editable stalls, markings, and site features</li>
+          <li>Professional proposal exports</li>
+        </ul>
+        <a href="/trial.html" class="price-cta">Start 24-Hour Free Access</a>
+      </div>
+      <div class="price-card">
+        <div class="price-label">Tier 3 — Scale</div>
+        <div class="price-main"><span>$</span>399.99</div>
+        <div class="price-sub">$3999.99 annually · up to 60 proposals / month</div>
+        <ul class="price-features">
+          <li>60 proposals per month</li>
+          <li>Upload PDF plans and site imagery</li>
+          <li>Auto-suggestive parking lot features</li>
+          <li>Easily editable stalls, markings, and site features</li>
+          <li>Professional proposal exports</li>
+        </ul>
+        <a href="/trial.html" class="price-cta">Start 24-Hour Free Access</a>
       </div>
     </div>
+    <p class="price-note">Payment links for each tier can be added next.<br>Questions? Email <a href="/cdn-cgi/l/email-protection#3f4c4a4f4f504d4b7f4f5e495a49565a48115650" style="color:var(--stripe)"><span class="__cf_email__" data-cfemail="72010702021d00063202130417041b17055c1b1d">[email&#160;protected]</span></a></p>
   </div>
 </section>
 
@@ -445,7 +475,7 @@ h1 { animation-delay:.2s; }
       </div>
       <div class="faq-item">
         <div class="faq-q">Is this a subscription?</div>
-        <div class="faq-a">No. $5,000 is a one-time payment and you have access forever. No monthly fees, no per-job charges, no renewals. We're building toward a full PaveView platform and early buyers will get preferential pricing when that launches.</div>
+        <div class="faq-a">Yes. PaveView Takeoff is now offered as a subscription with monthly and annual options. Choose the tier that matches your proposal volume: 15, 30, or 60 proposals per month.</div>
       </div>
       <div class="faq-item">
         <div class="faq-q">What if I need help getting started?</div>
@@ -469,8 +499,6 @@ h1 { animation-delay:.2s; }
 </footer>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
-const STRIPE_LINK = 'https://buy.stripe.com/3cIbJ2et33Zy3PKeik6Vq0Z';
-
 // FAQ accordion
 document.querySelectorAll('.faq-q').forEach((q) => {
   q.addEventListener('click', () => {
@@ -479,11 +507,6 @@ document.querySelectorAll('.faq-q').forEach((q) => {
     document.querySelectorAll('.faq-item').forEach((el) => el.classList.remove('open'));
     if (!wasOpen) item.classList.add('open');
   });
-});
-
-// Keep all buy CTAs synchronized to Stripe checkout
-document.querySelectorAll('.js-buy-link').forEach((el) => {
-  el.href = STRIPE_LINK;
 });
 </script>
 </body>
