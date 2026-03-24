@@ -1103,13 +1103,16 @@ select.sc-inp{cursor:pointer;width:40px}
           <input id="map-scale-distance-ft" type="number" min="1" step="1" value="40" title="Real-world distance for the 2-point scale line" style="width:86px">
           <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3)">ft</span>
           <button class="btn" id="btn-map-set-scale" title="Click two points matching known distance">Scale 2 PTS</button>
-          <button class="btn" id="btn-map-set-guide" title="Click two points along one parking row">Guide Line</button>
-          <button class="btn" id="btn-map-draw-boundary" title="Click to draw lot boundary polygon">Boundary</button>
-          <button class="btn" id="btn-map-finish-boundary" title="Finish boundary polygon">Finish Boundary</button>
+          <button class="btn" id="btn-map-set-guide" title="Click two points along one parking row (fallback if no sections)">Guide Line</button>
+          <button class="btn" id="btn-map-draw-section" title="Draw a parking section polygon">Draw Section</button>
+          <button class="btn" id="btn-map-set-section-guide" title="Assign a 2-point guide line to a section">Section Guide</button>
+          <button class="btn" id="btn-map-draw-no-parking" title="Draw a no-parking blocker polygon">No Parking</button>
+          <button class="btn" id="btn-map-draw-boundary" title="Optional lot boundary polygon">Boundary</button>
+          <button class="btn" id="btn-map-finish-boundary" title="Finish active section/boundary/no-parking polygon">Finish Shape</button>
           <button class="btn" id="btn-map-set-entrance" title="Click building entrance point for ADA allocation">Entrance</button>
           <button class="btn" id="btn-map-clear-layout-inputs" title="Clear all layout input points">Clear Inputs</button>
         </div>
-        <div class="import-hint">Deterministic workflow: set scale points, set a guide line, optionally draw lot boundary and entrance, then click <strong>Reconstruct Layout</strong>. No AI detection is used.</div>
+        <div class="import-hint">Deterministic workflow: set scale, draw one or more <strong>parking sections</strong>, set one section guide per section, optionally draw no-parking blockers, then click <strong>Reconstruct Layout</strong>. No AI detection is used.</div>
         <div id="map-import-status">Pick a location and click Refresh.</div>
         <div id="map-reconstruct-metrics"></div>
         <canvas id="map-preview" width="1024" height="1024"></canvas>
@@ -1548,6 +1551,9 @@ const btnMapDetect=document.getElementById('btn-map-detect');
 const btnMapAiDetect=document.getElementById('btn-map-ai-detect');
 const btnMapSetScale=document.getElementById('btn-map-set-scale');
 const btnMapSetGuide=document.getElementById('btn-map-set-guide');
+const btnMapDrawSection=document.getElementById('btn-map-draw-section');
+const btnMapSetSectionGuide=document.getElementById('btn-map-set-section-guide');
+const btnMapDrawNoParking=document.getElementById('btn-map-draw-no-parking');
 const btnMapDrawBoundary=document.getElementById('btn-map-draw-boundary');
 const btnMapFinishBoundary=document.getElementById('btn-map-finish-boundary');
 const btnMapSetEntrance=document.getElementById('btn-map-set-entrance');
@@ -1606,11 +1612,17 @@ let mapRoiDrawMode=false; // explicit ROI draw mode toggle
 let mapWheelCarry=0;
 let mapWheelLockUntil=0;
 let mapLayoutInputState={
-  mode:'none', // none | scale | guide | boundary | entrance
+  mode:'none', // none | scale | guide | boundary | entrance | section | sectionGuide | noParking
   scalePts:[],
   guidePts:[],
   boundaryPts:[],
   boundaryClosed:false,
+  sections:[], // [{id,name,poly:[{x,y}],guidePts:[{x,y},{x,y}]|[]}]
+  noParkingZones:[], // [{id,name,poly:[{x,y}]}]
+  activeSectionIdx:-1,
+  sectionDraftPts:[],
+  noParkingDraftPts:[],
+  pendingSectionGuideIdx:-1,
   entrance:null,
   feetPerPx:null,
 };
@@ -1660,6 +1672,8 @@ function startMapReconstructAnimation(){
 
 function classStyleForVector(cls){
   const c=String(cls||'').toLowerCase();
+  if(c.includes('section'))return {stroke:'#22c55e',lineWidth:2,dash:[6,4],fill:'rgba(34,197,94,0.10)'};
+  if(c.includes('no_parking'))return {stroke:'#ef4444',lineWidth:2,dash:[6,4],fill:'rgba(239,68,68,0.16)'};
   if(c.includes('access_aisle'))return {stroke:'#60a5fa',lineWidth:1.3,dash:[5,4],fill:'rgba(59,130,246,0.16)'};
   if(c.includes('ada_stall')||c==='ada')return {stroke:'#3b82f6',lineWidth:1.4,dash:[],fill:'rgba(59,130,246,0.14)'};
   if(c.includes('row_line'))return {stroke:'#f1f5f9',lineWidth:1,dash:[4,4],fill:'rgba(0,0,0,0)'};
@@ -2945,6 +2959,216 @@ function boundaryFromGuideBand(baseA,baseB,dir,perp,rowSpacingPx,boundary,maxRow
   if(rect.maxX-rect.minX<20||rect.maxY-rect.minY<20)return null;
   return rect;
 }
+function polygonsOverlap(a,b){
+  if(!Array.isArray(a)||a.length<3||!Array.isArray(b)||b.length<3)return false;
+  for(let i=0;i<a.length;i++){
+    const a1=a[i],a2=a[(i+1)%a.length];
+    for(let j=0;j<b.length;j++){
+      const b1=b[j],b2=b[(j+1)%b.length];
+      if(lineIntersectionPoint(a1,a2,b1,b2))return true;
+    }
+  }
+  if(pointInPolygon(a[0],b))return true;
+  if(pointInPolygon(b[0],a))return true;
+  return false;
+}
+function polygonFullyInside(inner,outer){
+  if(!Array.isArray(inner)||inner.length<3||!Array.isArray(outer)||outer.length<3)return false;
+  return inner.every(pt=>pointInPolygon(pt,outer));
+}
+function inferSectionGuideFromPoly(poly){
+  if(!Array.isArray(poly)||poly.length<3)return [];
+  let bestLen=0;
+  let bestA=null,bestB=null;
+  for(let i=0;i<poly.length;i++){
+    const a=poly[i],b=poly[(i+1)%poly.length];
+    const len=Math.hypot((b.x||0)-(a.x||0),(b.y||0)-(a.y||0));
+    if(len>bestLen){
+      bestLen=len;
+      bestA={x:a.x,y:a.y};
+      bestB={x:b.x,y:b.y};
+    }
+  }
+  return(bestA&&bestB)?[bestA,bestB]:[];
+}
+function normalizeSectionForReconstruct(sec,idx){
+  if(!sec||!Array.isArray(sec.poly)||sec.poly.length<3)return null;
+  const guidePts=(Array.isArray(sec.guidePts)&&sec.guidePts.length===2)
+    ? [{x:sec.guidePts[0].x,y:sec.guidePts[0].y},{x:sec.guidePts[1].x,y:sec.guidePts[1].y}]
+    : inferSectionGuideFromPoly(sec.poly);
+  if(!Array.isArray(guidePts)||guidePts.length!==2)return null;
+  return{
+    id:sec.id||`section-${idx+1}`,
+    name:sec.name||`Section ${idx+1}`,
+    poly:sec.poly.map(p=>({x:p.x,y:p.y})),
+    guidePts,
+  };
+}
+function reconstructSingleZoneLayout(opts){
+  const zonePoly=opts?.zonePoly;
+  const guidePts=opts?.guidePts;
+  const feetPerPx=Number(opts?.feetPerPx)||0;
+  const noParkingZones=Array.isArray(opts?.noParkingZones)?opts.noParkingZones:[];
+  if(!Array.isArray(zonePoly)||zonePoly.length<3)return null;
+  if(!Array.isArray(guidePts)||guidePts.length!==2)return null;
+  if(!Number.isFinite(feetPerPx)||feetPerPx<=0)return null;
+  const baseA=guidePts[0],baseB=guidePts[1];
+  const guideLen=dist(baseA,baseB);
+  if(guideLen<2)return null;
+  const dimsFt={stallWidth:9,stallDepth:18,aisleWidth:24,adaWidth:12,accessAisle:8};
+  const stallWidthPx=dimsFt.stallWidth/feetPerPx;
+  const stallDepthPx=dimsFt.stallDepth/feetPerPx;
+  const rowSpacingPx=stallDepthPx+(dimsFt.aisleWidth/feetPerPx);
+  const dx=baseB.x-baseA.x,dy=baseB.y-baseA.y;
+  const dir={x:dx/guideLen,y:dy/guideLen};
+  const perp={x:-dir.y,y:dir.x};
+  const rows=[];
+  const stalls=[];
+  const maxOffset=Math.max(
+    mapPreviewCanvas.width,
+    mapPreviewCanvas.height,
+    mapDetectionRenderSize.w||0,
+    mapDetectionRenderSize.h||0
+  )*1.6;
+  const maxRowCount=260;
+  for(let i=-maxRowCount;i<=maxRowCount;i++){
+    const off=i*rowSpacingPx;
+    if(Math.abs(off)>maxOffset)continue;
+    const anchor={x:baseA.x+perp.x*off,y:baseA.y+perp.y*off};
+    const seg=clipInfiniteLineToPolygon(anchor,dir,zonePoly);
+    if(!seg)continue;
+    const segLen=dist(seg.a,seg.b);
+    if(segLen<stallWidthPx*1.2)continue;
+    rows.push(seg);
+    const n=Math.max(0,Math.floor(segLen/stallWidthPx));
+    for(let si=0;si<n;si++){
+      const center=pointAlongLine(seg.a,seg.b,si*stallWidthPx+(stallWidthPx/2));
+      const poly=createRotatedRect(center,stallWidthPx,stallDepthPx,dir,1);
+      if(!polygonFullyInside(poly,zonePoly))continue;
+      if(noParkingZones.some(np=>polygonsOverlap(poly,np)))continue;
+      stalls.push({center,widthPx:stallWidthPx,depthPx:stallDepthPx,isAda:false,poly});
+    }
+  }
+  return{rows,stalls,accessAisles:[],dimsFt};
+}
+function recomputeFeetPerPxFromScaleInputs(li){
+  let feetPerPx=mapLayoutDefaultFeetPerPx();
+  if(Array.isArray(li?.scalePts)&&li.scalePts.length===2){
+    const pxDist=dist(li.scalePts[0],li.scalePts[1]);
+    const ft=Number(mapScaleDistanceFtInp?.value||0);
+    if(pxDist>1&&ft>0){
+      feetPerPx=ft/pxDist;
+      li.feetPerPx=feetPerPx;
+    }
+  }
+  return feetPerPx;
+}
+function reconstructLegacySingleGuideLayout(li,feetPerPx){
+  if(!Array.isArray(li?.guidePts)||li.guidePts.length<2)return null;
+  const baseA=li.guidePts[0],baseB=li.guidePts[1];
+  const guideLen=dist(baseA,baseB);
+  if(guideLen<2)return null;
+  const dimsFt={stallWidth:9,stallDepth:18,aisleWidth:24,adaWidth:12,accessAisle:8};
+  const stallWidthPx=dimsFt.stallWidth/feetPerPx;
+  const stallDepthPx=dimsFt.stallDepth/feetPerPx;
+  const aisleWidthPx=dimsFt.aisleWidth/feetPerPx;
+  const rowSpacingPx=stallDepthPx+aisleWidthPx;
+  const dx=baseB.x-baseA.x,dy=baseB.y-baseA.y;
+  const dir={x:dx/guideLen,y:dy/guideLen};
+  const perp={x:-dir.y,y:dir.x};
+  const frameBoundary=[
+    {x:0,y:0},
+    {x:mapDetectionRenderSize.w||mapPreviewCanvas.width,y:0},
+    {x:mapDetectionRenderSize.w||mapPreviewCanvas.width,y:mapDetectionRenderSize.h||mapPreviewCanvas.height},
+    {x:0,y:mapDetectionRenderSize.h||mapPreviewCanvas.height},
+  ];
+  const hasUserBoundary=Array.isArray(li.boundaryPts)&&li.boundaryPts.length>=3&&li.boundaryClosed;
+  const userBoundary=hasUserBoundary?li.boundaryPts.map(p=>({x:p.x,y:p.y})):null;
+  const roiForLayout=mapCurrentScanRoi(userBoundary);
+  const roiBoundary=roiRectToPolygon(roiForLayout);
+  const boundary=userBoundary||roiBoundary||frameBoundary;
+  const boundarySource=userBoundary?'user-boundary':(roiBoundary?'scan-roi':'guide-window');
+  const rowClipRect=(!hasUserBoundary)
+    ? boundaryFromGuideBand(baseA,baseB,dir,perp,rowSpacingPx,boundary,boundarySource==='scan-roi'?14:8)
+    : null;
+  const maxOffset=Math.max(
+    mapPreviewCanvas.width,
+    mapPreviewCanvas.height,
+    mapDetectionRenderSize.w||0,
+    mapDetectionRenderSize.h||0
+  )*1.5;
+  const rows=[];
+  const stalls=[];
+  const maxRowCount=220;
+  for(let i=-maxRowCount;i<=maxRowCount;i++){
+    const off=i*rowSpacingPx;
+    if(Math.abs(off)>maxOffset)continue;
+    const anchor={x:baseA.x+perp.x*off,y:baseA.y+perp.y*off};
+    let seg=clipInfiniteLineToPolygon(anchor,dir,boundary);
+    if(!seg)continue;
+    if(rowClipRect){
+      const clipped=clipSegmentToRect(seg.a,seg.b,rowClipRect);
+      if(!clipped)continue;
+      seg=clipped;
+    }
+    const segLen=dist(seg.a,seg.b);
+    if(segLen<stallWidthPx*1.2)continue;
+    rows.push(seg);
+    const n=Math.max(0,Math.floor(segLen/stallWidthPx));
+    for(let si=0;si<n;si++){
+      const center=pointAlongLine(seg.a,seg.b,si*stallWidthPx+(stallWidthPx/2));
+      const poly=createRotatedRect(center,stallWidthPx,stallDepthPx,dir,1);
+      stalls.push({center,widthPx:stallWidthPx,depthPx:stallDepthPx,isAda:false,poly});
+    }
+  }
+  const metricBoundaryPoly=(hasUserBoundary||boundarySource==='scan-roi')
+    ? boundary
+    : (rowClipRect?[
+      {x:rowClipRect.minX,y:rowClipRect.minY},
+      {x:rowClipRect.maxX,y:rowClipRect.minY},
+      {x:rowClipRect.maxX,y:rowClipRect.maxY},
+      {x:rowClipRect.minX,y:rowClipRect.maxY},
+    ]:null);
+  return{
+    rows,
+    stalls,
+    accessAisles:[],
+    metricBoundaryPoly,
+    scopeLabel:boundarySource==='user-boundary'?'user boundary':(boundarySource==='scan-roi'?'scan ROI':'guide-window estimate'),
+    dimsFt
+  };
+}
+function gatherReconstructionZones(li){
+  const zonesFromSections=(Array.isArray(li.sections)?li.sections:[])
+    .map((sec,idx)=>normalizeSectionForReconstruct(sec,idx))
+    .filter(Boolean)
+    .map(z=>({...z,source:'section'}));
+  if(zonesFromSections.length){
+    return{
+      zones:zonesFromSections,
+      mode:'sections',
+      sectionsMissingGuides:(Array.isArray(li.sections)?li.sections:[]).filter(sec=>!Array.isArray(sec?.guidePts)||sec.guidePts.length!==2).length
+    };
+  }
+  if(Array.isArray(li.guidePts)&&li.guidePts.length===2){
+    return{
+      zones:[{
+        id:'legacy-zone',
+        name:'Guide Zone',
+        poly:null,
+        guidePts:[{x:li.guidePts[0].x,y:li.guidePts[0].y},{x:li.guidePts[1].x,y:li.guidePts[1].y}],
+        source:'legacy'
+      }],
+      mode:'legacy',
+      sectionsMissingGuides:0
+    };
+  }
+  return{
+    zones:[],
+    mode:'none',
+    sectionsMissingGuides:0
+  };
+}
 function snapParkingAngle(rad){
   const options=[0,45,60,90].map(d=>d*Math.PI/180);
   let best=options[0],bestDiff=Infinity;
@@ -3020,11 +3244,15 @@ function renderMapReconstructMetrics(metrics){
 function mapLayoutInputStatusText(){
   const sPts=mapLayoutInputState.scalePts.length;
   const gPts=mapLayoutInputState.guidePts.length;
+  const sectionCount=Array.isArray(mapLayoutInputState.sections)?mapLayoutInputState.sections.length:0;
+  const sectionGuides=(Array.isArray(mapLayoutInputState.sections)?mapLayoutInputState.sections:[])
+    .filter(sec=>Array.isArray(sec?.guidePts)&&sec.guidePts.length===2).length;
+  const noParkingCount=Array.isArray(mapLayoutInputState.noParkingZones)?mapLayoutInputState.noParkingZones.length:0;
   const bPts=mapLayoutInputState.boundaryPts.length;
   const entrance=mapLayoutInputState.entrance?'yes':'no';
   const fpp=mapLayoutInputState.feetPerPx;
   const scaleLbl=(Number.isFinite(fpp)&&fpp>0)?`${fpp.toFixed(3)} ft/px`:'auto';
-  return `Inputs → scale:${sPts}/2, guide:${gPts}/2, boundary:${bPts}${mapLayoutInputState.boundaryClosed?' (closed)':''}, entrance:${entrance}, feet/px:${scaleLbl}`;
+  return `Inputs → scale:${sPts}/2, sections:${sectionCount}, sectionGuides:${sectionGuides}, noParking:${noParkingCount}, guide(fallback):${gPts}/2, boundary:${bPts}${mapLayoutInputState.boundaryClosed?' (closed)':''}, entrance:${entrance}, feet/px:${scaleLbl}`;
 }
 function drawLineInDetectionSpace(a,b,color,width=2,dash=[]){
   const pa=mapDetectionToCanvasPt(a.x,a.y);
@@ -3095,6 +3323,52 @@ function drawMapLayoutInputOverlay(){
     });
     li.boundaryPts.forEach((p,i)=>drawPointInDetectionSpace(p,'#38bdf8',`B${i+1}`));
   }
+  if(Array.isArray(li.sections)&&li.sections.length){
+    li.sections.forEach((sec,idx)=>{
+      if(!Array.isArray(sec?.poly)||sec.poly.length<3)return;
+      const isActive=idx===Number(li.activeSectionIdx);
+      drawPolyInDetectionSpace(sec.poly,{
+        stroke:isActive?'#22c55e':'#16a34a',
+        fill:isActive?'rgba(34,197,94,0.14)':'rgba(34,197,94,0.08)',
+        lineWidth:isActive?2.4:1.8,
+        dash:[6,4],
+      });
+      drawPointInDetectionSpace(sec.poly[0],isActive?'#22c55e':'#16a34a',`SEC${idx+1}`);
+      if(Array.isArray(sec.guidePts)&&sec.guidePts.length===2){
+        drawLineInDetectionSpace(sec.guidePts[0],sec.guidePts[1],'#f59e0b',2,[8,4]);
+      }
+    });
+  }
+  if(Array.isArray(li.sectionDraftPts)&&li.sectionDraftPts.length){
+    drawPolyInDetectionSpace(li.sectionDraftPts,{
+      stroke:'#22c55e',
+      fill:'rgba(34,197,94,0.10)',
+      lineWidth:2,
+      dash:[6,4],
+    });
+    li.sectionDraftPts.forEach((p,i)=>drawPointInDetectionSpace(p,'#22c55e',`S${i+1}`));
+  }
+  if(Array.isArray(li.noParkingZones)&&li.noParkingZones.length){
+    li.noParkingZones.forEach((np,idx)=>{
+      if(!Array.isArray(np?.poly)||np.poly.length<3)return;
+      drawPolyInDetectionSpace(np.poly,{
+        stroke:'#ef4444',
+        fill:'rgba(239,68,68,0.16)',
+        lineWidth:2,
+        dash:[6,4],
+      });
+      drawPointInDetectionSpace(np.poly[0],'#ef4444',`NP${idx+1}`);
+    });
+  }
+  if(Array.isArray(li.noParkingDraftPts)&&li.noParkingDraftPts.length){
+    drawPolyInDetectionSpace(li.noParkingDraftPts,{
+      stroke:'#ef4444',
+      fill:'rgba(239,68,68,0.10)',
+      lineWidth:2,
+      dash:[6,4],
+    });
+    li.noParkingDraftPts.forEach((p,i)=>drawPointInDetectionSpace(p,'#ef4444',`N${i+1}`));
+  }
   if(li.entrance)drawPointInDetectionSpace(li.entrance,'#2563eb','ENT');
 }
 function drawMapReconstructResultOverlay(){
@@ -3145,103 +3419,63 @@ function drawMapReconstructResultOverlay(){
 }
 function runDeterministicLayoutReconstruction(){
   const li=mapLayoutInputState;
-  if(!Array.isArray(li.guidePts)||li.guidePts.length<2){
-    setImportStatus('Need guide line: click Guide Line and place 2 points.',true);
-    return;
-  }
-  const baseA=li.guidePts[0],baseB=li.guidePts[1];
-  const guideLen=dist(baseA,baseB);
-  if(guideLen<2){
-    setImportStatus('Guide line is too short. Use two farther points.',true);
-    return;
-  }
-  let feetPerPx=mapLayoutDefaultFeetPerPx();
-  if(Array.isArray(li.scalePts)&&li.scalePts.length===2){
-    const pxDist=dist(li.scalePts[0],li.scalePts[1]);
-    const ft=Number(mapScaleDistanceFtInp?.value||0);
-    if(pxDist>1&&ft>0){
-      feetPerPx=ft/pxDist;
-      li.feetPerPx=feetPerPx;
-    }
-  }
+  const feetPerPx=recomputeFeetPerPxFromScaleInputs(li);
   if(!Number.isFinite(feetPerPx)||feetPerPx<=0){
     setImportStatus('Scale calculation failed. Provide scale points and distance.',true);
     return;
   }
-  const dimsFt={stallWidth:9,stallDepth:18,aisleWidth:24,adaWidth:12,accessAisle:8};
-  const stallWidthPx=dimsFt.stallWidth/feetPerPx;
-  const stallDepthPx=dimsFt.stallDepth/feetPerPx;
-  const aisleWidthPx=dimsFt.aisleWidth/feetPerPx;
-  const adaWidthPx=dimsFt.adaWidth/feetPerPx;
-  const accessAislePx=dimsFt.accessAisle/feetPerPx;
-  const rowSpacingPx=stallDepthPx+aisleWidthPx;
-  const dx=baseB.x-baseA.x,dy=baseB.y-baseA.y;
-  const dir={x:dx/guideLen,y:dy/guideLen};
-  const perp={x:-dir.y,y:dir.x};
-  const angle=Math.atan2(dy,dx);
-  const snapAngle=snapParkingAngle(angle);
-  const frameBoundary=[
-    {x:0,y:0},
-    {x:mapDetectionRenderSize.w||mapPreviewCanvas.width,y:0},
-    {x:mapDetectionRenderSize.w||mapPreviewCanvas.width,y:mapDetectionRenderSize.h||mapPreviewCanvas.height},
-    {x:0,y:mapDetectionRenderSize.h||mapPreviewCanvas.height},
-  ];
-  const hasUserBoundary=Array.isArray(li.boundaryPts)&&li.boundaryPts.length>=3&&li.boundaryClosed;
-  const userBoundary=hasUserBoundary?li.boundaryPts.map(p=>({x:p.x,y:p.y})):null;
-  const roiForLayout=mapCurrentScanRoi(userBoundary);
-  const roiBoundary=roiRectToPolygon(roiForLayout);
-  const boundary=userBoundary||roiBoundary||frameBoundary;
-  const boundarySource=userBoundary?'user-boundary':(roiBoundary?'scan-roi':'guide-window');
-  const boundaryAreaSqPx=polygonAreaSqPx(boundary);
-  const rowClipRect=(!hasUserBoundary)
-    ? boundaryFromGuideBand(
-      baseA,
-      baseB,
-      dir,
-      perp,
-      rowSpacingPx,
-      boundary,
-      boundarySource==='scan-roi'?14:8
-    )
-    : null;
-  const maxOffset=Math.max(
-    mapPreviewCanvas.width,
-    mapPreviewCanvas.height,
-    mapDetectionRenderSize.w||0,
-    mapDetectionRenderSize.h||0
-  )*1.5;
+  const zoning=gatherReconstructionZones(li);
+  if(!zoning.zones.length){
+    setImportStatus('Need a section+section guide (recommended) or one fallback guide line.',true);
+    return;
+  }
+  const noParkingPolys=(Array.isArray(li.noParkingZones)?li.noParkingZones:[])
+    .map(np=>Array.isArray(np?.poly)?np.poly.map(p=>({x:p.x,y:p.y})):[])
+    .filter(poly=>poly.length>=3);
+  const sectionResults=[];
+  const usedMode=zoning.mode;
   const rows=[];
   const stalls=[];
   const accessAisles=[];
-  const maxRowCount=220;
-  for(let i=-maxRowCount;i<=maxRowCount;i++){
-    const off=i*rowSpacingPx;
-    if(Math.abs(off)>maxOffset)continue;
-    const anchor={x:baseA.x+perp.x*off,y:baseA.y+perp.y*off};
-    let seg=clipInfiniteLineToPolygon(anchor,dir,boundary);
-    if(!seg)continue;
-    if(rowClipRect){
-      const clipped=clipSegmentToRect(seg.a,seg.b,rowClipRect);
-      if(!clipped)continue;
-      seg=clipped;
-    }
-    const segLen=dist(seg.a,seg.b);
-    if(segLen<stallWidthPx*1.2)continue;
-    rows.push(seg);
-    const n=Math.max(0,Math.floor(segLen/stallWidthPx));
-    for(let si=0;si<n;si++){
-      const center=pointAlongLine(seg.a,seg.b,si*stallWidthPx+(stallWidthPx/2));
-      const poly=createRotatedRect(center,stallWidthPx,stallDepthPx,dir,1);
-      stalls.push({
-        center,
-        widthPx:stallWidthPx,
-        depthPx:stallDepthPx,
-        angle:snapAngle,
-        isAda:false,
-        poly,
+  let dimsFt={stallWidth:9,stallDepth:18,aisleWidth:24,adaWidth:12,accessAisle:8};
+  zoning.zones.forEach((zone,zi)=>{
+    let zr=null;
+    if(zone.source==='section'){
+      zr=reconstructSingleZoneLayout({
+        zonePoly:zone.poly,
+        guidePts:zone.guidePts,
+        feetPerPx,
+        noParkingZones:noParkingPolys,
       });
+    }else{
+      zr=reconstructLegacySingleGuideLayout(li,feetPerPx);
     }
+    if(!zr)return;
+    if(zr.dimsFt)dimsFt=zr.dimsFt;
+    const sectionId=zone.id||`zone-${zi+1}`;
+    if(Array.isArray(zr.rows))zr.rows.forEach(r=>rows.push({...r,sectionId}));
+    if(Array.isArray(zr.stalls))zr.stalls.forEach(s=>stalls.push({...s,sectionId}));
+    if(Array.isArray(zr.accessAisles))zr.accessAisles.forEach(a=>accessAisles.push({...a,sectionId}));
+    sectionResults.push({
+      sectionId,
+      source:zone.source||'section',
+      metricBoundaryPoly:Array.isArray(zr.metricBoundaryPoly)?zr.metricBoundaryPoly:null,
+    });
+  });
+  if(!stalls.length&&!rows.length){
+    setImportStatus('No layout generated in selected sections. Check section guides and blockers.',true);
+    return;
   }
+  const firstSectionGuide=(zoning.zones[0]&&Array.isArray(zoning.zones[0].guidePts)&&zoning.zones[0].guidePts.length===2)
+    ? zoning.zones[0].guidePts
+    : null;
+  const fallbackDir=firstSectionGuide
+    ? (()=>{const d=dist(firstSectionGuide[0],firstSectionGuide[1])||1;return{x:(firstSectionGuide[1].x-firstSectionGuide[0].x)/d,y:(firstSectionGuide[1].y-firstSectionGuide[0].y)/d};})()
+    : {x:1,y:0};
+  const fallbackPerp={x:-fallbackDir.y,y:fallbackDir.x};
+  const adaWidthPx=dimsFt.adaWidth/feetPerPx;
+  const stallDepthPx=dimsFt.stallDepth/feetPerPx;
+  const accessAislePx=dimsFt.accessAisle/feetPerPx;
   if(li.entrance&&stalls.length){
     stalls.sort((a,b)=>dist(a.center,li.entrance)-dist(b.center,li.entrance));
     const adaCount=Math.max(1,Math.round(stalls.length*0.08));
@@ -3249,24 +3483,29 @@ function runDeterministicLayoutReconstruction(){
       if(i<adaCount){
         stalls[i].isAda=true;
         stalls[i].widthPx=adaWidthPx;
+        const zGuide=(zoning.zones.find(z=>z.id===stalls[i].sectionId)?.guidePts)||firstSectionGuide;
+        const dir=(Array.isArray(zGuide)&&zGuide.length===2)
+          ? (()=>{const d=dist(zGuide[0],zGuide[1])||1;return{x:(zGuide[1].x-zGuide[0].x)/d,y:(zGuide[1].y-zGuide[0].y)/d};})()
+          : fallbackDir;
+        const perp={x:-dir.y,y:dir.x};
         stalls[i].poly=createRotatedRect(stalls[i].center,adaWidthPx,stallDepthPx,dir,1);
         const aisleCenter={x:stalls[i].center.x+(perp.x*(adaWidthPx/2+accessAislePx/2)),y:stalls[i].center.y+(perp.y*(adaWidthPx/2+accessAislePx/2))};
-        accessAisles.push({poly:createRotatedRect(aisleCenter,accessAislePx,stallDepthPx,dir,1)});
+        const aislePoly=createRotatedRect(aisleCenter,accessAislePx,stallDepthPx,dir,1);
+        if(!noParkingPolys.some(np=>polygonsOverlap(aislePoly,np))){
+          accessAisles.push({poly:aislePoly,sectionId:stalls[i].sectionId});
+        }
       }
     }
   }
   const totalStalls=stalls.length;
   const adaStalls=stalls.reduce((s,v)=>s+(v.isAda?1:0),0);
   const stripingLengthFt=totalStalls*dimsFt.stallDepth*2;
-  const metricBoundaryPoly=(hasUserBoundary||boundarySource==='scan-roi')
-    ? boundary
-    : (rowClipRect?[
-      {x:rowClipRect.minX,y:rowClipRect.minY},
-      {x:rowClipRect.maxX,y:rowClipRect.minY},
-      {x:rowClipRect.maxX,y:rowClipRect.maxY},
-      {x:rowClipRect.minX,y:rowClipRect.maxY},
-    ]:null);
-  const lotAreaSqFt=metricBoundaryPoly?(polygonAreaSqPx(metricBoundaryPoly)*(feetPerPx*feetPerPx)):0;
+  const metricBoundaryPoly=(usedMode==='sections')
+    ? (Array.isArray(li.sections)&&li.sections.length?li.sections.flatMap(sec=>Array.isArray(sec?.poly)?[sec.poly.map(p=>({x:p.x,y:p.y}))]:[]):[])
+    : sectionResults.map(sr=>sr.metricBoundaryPoly).filter(Boolean);
+  const lotAreaSqFt=Array.isArray(metricBoundaryPoly)
+    ? metricBoundaryPoly.reduce((sum,poly)=>sum+(polygonAreaSqPx(poly)*(feetPerPx*feetPerPx)),0)
+    : 0;
   const vectorRows=rows.map((r,idx)=>({
     id:`row-${idx}-${Date.now()}`,
     className:'row_line',
@@ -3298,18 +3537,21 @@ function runDeterministicLayoutReconstruction(){
       points:s.poly.map(p=>({x:p.x,y:p.y})),
     };
   });
-  if(hasUserBoundary){
-    const bb=polygonBounds(boundary);
-    const ctr=detectionCenterPoint({points:boundary});
-    reconstructedDetections.unshift({
-      id:`lot-${Date.now()}`,
-      class:'lot_boundary',
-      confidence:1,
-      x:Number(ctr?.x)||0,
-      y:Number(ctr?.y)||0,
-      width:Number(bb?.w)||0,
-      height:Number(bb?.h)||0,
-      points:boundary.map(p=>({x:p.x,y:p.y})),
+  if(usedMode==='sections'){
+    (Array.isArray(li.sections)?li.sections:[]).forEach((sec,idx)=>{
+      if(!Array.isArray(sec?.poly)||sec.poly.length<3)return;
+      const bb=polygonBounds(sec.poly);
+      const ctr=detectionCenterPoint({points:sec.poly});
+      reconstructedDetections.unshift({
+        id:`section-${idx}-${Date.now()}`,
+        class:'lot_boundary',
+        confidence:1,
+        x:Number(ctr?.x)||0,
+        y:Number(ctr?.y)||0,
+        width:Number(bb?.w)||0,
+        height:Number(bb?.h)||0,
+        points:sec.poly.map(p=>({x:p.x,y:p.y})),
+      });
     });
   }
   mapReconstructResult={
@@ -3360,17 +3602,20 @@ function runDeterministicLayoutReconstruction(){
   const sc=getScale();
   const measurePoly=(pts)=>Math.round(polyArea(pts)*(sc*sc));
   measurements=[];
-  if(metricBoundaryPoly){
-    measurements.push({
-      id:'m'+Date.now(),
-      label:'LOT AREA (RECON)',
-      type:'rect',
-      pts:metricBoundaryPoly.map(p=>({x:p.x,y:p.y})),
-      sqft:measurePoly(metricBoundaryPoly),
-      labelSize:12,
-      color:'#38bdf8',
-      opacity:16,
-      lineWidth:2,
+  if(Array.isArray(metricBoundaryPoly)){
+    metricBoundaryPoly.forEach((poly,idx)=>{
+      if(!Array.isArray(poly)||poly.length<3)return;
+      measurements.push({
+        id:'m'+Date.now()+'-lot-'+idx,
+        label:(usedMode==='sections')?`SECTION ${idx+1} AREA (RECON)`:'LOT AREA (RECON)',
+        type:'rect',
+        pts:poly.map(p=>({x:p.x,y:p.y})),
+        sqft:measurePoly(poly),
+        labelSize:12,
+        color:'#38bdf8',
+        opacity:16,
+        lineWidth:2,
+      });
     });
   }
   accessAisles.forEach((a,i)=>{
@@ -3402,11 +3647,11 @@ function runDeterministicLayoutReconstruction(){
   renderLinearList();
   renderAll();
   savePlanData();
-  const scopeLabel=boundarySource==='user-boundary'
-    ? 'user boundary'
-    : (boundarySource==='scan-roi'?'scan ROI':'guide-window estimate');
+  const scopeLabel=(usedMode==='sections')
+    ? 'user sections'
+    : ((sectionResults[0]?.scopeLabel)||'guide-window estimate');
   setImportStatus(
-    `Reconstructed ${totalStalls} stalls (${adaStalls} ADA) using ${scopeLabel}. Rows/measurements generated in takeoff. ${mapLayoutInputStatusText()}`
+    `Reconstructed ${totalStalls} stalls (${adaStalls} ADA) using ${scopeLabel}. Rows/measurements generated in takeoff.${zoning.sectionsMissingGuides?` ${zoning.sectionsMissingGuides} section(s) missing guides were skipped.`:''} ${mapLayoutInputStatusText()}`
   );
 }
 function setMapLayoutMode(mode){
@@ -3414,6 +3659,9 @@ function setMapLayoutMode(mode){
   const mapping=[
     [btnMapSetScale,'scale'],
     [btnMapSetGuide,'guide'],
+    [btnMapDrawSection,'section'],
+    [btnMapSetSectionGuide,'sectionGuide'],
+    [btnMapDrawNoParking,'noParking'],
     [btnMapDrawBoundary,'boundary'],
     [btnMapSetEntrance,'entrance'],
   ];
@@ -4816,7 +5064,43 @@ if(btnMapSetGuide){
   btnMapSetGuide.addEventListener('click',()=>{
     mapLayoutInputState.guidePts=[];
     setMapLayoutMode('guide');
-    setImportStatus('Guide line mode: click 2 points along one parking row.');
+    setImportStatus('Guide line mode: click 2 points along one parking row (fallback if no sections).');
+    drawMapOverlay();
+  });
+}
+if(btnMapDrawSection){
+  btnMapDrawSection.addEventListener('click',()=>{
+    mapLayoutInputState.sectionDraftPts=[];
+    mapLayoutInputState.activeSectionIdx=Math.max(0,(Array.isArray(mapLayoutInputState.sections)?mapLayoutInputState.sections.length:1)-1);
+    setMapLayoutMode('section');
+    setImportStatus('Draw Section mode: click polygon vertices, then Finish Shape.');
+    drawMapOverlay();
+  });
+}
+if(btnMapSetSectionGuide){
+  btnMapSetSectionGuide.addEventListener('click',()=>{
+    const secs=Array.isArray(mapLayoutInputState.sections)?mapLayoutInputState.sections:[];
+    if(!secs.length){
+      setImportStatus('Draw at least one section first.',true);
+      return;
+    }
+    let idx=secs.findIndex(sec=>!Array.isArray(sec?.guidePts)||sec.guidePts.length!==2);
+    if(idx<0)idx=Math.max(0,Number(mapLayoutInputState.activeSectionIdx)||0);
+    idx=Math.max(0,Math.min(secs.length-1,idx));
+    mapLayoutInputState.activeSectionIdx=idx;
+    mapLayoutInputState.pendingSectionGuideIdx=idx;
+    if(!Array.isArray(secs[idx].guidePts))secs[idx].guidePts=[];
+    else secs[idx].guidePts.length=0;
+    setMapLayoutMode('sectionGuide');
+    setImportStatus(`Section Guide mode: click 2 points for Section ${idx+1}.`);
+    drawMapOverlay();
+  });
+}
+if(btnMapDrawNoParking){
+  btnMapDrawNoParking.addEventListener('click',()=>{
+    mapLayoutInputState.noParkingDraftPts=[];
+    setMapLayoutMode('noParking');
+    setImportStatus('No Parking mode: click blocker polygon vertices, then Finish Shape.');
     drawMapOverlay();
   });
 }
@@ -4831,13 +5115,55 @@ if(btnMapDrawBoundary){
 }
 if(btnMapFinishBoundary){
   btnMapFinishBoundary.addEventListener('click',()=>{
-    if(mapLayoutInputState.boundaryPts.length>=3){
+    if(mapLayoutInputState.mode==='section'){
+      if(Array.isArray(mapLayoutInputState.sectionDraftPts)&&mapLayoutInputState.sectionDraftPts.length>=3){
+        const idx=(Array.isArray(mapLayoutInputState.sections)?mapLayoutInputState.sections.length:0)+1;
+        const sec={
+          id:`sec-${Date.now()}-${idx}`,
+          name:`Section ${idx}`,
+          poly:mapLayoutInputState.sectionDraftPts.map(p=>({x:p.x,y:p.y})),
+          guidePts:[]
+        };
+        if(!Array.isArray(mapLayoutInputState.sections))mapLayoutInputState.sections=[];
+        mapLayoutInputState.sections.push(sec);
+        mapLayoutInputState.activeSectionIdx=mapLayoutInputState.sections.length-1;
+        mapLayoutInputState.sectionDraftPts=[];
+        setMapLayoutMode('none');
+        setImportStatus(`Section ${mapLayoutInputState.sections.length} added. Set a Section Guide next.`);
+        drawMapOverlay();
+      }else{
+        setImportStatus('Section needs at least 3 points.',true);
+      }
+      return;
+    }
+    if(mapLayoutInputState.mode==='noParking'){
+      if(Array.isArray(mapLayoutInputState.noParkingDraftPts)&&mapLayoutInputState.noParkingDraftPts.length>=3){
+        const idx=(Array.isArray(mapLayoutInputState.noParkingZones)?mapLayoutInputState.noParkingZones.length:0)+1;
+        const np={
+          id:`np-${Date.now()}-${idx}`,
+          name:`No Parking ${idx}`,
+          poly:mapLayoutInputState.noParkingDraftPts.map(p=>({x:p.x,y:p.y}))
+        };
+        if(!Array.isArray(mapLayoutInputState.noParkingZones))mapLayoutInputState.noParkingZones=[];
+        mapLayoutInputState.noParkingZones.push(np);
+        mapLayoutInputState.noParkingDraftPts=[];
+        setMapLayoutMode('none');
+        setImportStatus(`No-parking blocker ${idx} added.`);
+        drawMapOverlay();
+      }else{
+        setImportStatus('No-parking blocker needs at least 3 points.',true);
+      }
+      return;
+    }
+    if(mapLayoutInputState.mode==='boundary'&&mapLayoutInputState.boundaryPts.length>=3){
       mapLayoutInputState.boundaryClosed=true;
       setMapLayoutMode('none');
       setImportStatus(`Boundary closed with ${mapLayoutInputState.boundaryPts.length} points.`);
       drawMapOverlay();
-    }else{
+    }else if(mapLayoutInputState.mode==='boundary'){
       setImportStatus('Boundary needs at least 3 points.',true);
+    }else{
+      setImportStatus('No active shape to finish. Choose Draw Section, No Parking, or Boundary first.',true);
     }
   });
 }
@@ -4856,6 +5182,12 @@ if(btnMapClearLayoutInputs){
       guidePts:[],
       boundaryPts:[],
       boundaryClosed:false,
+      sections:[],
+      noParkingZones:[],
+      activeSectionIdx:-1,
+      sectionDraftPts:[],
+      noParkingDraftPts:[],
+      pendingSectionGuideIdx:-1,
       entrance:null,
       feetPerPx:null,
     };
@@ -4971,6 +5303,44 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
       }else{
         setImportStatus('Guide point 1 captured. Click second point.');
       }
+      drawMapOverlay();
+      return;
+    }
+    if(mapLayoutInputState.mode==='sectionGuide'&&e.button===0){
+      const secs=Array.isArray(mapLayoutInputState.sections)?mapLayoutInputState.sections:[];
+      if(!secs.length){
+        setImportStatus('No sections available. Draw a section first.',true);
+        setMapLayoutMode('none');
+        drawMapOverlay();
+        return;
+      }
+      const targetIdx=Math.max(0,Math.min(secs.length-1,Number(mapLayoutInputState.pendingSectionGuideIdx)>=0?Number(mapLayoutInputState.pendingSectionGuideIdx):Math.max(0,Number(mapLayoutInputState.activeSectionIdx)||0)));
+      const sec=secs[targetIdx];
+      if(!Array.isArray(sec.guidePts))sec.guidePts=[];
+      if(sec.guidePts.length>=2)sec.guidePts=[];
+      sec.guidePts.push({x:localFromCss.x,y:localFromCss.y});
+      mapLayoutInputState.activeSectionIdx=targetIdx;
+      if(sec.guidePts.length===2){
+        setImportStatus(`Section ${targetIdx+1} guide captured.`);
+        mapLayoutInputState.pendingSectionGuideIdx=-1;
+        setMapLayoutMode('none');
+      }else{
+        setImportStatus(`Section ${targetIdx+1} guide point 1 captured. Click second point.`);
+      }
+      drawMapOverlay();
+      return;
+    }
+    if(mapLayoutInputState.mode==='section'&&e.button===0){
+      if(!Array.isArray(mapLayoutInputState.sectionDraftPts))mapLayoutInputState.sectionDraftPts=[];
+      mapLayoutInputState.sectionDraftPts.push({x:localFromCss.x,y:localFromCss.y});
+      setImportStatus(`Section points: ${mapLayoutInputState.sectionDraftPts.length}. Click Finish Shape when done.`);
+      drawMapOverlay();
+      return;
+    }
+    if(mapLayoutInputState.mode==='noParking'&&e.button===0){
+      if(!Array.isArray(mapLayoutInputState.noParkingDraftPts))mapLayoutInputState.noParkingDraftPts=[];
+      mapLayoutInputState.noParkingDraftPts.push({x:localFromCss.x,y:localFromCss.y});
+      setImportStatus(`No-parking points: ${mapLayoutInputState.noParkingDraftPts.length}. Click Finish Shape when done.`);
       drawMapOverlay();
       return;
     }
