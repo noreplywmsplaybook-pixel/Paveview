@@ -2886,6 +2886,65 @@ function lineIntersectionPoint(a,b,c,d){
 function projectScalarOnDir(p,origin,dir){
   return ((p.x-origin.x)*dir.x)+((p.y-origin.y)*dir.y);
 }
+function segmentRectClipParams(min,max,p,d){
+  if(Math.abs(d)<1e-9){
+    if(p<min||p>max)return null;
+    return{t0:-Infinity,t1:Infinity};
+  }
+  let t0=(min-p)/d;
+  let t1=(max-p)/d;
+  if(t0>t1){const tmp=t0;t0=t1;t1=tmp;}
+  return{t0,t1};
+}
+function clipSegmentToRect(a,b,rect){
+  if(!a||!b||!rect)return null;
+  const dx=b.x-a.x,dy=b.y-a.y;
+  let t0=0,t1=1;
+  const xr=segmentRectClipParams(rect.minX,rect.maxX,a.x,dx);
+  const yr=segmentRectClipParams(rect.minY,rect.maxY,a.y,dy);
+  if(!xr||!yr)return null;
+  t0=Math.max(t0,xr.t0,yr.t0);
+  t1=Math.min(t1,xr.t1,yr.t1);
+  if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<t0)return null;
+  return{
+    a:{x:a.x+dx*t0,y:a.y+dy*t0},
+    b:{x:a.x+dx*t1,y:a.y+dy*t1},
+  };
+}
+function boundaryFromGuideBand(baseA,baseB,dir,perp,rowSpacingPx,boundary,maxRowsEachSide=null){
+  const bb=polygonBounds(boundary);
+  if(!bb)return null;
+  const guideA=baseA||{x:0,y:0};
+  const guideB=baseB||{x:0,y:0};
+  const autoHalfSpan=Math.max(4,Math.round((Math.max(bb.w,bb.h)/Math.max(6,rowSpacingPx))*0.75));
+  const halfSpan=Number.isFinite(Number(maxRowsEachSide))
+    ? Math.max(3,Math.min(autoHalfSpan,Math.round(Number(maxRowsEachSide))))
+    : autoHalfSpan;
+  const len=Math.hypot(guideB.x-guideA.x,guideB.y-guideA.y)||1;
+  const extend=Math.max(220,len*1.8);
+  const start={x:guideA.x-dir.x*extend,y:guideA.y-dir.y*extend};
+  const end={x:guideB.x+dir.x*extend,y:guideB.y+dir.y*extend};
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(let i=-halfSpan;i<=halfSpan;i++){
+    const off=i*rowSpacingPx;
+    const sa={x:start.x+perp.x*off,y:start.y+perp.y*off};
+    const sb={x:end.x+perp.x*off,y:end.y+perp.y*off};
+    minX=Math.min(minX,sa.x,sb.x);
+    minY=Math.min(minY,sa.y,sb.y);
+    maxX=Math.max(maxX,sa.x,sb.x);
+    maxY=Math.max(maxY,sa.y,sb.y);
+  }
+  const pad=Math.max(20,rowSpacingPx*1.2);
+  minX-=pad;minY-=pad;maxX+=pad;maxY+=pad;
+  const rect={
+    minX:Math.max(bb.minX,minX),
+    minY:Math.max(bb.minY,minY),
+    maxX:Math.min(bb.maxX,maxX),
+    maxY:Math.min(bb.maxY,maxY),
+  };
+  if(rect.maxX-rect.minX<20||rect.maxY-rect.minY<20)return null;
+  return rect;
+}
 function snapParkingAngle(rad){
   const options=[0,45,60,90].map(d=>d*Math.PI/180);
   let best=options[0],bestDiff=Infinity;
@@ -3121,17 +3180,30 @@ function runDeterministicLayoutReconstruction(){
   const perp={x:-dir.y,y:dir.x};
   const angle=Math.atan2(dy,dx);
   const snapAngle=snapParkingAngle(angle);
-  const defaultBoundary=[
+  const frameBoundary=[
     {x:0,y:0},
     {x:mapDetectionRenderSize.w||mapPreviewCanvas.width,y:0},
     {x:mapDetectionRenderSize.w||mapPreviewCanvas.width,y:mapDetectionRenderSize.h||mapPreviewCanvas.height},
     {x:0,y:mapDetectionRenderSize.h||mapPreviewCanvas.height},
   ];
   const hasUserBoundary=Array.isArray(li.boundaryPts)&&li.boundaryPts.length>=3&&li.boundaryClosed;
-  const boundary=hasUserBoundary
-    ? li.boundaryPts.map(p=>({x:p.x,y:p.y}))
-    : defaultBoundary;
+  const userBoundary=hasUserBoundary?li.boundaryPts.map(p=>({x:p.x,y:p.y})):null;
+  const roiForLayout=mapCurrentScanRoi(userBoundary);
+  const roiBoundary=roiRectToPolygon(roiForLayout);
+  const boundary=userBoundary||roiBoundary||frameBoundary;
+  const boundarySource=userBoundary?'user-boundary':(roiBoundary?'scan-roi':'guide-window');
   const boundaryAreaSqPx=polygonAreaSqPx(boundary);
+  const rowClipRect=(!hasUserBoundary)
+    ? boundaryFromGuideBand(
+      baseA,
+      baseB,
+      dir,
+      perp,
+      rowSpacingPx,
+      boundary,
+      boundarySource==='scan-roi'?14:8
+    )
+    : null;
   const maxOffset=Math.max(
     mapPreviewCanvas.width,
     mapPreviewCanvas.height,
@@ -3146,8 +3218,13 @@ function runDeterministicLayoutReconstruction(){
     const off=i*rowSpacingPx;
     if(Math.abs(off)>maxOffset)continue;
     const anchor={x:baseA.x+perp.x*off,y:baseA.y+perp.y*off};
-    const seg=clipInfiniteLineToPolygon(anchor,dir,boundary);
+    let seg=clipInfiniteLineToPolygon(anchor,dir,boundary);
     if(!seg)continue;
+    if(rowClipRect){
+      const clipped=clipSegmentToRect(seg.a,seg.b,rowClipRect);
+      if(!clipped)continue;
+      seg=clipped;
+    }
     const segLen=dist(seg.a,seg.b);
     if(segLen<stallWidthPx*1.2)continue;
     rows.push(seg);
@@ -3181,7 +3258,15 @@ function runDeterministicLayoutReconstruction(){
   const totalStalls=stalls.length;
   const adaStalls=stalls.reduce((s,v)=>s+(v.isAda?1:0),0);
   const stripingLengthFt=totalStalls*dimsFt.stallDepth*2;
-  const lotAreaSqFt=hasUserBoundary?(boundaryAreaSqPx*(feetPerPx*feetPerPx)):0;
+  const metricBoundaryPoly=(hasUserBoundary||boundarySource==='scan-roi')
+    ? boundary
+    : (rowClipRect?[
+      {x:rowClipRect.minX,y:rowClipRect.minY},
+      {x:rowClipRect.maxX,y:rowClipRect.minY},
+      {x:rowClipRect.maxX,y:rowClipRect.maxY},
+      {x:rowClipRect.minX,y:rowClipRect.maxY},
+    ]:null);
+  const lotAreaSqFt=metricBoundaryPoly?(polygonAreaSqPx(metricBoundaryPoly)*(feetPerPx*feetPerPx)):0;
   const vectorRows=rows.map((r,idx)=>({
     id:`row-${idx}-${Date.now()}`,
     className:'row_line',
@@ -3275,13 +3360,13 @@ function runDeterministicLayoutReconstruction(){
   const sc=getScale();
   const measurePoly=(pts)=>Math.round(polyArea(pts)*(sc*sc));
   measurements=[];
-  if(hasUserBoundary){
+  if(metricBoundaryPoly){
     measurements.push({
       id:'m'+Date.now(),
       label:'LOT AREA (RECON)',
       type:'rect',
-      pts:boundary.map(p=>({x:p.x,y:p.y})),
-      sqft:measurePoly(boundary),
+      pts:metricBoundaryPoly.map(p=>({x:p.x,y:p.y})),
+      sqft:measurePoly(metricBoundaryPoly),
       labelSize:12,
       color:'#38bdf8',
       opacity:16,
@@ -3317,8 +3402,11 @@ function runDeterministicLayoutReconstruction(){
   renderLinearList();
   renderAll();
   savePlanData();
+  const scopeLabel=boundarySource==='user-boundary'
+    ? 'user boundary'
+    : (boundarySource==='scan-roi'?'scan ROI':'guide-window estimate');
   setImportStatus(
-    `Reconstructed ${totalStalls} stalls (${adaStalls} ADA). Rows/measurements generated in takeoff. ${mapLayoutInputStatusText()}`
+    `Reconstructed ${totalStalls} stalls (${adaStalls} ADA) using ${scopeLabel}. Rows/measurements generated in takeoff. ${mapLayoutInputStatusText()}`
   );
 }
 function setMapLayoutMode(mode){
@@ -4109,9 +4197,10 @@ function drawMapOverlay(){
     yearLines.forEach((ln,i)=>mapPreviewCtx.fillText(ln,14,50+i*12));
   }
   mapPreviewCtx.fillText(`${Math.round(barFeet)} ft`,18+barPx, y+4);
-  if(mapVectorDetections.length){
+  const showVectorOverlay=!(mapReconstructAnim&&mapReconstructAnim.active&&mapReconstructAnim.progress<1);
+  if(showVectorOverlay&&mapVectorDetections.length){
     drawMapVectorOverlay();
-  }else if(mapDetections.length){
+  }else if(showVectorOverlay&&mapDetections.length){
     const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
     const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
     mapPreviewCtx.save();
