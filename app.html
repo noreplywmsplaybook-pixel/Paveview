@@ -588,6 +588,16 @@ select.sc-inp{cursor:pointer;width:40px}
 .style-drawer.open{display:flex}
 .style-row{display:flex;align-items:center;gap:4px}
 .style-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);width:52px;flex-shrink:0}
+#sb-numbered-meas-right{display:none}
+.sidebar-right.expanded #sb-numbered-meas-right{display:block}
+.nm-subhdr{
+  font-family:'JetBrains Mono',monospace;
+  font-size:8px;
+  color:var(--text3);
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  margin:4px 0 6px;
+}
 
 /* auth check screen */
 #auth-check{position:fixed;inset:0;background:#0a0a0a;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;font-family:'JetBrains Mono',monospace}
@@ -928,6 +938,15 @@ select.sc-inp{cursor:pointer;width:40px}
       <div id="stencil-breakdown"></div>
     </div>
 
+    <!-- Right menu numbered measurements -->
+    <div class="sb-sec" style="display:none" id="sb-numbered-meas-right">
+      <div class="sb-sec-lbl">Numbered Measurements</div>
+      <div class="nm-subhdr">Measurements</div>
+      <div id="meas-list-right"><div class="meas-empty">Draw a rectangle or circle to measure</div></div>
+      <div class="nm-subhdr" style="margin-top:10px">Hatching</div>
+      <div id="hatch-list-right"><div class="meas-empty">Draw a crosswalk or ADA hatch</div></div>
+    </div>
+
     <!-- Materials -->
     <div class="sb-sec" style="border-bottom:none">
       <div class="sb-sec-lbl">Materials</div>
@@ -1262,6 +1281,8 @@ function toggleSidebar(side){
     if(linearSec)linearSec.style.display=expanded?'':'none';
   }else{
     handle.textContent=expanded?'›':'‹';
+    const rightMeasSec=document.getElementById('sb-numbered-meas-right');
+    if(rightMeasSec)rightMeasSec.style.display=expanded?'':'none';
   }
 }
 
@@ -5098,8 +5119,7 @@ function addMeasurement(type, pts) {
   savePlanData();
 }
 
-function renderMeasurements() {
-  const list=document.getElementById('meas-list');
+function renderMeasurementsListInto(list){
   if(!list)return;
   if(!measurements.length){list.innerHTML='<div class="meas-empty">Draw a rectangle or circle to measure</div>';return;}
   list.innerHTML='';
@@ -5108,6 +5128,7 @@ function renderMeasurements() {
     el.className='meas-item';
     el.style.cssText='padding:6px 12px;display:flex;flex-direction:column;gap:4px;border-bottom:1px solid var(--border);';
     el.innerHTML=`<div style="display:flex;align-items:center;gap:6px;padding:2px 0">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);min-width:22px">#${i+1}</span>
         <span style="font-size:12px">${m.type==='rect'?'▭':'◯'}</span>
         <input class="meas-label-inp" value="${m.label}" placeholder="Label…" data-id="${m.id}"
           style="flex:1;background:var(--panel2);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 5px;outline:none">
@@ -5163,6 +5184,11 @@ function renderMeasurements() {
   });
 }
 
+function renderMeasurements() {
+  renderMeasurementsListInto(document.getElementById('meas-list'));
+  renderMeasurementsListInto(document.getElementById('meas-list-right'));
+}
+
 
 // ── LINEAR LIST ──
 function renderLinearList(){
@@ -5213,19 +5239,20 @@ function renderLinearList(){
 }
 
 // ── HATCH LIST ──
-function renderHatchList(){
-  const list=document.getElementById('hatch-list');
+function renderHatchListInto(list){
   if(!list)return;
   if(!hatchZones.length){list.innerHTML='<div class="meas-empty">Draw a crosswalk or ADA hatch</div>';return;}
   list.innerHTML='';
   hatchZones.forEach((h,i)=>{
     const el=document.createElement('div');
+    el.className='meas-item';
     el.style.cssText='padding:6px 12px;border-bottom:1px solid var(--border);';
     const label=h.type==='ada-hatch'?'ADA Hatch':'Crosswalk';
     const col=h.type==='ada-hatch'?'#3b82f6':'#22c55e';
     el.innerHTML=`<div style="display:flex;align-items:center;gap:6px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);min-width:22px">#${i+1}</span>
       <span style="font-size:11px">${h.type==='ada-hatch'?'♿':'⊞'}</span>
-      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text);flex:1">${label} ${i+1}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text);flex:1">${label}</span>
       <button class="style-toggle h-style-btn" style="border-color:${col};color:${col}">▾ Style</button>
       <span class="h-del" data-idx="${i}" style="color:var(--dim);cursor:pointer;font-size:11px;flex-shrink:0">✕</span>
     </div>
@@ -5258,6 +5285,11 @@ function renderHatchList(){
     });
     list.appendChild(el);
   });
+}
+
+function renderHatchList(){
+  renderHatchListInto(document.getElementById('hatch-list'));
+  renderHatchListInto(document.getElementById('hatch-list-right'));
 }
 
 function renderMeasurementShapes(ctx) {
