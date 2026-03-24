@@ -1620,6 +1620,43 @@ let mapReconstructResult={
   accessAisles:[],  // [{poly:[{x,y}]}]
   metrics:null,     // computed metrics object
 };
+let mapReconstructAnim={
+  active:false,
+  progress:1,
+  startTs:0,
+  durationMs:1400,
+  rafId:0,
+};
+function stopMapReconstructAnimation(){
+  if(mapReconstructAnim.rafId){
+    cancelAnimationFrame(mapReconstructAnim.rafId);
+  }
+  mapReconstructAnim.rafId=0;
+  mapReconstructAnim.active=false;
+  mapReconstructAnim.progress=1;
+}
+function startMapReconstructAnimation(){
+  stopMapReconstructAnimation();
+  mapReconstructAnim.active=true;
+  mapReconstructAnim.progress=0;
+  mapReconstructAnim.startTs=performance.now();
+  const tick=(ts)=>{
+    if(!mapReconstructAnim.active)return;
+    const dur=Math.max(300,Number(mapReconstructAnim.durationMs)||1400);
+    const t=Math.max(0,Math.min(1,(ts-mapReconstructAnim.startTs)/dur));
+    mapReconstructAnim.progress=t;
+    drawMapOverlay();
+    if(t<1){
+      mapReconstructAnim.rafId=requestAnimationFrame(tick);
+    }else{
+      mapReconstructAnim.active=false;
+      mapReconstructAnim.rafId=0;
+      mapReconstructAnim.progress=1;
+      drawMapOverlay();
+    }
+  };
+  mapReconstructAnim.rafId=requestAnimationFrame(tick);
+}
 
 function classStyleForVector(cls){
   const c=String(cls||'').toLowerCase();
@@ -3003,26 +3040,49 @@ function drawMapLayoutInputOverlay(){
 }
 function drawMapReconstructResultOverlay(){
   if(!mapReconstructResult)return;
+  const prog=mapReconstructAnim?.active?Math.max(0,Math.min(1,Number(mapReconstructAnim.progress)||0)):1;
+  const eased=1-Math.pow(1-prog,3);
   const rows=Array.isArray(mapReconstructResult.rows)?mapReconstructResult.rows:[];
-  rows.forEach(r=>drawLineInDetectionSpace(r.a,r.b,'rgba(245,200,66,0.7)',1,[4,4]));
+  const rowCount=Math.floor(rows.length*eased);
+  for(let i=0;i<rowCount;i++){
+    const r=rows[i];
+    drawLineInDetectionSpace(r.a,r.b,'rgba(245,200,66,0.7)',1,[4,4]);
+  }
   const stalls=Array.isArray(mapReconstructResult.stalls)?mapReconstructResult.stalls:[];
-  stalls.forEach(s=>{
+  const stallCount=Math.floor(stalls.length*eased);
+  for(let i=0;i<stallCount;i++){
+    const s=stalls[i];
     drawPolyInDetectionSpace(s.poly,{
       stroke:s.isAda?'#3b82f6':'#ffffff',
       fill:s.isAda?'rgba(59,130,246,0.15)':'rgba(255,255,255,0.02)',
       lineWidth:1.2,
       dash:[],
     });
-  });
+  }
   const aisles=Array.isArray(mapReconstructResult.accessAisles)?mapReconstructResult.accessAisles:[];
-  aisles.forEach(a=>{
+  const aisleCount=Math.floor(aisles.length*eased);
+  for(let i=0;i<aisleCount;i++){
+    const a=aisles[i];
     drawPolyInDetectionSpace(a.poly,{
       stroke:'#3b82f6',
       fill:'rgba(59,130,246,0.18)',
       lineWidth:1.2,
       dash:[4,3],
     });
-  });
+  }
+  if(mapReconstructAnim?.active&&prog<1){
+    mapPreviewCtx.save();
+    mapPreviewCtx.fillStyle='rgba(0,0,0,0.65)';
+    mapPreviewCtx.fillRect(10,mapPreviewCanvas.height-72,280,44);
+    mapPreviewCtx.fillStyle='#f5c842';
+    mapPreviewCtx.font='11px JetBrains Mono,monospace';
+    mapPreviewCtx.fillText('Animating reconstructed layout…',16,mapPreviewCanvas.height-50);
+    mapPreviewCtx.fillStyle='rgba(255,255,255,0.22)';
+    mapPreviewCtx.fillRect(16,mapPreviewCanvas.height-36,250,8);
+    mapPreviewCtx.fillStyle='#f5c842';
+    mapPreviewCtx.fillRect(16,mapPreviewCanvas.height-36,Math.round(250*prog),8);
+    mapPreviewCtx.restore();
+  }
 }
 function runDeterministicLayoutReconstruction(){
   const li=mapLayoutInputState;
@@ -3188,10 +3248,77 @@ function runDeterministicLayoutReconstruction(){
   pendingDetectionTransfer=reconstructedDetections.length>0;
   mapVectorDetections=[...vectorRows,...vectorStalls,...vectorAisles];
   mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
+  const totalAnimItems=Math.max(1,rows.length+stalls.length+accessAisles.length);
+  mapReconstructAnim.active=true;
+  mapReconstructAnim.progress=0;
+  mapReconstructAnim.startTs=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+  mapReconstructAnim.durationMs=Math.max(900,Math.min(2200,Math.round(totalAnimItems*8)));
+  if(mapReconstructAnim.rafId){
+    try{cancelAnimationFrame(mapReconstructAnim.rafId);}catch(_e){/* noop */}
+    mapReconstructAnim.rafId=0;
+  }
+  const tick=()=>{
+    const now=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+    const elapsed=Math.max(0,now-mapReconstructAnim.startTs);
+    mapReconstructAnim.progress=Math.min(1,elapsed/Math.max(1,mapReconstructAnim.durationMs));
+    drawMapOverlay();
+    if(mapReconstructAnim.progress<1){
+      mapReconstructAnim.rafId=requestAnimationFrame(tick);
+      return;
+    }
+    mapReconstructAnim.active=false;
+    mapReconstructAnim.rafId=0;
+    drawMapOverlay();
+  };
+  mapReconstructAnim.rafId=requestAnimationFrame(tick);
   renderMapReconstructMetrics(mapReconstructResult.metrics);
-  drawMapOverlay();
+  const sc=getScale();
+  const measurePoly=(pts)=>Math.round(polyArea(pts)*(sc*sc));
+  measurements=[];
+  if(hasUserBoundary){
+    measurements.push({
+      id:'m'+Date.now(),
+      label:'LOT AREA (RECON)',
+      type:'rect',
+      pts:boundary.map(p=>({x:p.x,y:p.y})),
+      sqft:measurePoly(boundary),
+      labelSize:12,
+      color:'#38bdf8',
+      opacity:16,
+      lineWidth:2,
+    });
+  }
+  accessAisles.forEach((a,i)=>{
+    measurements.push({
+      id:'m'+Date.now()+'-'+i,
+      label:`ADA AISLE ${i+1}`,
+      type:'rect',
+      pts:a.poly.map(p=>({x:p.x,y:p.y})),
+      sqft:measurePoly(a.poly),
+      labelSize:11,
+      color:'#3b82f6',
+      opacity:14,
+      lineWidth:1.5,
+    });
+  });
+  linearSegs=[];
+  rows.forEach((r,i)=>{
+    linearSegs.push({
+      id:'l'+Date.now()+'-'+i,
+      label:`ROW ${i+1}`,
+      color:'#f5c842',
+      lineWidth:1.6,
+      labelSize:10,
+      pts:[{x:r.a.x,y:r.a.y},{x:r.b.x,y:r.b.y}],
+    });
+  });
+  updateStats();
+  renderMeasurements();
+  renderLinearList();
+  renderAll();
+  savePlanData();
   setImportStatus(
-    `Reconstructed ${totalStalls} stalls (${adaStalls} ADA). ${mapLayoutInputStatusText()} Click "Use Imagery" to import into the takeoff canvas.`
+    `Reconstructed ${totalStalls} stalls (${adaStalls} ADA). Rows/measurements generated in takeoff. ${mapLayoutInputStatusText()}`
   );
 }
 function setMapLayoutMode(mode){
@@ -4644,6 +4771,12 @@ if(btnMapClearLayoutInputs){
       feetPerPx:null,
     };
     mapReconstructResult={rows:[],stalls:[],accessAisles:[],metrics:null};
+    if(mapReconstructAnim.rafId){
+      try{cancelAnimationFrame(mapReconstructAnim.rafId);}catch(_e){/* noop */}
+      mapReconstructAnim.rafId=0;
+    }
+    mapReconstructAnim.active=false;
+    mapReconstructAnim.progress=1;
     renderMapReconstructMetrics(null);
     setMapLayoutMode('none');
     setImportStatus('Layout inputs cleared.');
