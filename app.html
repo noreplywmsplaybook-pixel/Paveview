@@ -1501,7 +1501,6 @@ const mapPreviewCanvas=document.getElementById('map-preview');
 const mapPreviewCtx=mapPreviewCanvas.getContext('2d');
 const mapImportStatus=document.getElementById('map-import-status');
 const mapImageryModeSel=document.getElementById('map-imagery-mode');
-const mapHistoricalYearSel=document.getElementById('map-historical-year');
 const btnMapDebugBw=document.getElementById('btn-map-debug-bw');
 const btnMapDebugSnap=document.getElementById('btn-map-debug-snap');
 const btnMapRoiDraw=document.getElementById('btn-map-roi-draw');
@@ -3353,6 +3352,12 @@ function setPageModalView(view){
   btnMapCapture.style.display=map?'inline-block':'none';
   pageFooterText.style.display=map?'none':'';
   mapFooterText.style.display=map?'':'none';
+  if(map){
+    waybackByYear={...WAYBACK_FALLBACK_BY_YEAR,...(waybackByYear||{})};
+    populateWaybackYearsDropdown();
+    updateHistoricalControls();
+    void ensureWaybackYears(false);
+  }
 }
 
 function openImportSourceChooser(){
@@ -3438,18 +3443,26 @@ function loadImageFromUrl(url){
 }
 
 function readMapInputsIntoState(){
-  mapViewState.mode=mapImageryModeSel.value;
-  mapViewState.year=mapHistoricalYearSel.value||mapViewState.year||'';
+  mapViewState.mode=mapImageryModeSel?mapImageryModeSel.value:'google';
+  const yEl=document.getElementById('map-historical-year');
+  mapViewState.year=(yEl&&yEl.value)||mapViewState.year||'';
 }
 function syncMapInputsFromState(){
   // Lat/Lng/Zoom inputs intentionally hidden in simplified UI.
 }
 function populateWaybackYearsDropdown(){
-  const years=listWaybackYears();
-  const prev=mapHistoricalYearSel&&mapHistoricalYearSel.value;
-  mapHistoricalYearSel.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join('');
-  if(prev&&years.includes(prev)) mapHistoricalYearSel.value=prev;
-  else if(years.length) mapHistoricalYearSel.value=years[0];
+  const el=document.getElementById('map-historical-year');
+  if(!el)return;
+  let years=listWaybackYears();
+  if(!years.length){
+    waybackByYear={...WAYBACK_FALLBACK_BY_YEAR};
+    years=listWaybackYears();
+  }
+  const prev=el.value;
+  el.replaceChildren();
+  years.forEach(y=>el.add(new Option(y,y)));
+  if(prev&&years.includes(prev)) el.value=prev;
+  else if(years.length) el.value=years[0];
 }
 function ensureFallbackWaybackYears(){
   if(!waybackByYear)waybackByYear={...WAYBACK_FALLBACK_BY_YEAR};
@@ -3473,17 +3486,18 @@ function mergeWaybackSelectionRows(rows){
   return byYear;
 }
 async function ensureWaybackYears(force=false){
-  if(!waybackByYear||Object.keys(waybackByYear).length===0){
-    ensureFallbackWaybackYears();
-  }else{
-    populateWaybackYearsDropdown();
+  waybackByYear={...WAYBACK_FALLBACK_BY_YEAR,...(waybackByYear||{})};
+  populateWaybackYearsDropdown();
+  if(waybackManifestFetched&&!force){
+    updateHistoricalControls();
+    return;
   }
-  if(waybackManifestFetched&&!force)return;
   try{
-    const res=await fetch(WAYBACK_SELECTION_URL);
+    const res=await fetch(WAYBACK_SELECTION_URL,{cache:'no-store'});
     if(!res.ok)throw new Error('Wayback manifest HTTP '+res.status);
     const data=await res.json();
-    const byYear=mergeWaybackSelectionRows(data.Selection);
+    const rows=data.Selection||data.selection||data.SelectionList||[];
+    const byYear=mergeWaybackSelectionRows(rows);
     if(Object.keys(byYear).length){
       waybackByYear={...WAYBACK_FALLBACK_BY_YEAR,...byYear};
       waybackManifestFetched=true;
@@ -3493,9 +3507,11 @@ async function ensureWaybackYears(force=false){
     populateWaybackYearsDropdown();
   }catch(e){
     console.warn('Wayback manifest fetch failed, using bundled release map:',e);
+    waybackByYear={...WAYBACK_FALLBACK_BY_YEAR,...(waybackByYear||{})};
     ensureFallbackWaybackYears();
     waybackManifestFetched=false;
   }
+  updateHistoricalControls();
 }
 
 async function drawTilePreview(mode,lat,lng,zoomLv,year){
@@ -3756,7 +3772,8 @@ async function loadMapPreview(opts={}){
         const first=listWaybackYears()[0];
         mapViewState.year=first||'';
       }
-      if(mapHistoricalYearSel&&mapHistoricalYearSel.value!==mapViewState.year)mapHistoricalYearSel.value=mapViewState.year;
+      const yEl=document.getElementById('map-historical-year');
+      if(yEl&&mapViewState.year&&yEl.value!==mapViewState.year)yEl.value=mapViewState.year;
     }
     const tiled=await drawTilePreview(mapViewState.mode,lat,lng,zoomLv,mapViewState.year);
     if(reqId!==mapRenderReqId)return;
@@ -3794,10 +3811,15 @@ async function geocodeMapSearch(){
 }
 
 function updateHistoricalControls(){
-  const on=mapImageryModeSel.value==='historical';
+  const on=mapImageryModeSel&&mapImageryModeSel.value==='historical';
   document.querySelectorAll('.hist-only').forEach(el=>el.style.display='');
-  mapHistoricalYearSel.disabled=!on;
-  mapHistoricalYearSel.style.opacity=on?'1':'0.55';
+  const yEl=document.getElementById('map-historical-year');
+  if(yEl){
+    yEl.disabled=!on;
+    yEl.style.opacity=on?'1':'0.55';
+    yEl.style.minWidth='96px';
+    yEl.style.maxWidth='140px';
+  }
 }
 
 async function captureMapImageryIntoPlan(){
@@ -3814,7 +3836,7 @@ async function captureMapImageryIntoPlan(){
   const lat=(Number.isFinite(mapViewState.lat)?mapViewState.lat:0).toFixed(5);
   const lng=(Number.isFinite(mapViewState.lng)?mapViewState.lng:0).toFixed(5);
   const mode=mapImageryModeSel.value;
-  const year=mapHistoricalYearSel.value;
+  const year=(document.getElementById('map-historical-year')||{}).value||'';
   const label=(mode==='historical'?`Map ${year}`:'Map Current')+` ${lat},${lng}`;
   const oc=document.createElement('canvas');
   oc.width=mapPreviewCanvas.width;oc.height=mapPreviewCanvas.height;
@@ -4209,16 +4231,23 @@ mapImageryModeSel.addEventListener('change',async()=>{
   mapTileImageCache.clear();
   mapViewState.mode=mapImageryModeSel.value;
   updateHistoricalControls();
-  if(mapViewState.mode==='historical'){try{await ensureWaybackYears();}catch(e){console.warn(e);}}
+  if(mapViewState.mode==='historical'){
+    try{await ensureWaybackYears(true);}catch(e){console.warn(e);}
+    populateWaybackYearsDropdown();
+    updateHistoricalControls();
+  }
   await loadMapPreview({fromInputs:true});
 });
-mapHistoricalYearSel.addEventListener('change',()=>{
-  for(const k of [...mapTileImageCache.keys()]){
-    if(String(k).startsWith('h:')) mapTileImageCache.delete(k);
-  }
-  mapViewState.year=mapHistoricalYearSel.value;
-  loadMapPreview({fromInputs:false,reason:'Loading selected year…'});
-});
+const mapHistoricalYearEl=document.getElementById('map-historical-year');
+if(mapHistoricalYearEl){
+  mapHistoricalYearEl.addEventListener('change',()=>{
+    for(const k of [...mapTileImageCache.keys()]){
+      if(String(k).startsWith('h:')) mapTileImageCache.delete(k);
+    }
+    mapViewState.year=mapHistoricalYearEl.value;
+    loadMapPreview({fromInputs:false,reason:'Loading selected year…'});
+  });
+}
 btnMapCapture.addEventListener('click',captureMapImageryIntoPlan);
 if(btnMapDetect)btnMapDetect.addEventListener('click',runRoboflowDetection);
 if(btnMapAiDetect)btnMapAiDetect.addEventListener('click',runRoboflowDetection);
