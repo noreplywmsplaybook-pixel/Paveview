@@ -924,6 +924,9 @@ function toggleThemeProj(){
 function setStatus(s){
   document.querySelectorAll('.status-opt').forEach(b=>b.classList.toggle('on',b.dataset.s===s));
   switchView(s);
+  try{
+    localStorage.setItem('paveview_proj_status_'+projectId,String(s||'estimating'));
+  }catch(e){}
   saveDetails();
 }
 function currentStatus(){return document.querySelector('.status-opt.on')?.dataset.s||'estimating';}
@@ -1252,14 +1255,21 @@ function loadSavedDetails(){
   renderPhasesMgmt();
   if(d.equipment){equipment=d.equipment;renderEquipment();}
   if(d.dailyLogs){dailyLogs=d.dailyLogs;renderDailyLogs();}
-  if(d.confirmed){confirmed=true;showConfirmedState();}
+  if(d.confirmed){confirmed=true;}
   loadThemesIntoProject();
-  setStatus(d.status||'estimating');
+  const statusKey=(()=>{try{return localStorage.getItem('paveview_proj_status_'+projectId)||'';}catch(e){return'';}})();
+  setStatus(d.status||statusKey||'estimating');
   populateEqPicker();
+  if(confirmed) showConfirmedState();
 }
 
 function saveDetails(){
-  localStorage.setItem('paveview_proj_details_'+projectId,JSON.stringify(getDetails()));
+  try{
+    localStorage.setItem('paveview_proj_details_'+projectId,JSON.stringify(getDetails()));
+  }catch(e){
+    // localStorage can fill up (especially with screenshots); keep the app functional.
+    console.warn('SaveDetails failed:',e);
+  }
 }
 
 document.addEventListener('input',e=>{if(e.target.closest('#main'))saveDetails();});
@@ -1288,8 +1298,8 @@ function toggleSettingsForm(show){
 
 function showConfirmedState(){
   unlockReports();
-  buildEstimatingReports();
-  toggleSettingsForm(false);
+  rerenderCurrentReports();
+  if(document.getElementById('view-estimating')?.style.display!=='none') toggleSettingsForm(false);
   document.getElementById('confirm-banner').classList.add('confirmed');
 }
 

@@ -635,6 +635,8 @@ async function loadHistory(){
     const typeLabels={paving:'Paving',sealcoat:'Sealcoat',both:'Paving+Seal',striping:'Striping'};
     let status='estimating';
     try{
+      const statusKey=localStorage.getItem('paveview_proj_status_'+p.id);
+      if(statusKey) status=statusKey;
       const det=localStorage.getItem('paveview_proj_details_'+p.id);
       if(det){const parsed=JSON.parse(det);status=parsed.status||'estimating';}
       else{const s=localStorage.getItem('paveview_completion_'+p.id);if(s){const comp=JSON.parse(s);status=comp.status||'estimating';}}
@@ -829,6 +831,8 @@ async function loadActive(){
   const active=projects.filter(p=>{
     let status='estimating';
     try{
+      const statusKey=localStorage.getItem('paveview_proj_status_'+p.id);
+      if(statusKey) status=statusKey;
       const det=localStorage.getItem('paveview_proj_details_'+p.id);
       if(det){const parsed=JSON.parse(det);status=parsed.status||'estimating';}
       else{const s=localStorage.getItem('paveview_completion_'+p.id);if(s){const comp=JSON.parse(s);status=comp.status||'estimating';}}
@@ -846,6 +850,8 @@ async function loadActive(){
     const dotColors={paving:'#d4a843',sealcoat:'#22c55e',both:'#3b82f6',striping:'#a855f7'};
     let rowStatus='awarded';
     try{
+      const statusKey=localStorage.getItem('paveview_proj_status_'+p.id);
+      if(statusKey) rowStatus=statusKey;
       const det=localStorage.getItem('paveview_proj_details_'+p.id);
       if(det){rowStatus=JSON.parse(det).status||'awarded';}
       else{const s=localStorage.getItem('paveview_completion_'+p.id);if(s){const comp=JSON.parse(s);rowStatus=comp.status||'awarded';}}
