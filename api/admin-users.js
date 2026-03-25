@@ -1,5 +1,5 @@
 const DEFAULT_SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
-const DEFAULT_PRODUCT = 'takeoff';
+const DEFAULT_PRODUCT = 'takeoff_tier1_monthly';
 
 function sendJson(res, statusCode, payload) {
   res.statusCode = statusCode;

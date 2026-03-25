@@ -369,21 +369,33 @@ tr:hover td{background:#141414}
     <div class="field">
       <label>Grant Access To</label>
       <select id="add-product">
-        <option value="takeoff">PaveView Takeoff ($5,000)</option>
+        <option value="takeoff_tier1_monthly">Tier 1 Monthly — $99.99</option>
+        <option value="takeoff_tier1_annual">Tier 1 Annual — $999</option>
+        <option value="takeoff_tier2_monthly">Tier 2 Monthly — $199.99</option>
+        <option value="takeoff_tier2_annual">Tier 2 Annual — $1999.99</option>
+        <option value="takeoff_tier3_monthly">Tier 3 Monthly — $399.99</option>
+        <option value="takeoff_tier3_annual">Tier 3 Annual — $3999.99</option>
+        <option value="takeoff">Legacy Lifetime — $5,000</option>
+        <option value="takeoff_trial_24h">24-Hour Free Trial</option>
       </select>
     </div>
     <div class="field">
       <label>Access Type</label>
       <select id="add-plan" onchange="onPlanChange()">
-        <option value="paid">Paid License</option>
+        <option value="takeoff_tier1_monthly">Tier 1 Monthly — $99.99</option>
+        <option value="takeoff_tier1_annual">Tier 1 Annual — $999</option>
+        <option value="takeoff_tier2_monthly">Tier 2 Monthly — $199.99</option>
+        <option value="takeoff_tier2_annual">Tier 2 Annual — $1999.99</option>
+        <option value="takeoff_tier3_monthly">Tier 3 Monthly — $399.99</option>
+        <option value="takeoff_tier3_annual">Tier 3 Annual — $3999.99</option>
         <option value="trial_24h">24-Hour Free Trial</option>
       </select>
     </div>
     <div class="field">
       <label>Payment Amount</label>
-      <input type="number" id="add-amount" placeholder="5000" value="5000">
+      <input type="number" id="add-amount" placeholder="99" value="99">
     </div>
-    <div class="small-note" id="add-plan-note" style="margin-top:-6px;margin-bottom:8px">Paid license creates permanent active access.</div>
+    <div class="small-note" id="add-plan-note" style="margin-top:-6px;margin-bottom:8px">Tier 1 Monthly — $99.99.</div>
     <div class="msg" id="add-msg"></div>
     <div class="mfooter">
       <button class="btn" onclick="closeModal('add-modal')">Cancel</button>
@@ -420,7 +432,16 @@ tr:hover td{background:#141414}
 const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-const DEFAULT_TAKEOFF_PRICE_CENTS = 500000; // $5,000
+const DEFAULT_TAKEOFF_PRICE_CENTS = 9999; // Tier 1 monthly
+const SUBSCRIPTION_PRODUCTS = {
+  takeoff_tier1_monthly: { amountCents: 9999, label: 'Tier 1 Monthly — $99.99' },
+  takeoff_tier1_annual: { amountCents: 99900, label: 'Tier 1 Annual — $999' },
+  takeoff_tier2_monthly: { amountCents: 19999, label: 'Tier 2 Monthly — $199.99' },
+  takeoff_tier2_annual: { amountCents: 199999, label: 'Tier 2 Annual — $1999.99' },
+  takeoff_tier3_monthly: { amountCents: 39999, label: 'Tier 3 Monthly — $399.99' },
+  takeoff_tier3_annual: { amountCents: 399999, label: 'Tier 3 Annual — $3999.99' },
+  takeoff: { amountCents: 500000, label: 'Legacy Lifetime — $5,000' }
+};
 const TRIAL_PRODUCT_KEY = 'takeoff_trial_24h';
 const TRIAL_DURATION_MS = 24 * 60 * 60 * 1000;
 const ADMIN_PIN_KEY = 'paveview_admin_pin_v1';
@@ -1418,18 +1439,23 @@ function openAddModal() {
 }
 
 function onPlanChange() {
-  const plan = document.getElementById('add-plan')?.value || 'paid';
+  const plan = document.getElementById('add-plan')?.value || 'takeoff_tier1_monthly';
+  const productEl = document.getElementById('add-product');
   const amountEl = document.getElementById('add-amount');
   const noteEl = document.getElementById('add-plan-note');
-  if (!amountEl || !noteEl) return;
+  if (!amountEl || !noteEl || !productEl) return;
   if (plan === 'trial_24h') {
+    productEl.value = TRIAL_PRODUCT_KEY;
     amountEl.value = '0';
     amountEl.disabled = true;
     noteEl.textContent = 'Trial accounts are free and expire automatically after 24 hours.';
   } else {
+    const selected = SUBSCRIPTION_PRODUCTS[plan] || SUBSCRIPTION_PRODUCTS.takeoff_tier1_monthly;
+    productEl.value = plan;
     amountEl.disabled = false;
-    if (!amountEl.value || Number(amountEl.value) <= 0) amountEl.value = '5000';
-    noteEl.textContent = 'Paid license creates permanent active access.';
+    const dollars = Number(selected.amountCents || 0) / 100;
+    amountEl.value = Number.isInteger(dollars) ? String(dollars) : dollars.toFixed(2);
+    noteEl.textContent = `${selected.label}.`;
   }
 }
 
@@ -1437,10 +1463,12 @@ async function addAccount() {
   const name = document.getElementById('add-name').value.trim();
   const email = document.getElementById('add-email').value.trim();
   const pass = document.getElementById('add-pass').value;
-  const baseProduct = document.getElementById('add-product').value;
   const plan = document.getElementById('add-plan').value;
-  const product = plan === 'trial_24h' ? TRIAL_PRODUCT_KEY : baseProduct;
-  const amount = plan === 'trial_24h' ? 0 : (parseInt(document.getElementById('add-amount').value) || 5000);
+  const product = plan === 'trial_24h' ? TRIAL_PRODUCT_KEY : plan;
+  const selected = SUBSCRIPTION_PRODUCTS[plan] || SUBSCRIPTION_PRODUCTS.takeoff_tier1_monthly;
+  const amount = plan === 'trial_24h'
+    ? 0
+    : (parseFloat(document.getElementById('add-amount').value) || (Number(selected.amountCents || 0) / 100));
 
   if (!email || !pass) { showMsg('add-msg', 'Email and password required.', 'err'); return; }
 
@@ -1538,7 +1566,7 @@ async function confirmRestore() {
 
 // ── GRANT ACCESS (no purchase yet) ──
 async function grantAccess(userId, email) {
-  const { error } = await sb.from('purchases').insert({ user_id: userId, product: 'takeoff', amount_paid: DEFAULT_TAKEOFF_PRICE_CENTS, status: 'active' });
+  const { error } = await sb.from('purchases').insert({ user_id: userId, product: 'takeoff_tier1_monthly', amount_paid: DEFAULT_TAKEOFF_PRICE_CENTS, status: 'active' });
   if (error) alert('Error: ' + error.message);
   else loadData();
 }
