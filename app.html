@@ -6057,6 +6057,63 @@ document.getElementById('btn-finish-estimation').onclick=async()=>{
   }
 };
 
+const PLAN_LIMIT_BY_PRODUCT={
+  takeoff_tier1_monthly:{limit:15,label:'Tier 1 Monthly'},
+  takeoff_tier1_annual:{limit:15,label:'Tier 1 Annual'},
+  takeoff_tier2_monthly:{limit:30,label:'Tier 2 Monthly'},
+  takeoff_tier2_annual:{limit:30,label:'Tier 2 Annual'},
+  takeoff_tier3_monthly:{limit:60,label:'Tier 3 Monthly'},
+  takeoff_tier3_annual:{limit:60,label:'Tier 3 Annual'},
+  takeoff:{limit:Infinity,label:'Legacy Lifetime'},
+};
+const PLAN_LIMIT_BY_AMOUNT={
+  9999:{limit:15,label:'Tier 1 Monthly'},
+  99900:{limit:15,label:'Tier 1 Annual'},
+  19999:{limit:30,label:'Tier 2 Monthly'},
+  199999:{limit:30,label:'Tier 2 Annual'},
+  39999:{limit:60,label:'Tier 3 Monthly'},
+  399999:{limit:60,label:'Tier 3 Annual'},
+  500000:{limit:Infinity,label:'Legacy Lifetime'},
+};
+function resolveMonthlyLimitFromPurchase(purchase){
+  const product=String(purchase?.product||'').trim().toLowerCase();
+  if(product.includes('trial'))return null;
+  if(product&&PLAN_LIMIT_BY_PRODUCT[product])return PLAN_LIMIT_BY_PRODUCT[product];
+  const amount=Number(purchase?.amount_paid||0);
+  if(PLAN_LIMIT_BY_AMOUNT[amount])return PLAN_LIMIT_BY_AMOUNT[amount];
+  return null;
+}
+function monthRangeUtcIso(date=new Date()){
+  const start=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),1,0,0,0,0));
+  const end=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,1,0,0,0,0));
+  return{startIso:start.toISOString(),endIso:end.toISOString()};
+}
+async function getMonthlyProposalUsage(_sb,userId){
+  const{startIso,endIso}=monthRangeUtcIso(new Date());
+  const[{data:purchases,error:purchasesErr},{count,error:countErr}]=await Promise.all([
+    _sb.from('purchases').select('id,product,amount_paid,status,created_at').eq('user_id',userId).eq('status','active').order('created_at',{ascending:false}).limit(50),
+    _sb.from('projects').select('id',{head:true,count:'exact'}).eq('user_id',userId).gte('created_at',startIso).lt('created_at',endIso),
+  ]);
+  if(purchasesErr)throw new Error(purchasesErr.message||'Unable to load purchases.');
+  if(countErr)throw new Error(countErr.message||'Unable to load monthly usage.');
+  const activePurchases=Array.isArray(purchases)?purchases:[];
+  let bestPlan=null;
+  activePurchases.forEach((purchase)=>{
+    const plan=resolveMonthlyLimitFromPurchase(purchase);
+    if(!plan)return;
+    if(!bestPlan){bestPlan=plan;return;}
+    if(!Number.isFinite(plan.limit)){bestPlan=plan;return;}
+    if(!Number.isFinite(bestPlan.limit)){return;}
+    if(plan.limit>bestPlan.limit)bestPlan=plan;
+  });
+  if(!bestPlan)bestPlan={limit:Infinity,label:'Trial/Uncapped'};
+  return{
+    used:Number(count||0),
+    limit:bestPlan.limit,
+    planLabel:bestPlan.label
+  };
+}
+
 // ── SHARED SAVE FUNCTION ──
 async function doSave(){
   const btn=document.getElementById('btn-save-only');
@@ -6067,6 +6124,14 @@ async function doSave(){
     const _sb=window._sbClient||supabase.createClient('https://rqgyqqyxlwjpbdkapvpz.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A');
     const{data:{session}}=await _sb.auth.getSession();
     if(!session){alert('Sign in to save.');return null;}
+    if(!currentProjectId){
+      const usage=await getMonthlyProposalUsage(_sb,session.user.id);
+      if(Number.isFinite(usage.limit)&&usage.used>=usage.limit){
+        alert('You reached your monthly proposal limit ('+usage.used+'/'+usage.limit+') for '+usage.planLabel+'. Please upgrade your plan to continue.');
+        window.location.href='/#pricing';
+        return null;
+      }
+    }
     const sc=getScale();
     const closed=zones.filter(z=>z.closed&&!z.obstruct);
     let totalSqft=0;
