@@ -617,6 +617,18 @@ async function loadStats(){
   updatePlanBanner(plan,(monthlyProjects||[]).length);
 }
 
+function reportSyncedSubtitle(projectId){
+  try{
+    const det=localStorage.getItem('paveview_proj_details_'+projectId);
+    if(!det)return '';
+    const rs=JSON.parse(det).reportSurfacesSyncedAt;
+    if(!rs)return '';
+    const dt=new Date(rs);
+    if(Number.isNaN(dt.getTime()))return '';
+    return dt.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  }catch(e){return '';}
+}
+
 async function loadHistory(){
   const body=document.getElementById('history-body');
   body.innerHTML='<div class="empty" style="padding:20px">Loading…</div>';
@@ -644,8 +656,9 @@ async function loadHistory(){
     const statusColors={estimating:'#444',active:'#444',awarded:'#3b82f6',in_progress:'#d4a843',complete:'#22c55e',cancelled:'#ef4444'};
     const statusLabels={estimating:'Estimating',active:'Estimating',awarded:'Awarded',in_progress:'In Progress',complete:'Complete',cancelled:'Cancelled'};
     const dotColors={paving:'#d4a843',sealcoat:'#22c55e',both:'#3b82f6',striping:'#a855f7'};
+    const rsLbl=reportSyncedSubtitle(p.id);
     return `<tr>
-      <td><span class="proj-bar" style="background:${dotColors[jobType]||'#444'}"></span><span class="proj-name" onclick="window.location.href='project.html?id=${p.id}'">${p.name||'Untitled Project'}</span></td>
+      <td style="vertical-align:top"><span class="proj-bar" style="background:${dotColors[jobType]||'#444'}"></span><div style="display:inline-block;vertical-align:top;margin-left:4px"><span class="proj-name" onclick="window.location.href='project.html?id=${p.id}'">${p.name||'Untitled Project'}</span>${rsLbl?`<div style="font-size:8px;color:var(--text3,#666);margin-top:4px;font-family:'JetBrains Mono',monospace">Reports synced ${rsLbl}</div>`:''}</div></td>
       <td><span class="proj-type">${typeLabels[jobType]||jobType}</span></td>
       <td class="proj-date">${area}</td>
       <td class="proj-cost">${cost}</td>
@@ -858,8 +871,9 @@ async function loadActive(){
       if(statusKey) rowStatus=statusKey;
     }catch(e){}
     const status=rowStatus;
+    const rsLbl=reportSyncedSubtitle(p.id);
     html+=`<tr>
-      <td><span class="proj-bar" style="background:${dotColors[jobType]||'#444'}"></span><span class="proj-name" onclick="window.location.href='project.html?id=${p.id}'">${p.name||'Untitled'}</span></td>
+      <td style="vertical-align:top"><span class="proj-bar" style="background:${dotColors[jobType]||'#444'}"></span><div style="display:inline-block;vertical-align:top;margin-left:4px"><span class="proj-name" onclick="window.location.href='project.html?id=${p.id}'">${p.name||'Untitled'}</span>${rsLbl?`<div style="font-size:8px;color:var(--text3,#666);margin-top:4px;font-family:'JetBrains Mono',monospace">Reports synced ${rsLbl}</div>`:''}</div></td>
       <td><span class="proj-type">${typeLabels[jobType]||jobType}</span></td>
       <td class="proj-date">${pd.totalSqft?pd.totalSqft.toLocaleString()+' sf':'—'}</td>
       <td class="proj-cost">${pd.totalCost?'$'+pd.totalCost.toLocaleString():'—'}</td>

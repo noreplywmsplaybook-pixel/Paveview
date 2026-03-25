@@ -838,6 +838,7 @@ let brandPrimary=localStorage.getItem('paveview_brand_primary')||'#111111';
 let brandAccent=localStorage.getItem('paveview_brand_accent')||'#d4a843';
 let reportPhases=[]; // [{id,name,zoneIds,screenshot}]
 let reportMapSnapshot='';
+let reportSurfacesSyncedAt=''; // ISO time when all report DOM surfaces were rebuilt together
 
 let mapZoom=1,mapPanX=0,mapPanY=0,mapDragging=false,mapLastX=0,mapLastY=0,mapImgW=0,mapImgH=0,mapBgImg=null;
 let phasePreviewZoom=1,phasePreviewPanX=0,phasePreviewPanY=0,phasePreviewDragging=false,phasePreviewLastX=0,phasePreviewLastY=0,phasePreviewBound=false;
@@ -1220,6 +1221,7 @@ function getDetails(){
     reportMapSnapshot,
     customPages,
     attachedPages,
+    reportSurfacesSyncedAt:reportSurfacesSyncedAt||'',
     status:currentStatus(),phases,equipment,dailyLogs,confirmed,
   };
 }
@@ -1264,6 +1266,7 @@ function loadSavedDetails(){
     ['client','foreman','contractor'].forEach(k=>{if(!Array.isArray(customPages[k]))customPages[k]=[];});
   }
   if(Array.isArray(d.attachedPages)) attachedPages=d.attachedPages;
+  if(typeof d.reportSurfacesSyncedAt==='string') reportSurfacesSyncedAt=d.reportSurfacesSyncedAt;
   loadThemesIntoProject();
   const statusKey=(()=>{try{return localStorage.getItem('paveview_proj_status_'+projectId)||'';}catch(e){return'';}})();
   setStatus(statusKey||d.status||'estimating');
@@ -1541,7 +1544,41 @@ function updateCompleteKpis(){
   if(el('ckpi-days'))el('ckpi-days').textContent=dailyLogs.length||'—';
 }
 
+function rebuildAllReportSurfaces(){
+  loadThemesIntoProject();
+  const clientEl=document.getElementById('report-client');
+  const contractorEl=document.getElementById('report-contractor');
+  const foremanEl=document.getElementById('report-foreman');
+  const completionEl=document.getElementById('report-completion');
+  if(clientEl)clientEl.innerHTML=buildClientHtml('rmap-est-client');
+  if(contractorEl)contractorEl.innerHTML=buildContractorHtml('rmap-est-contractor');
+  if(foremanEl)foremanEl.innerHTML=buildForemanHtml('rmap-est-foreman');
+  if(completionEl)completionEl.innerHTML=buildCompletionHtml();
+  const ca=document.getElementById('report-client-a');
+  const fa=document.getElementById('report-foreman-a');
+  const compa=document.getElementById('report-completion-a');
+  if(ca)ca.innerHTML=buildClientHtml('rmap-act-client');
+  if(fa)fa.innerHTML=buildForemanHtml('rmap-act-foreman');
+  if(compa)compa.innerHTML=buildCompletionHtml();
+  const cc=document.getElementById('report-client-c');
+  const fc=document.getElementById('report-foreman-c');
+  const compc=document.getElementById('report-completion-c');
+  if(cc)cc.innerHTML=buildClientHtml('rmap-comp-client');
+  if(fc)fc.innerHTML=buildForemanHtml('rmap-comp-foreman');
+  if(compc)compc.innerHTML=buildCompletionHtml();
+  requestAnimationFrame(()=>{
+    ['rmap-est-client','rmap-est-foreman','rmap-act-client','rmap-act-foreman','rmap-comp-client','rmap-comp-foreman'].forEach(id=>paintReportMap(id));
+  });
+  renderAttachedPages();
+  reportSurfacesSyncedAt=new Date().toISOString();
+  try{saveDetails();}catch(e){}
+}
+
 function rerenderCurrentReports(){
+  if(confirmed){
+    rebuildAllReportSurfaces();
+    return;
+  }
   const s=currentStatus();
   if(s==='estimating') buildEstimatingReports();
   else if(s==='awarded'||s==='in_progress') buildActiveReports();
@@ -2298,9 +2335,12 @@ function applyTheme(themeId){
   if(projectId&&document.getElementById('main')?.style.display==='block'){
     saveDetails();
   }
-  refreshReport('client');
-  refreshReport('foreman');
-  refreshReport('contractor');
+  if(confirmed) rebuildAllReportSurfaces();
+  else{
+    refreshReport('client');
+    refreshReport('foreman');
+    refreshReport('contractor');
+  }
   if(document.getElementById('proj-debug')?.style.display==='block') refreshProjectDebug();
 }
 
@@ -2850,18 +2890,22 @@ function buildPhasePages(){
 }
 
 function refreshReport(type){
-  const mapIds = {client:'rmap-est-client',foreman:'rmap-est-foreman',contractor:'rmap-est-contractor'};
-  const builders = {
-    client: ()=>buildClientHtml(mapIds.client),
-    foreman: ()=>buildForemanHtml(mapIds.foreman),
-    contractor: ()=>buildContractorHtml(mapIds.contractor)
+  const specs={
+    client:[['report-client','rmap-est-client'],['report-client-a','rmap-act-client'],['report-client-c','rmap-comp-client']],
+    foreman:[['report-foreman','rmap-est-foreman'],['report-foreman-a','rmap-act-foreman'],['report-foreman-c','rmap-comp-foreman']],
+    contractor:[['report-contractor','rmap-est-contractor']],
   };
-  const rpt = document.getElementById('report-'+type);
-  if(rpt && builders[type]){
-    rpt.innerHTML = builders[type]();
-    const mapId = mapIds[type];
-    if(mapId) requestAnimationFrame(()=>paintReportMap(mapId));
-  }
+  const rows=specs[type];
+  if(!rows)return;
+  const buildFn={client:buildClientHtml,foreman:buildForemanHtml,contractor:buildContractorHtml}[type];
+  if(!buildFn)return;
+  rows.forEach(([elId,mapId])=>{
+    const el=document.getElementById(elId);
+    if(el)el.innerHTML=buildFn(mapId);
+  });
+  requestAnimationFrame(()=>{
+    rows.forEach(([,mapId])=>{if(mapId) paintReportMap(mapId);});
+  });
   renderAttachedPages();
 }
 
@@ -3576,6 +3620,7 @@ function buildContractorHtml(rMapId){
 
 // ── ESTIMATING REPORTS ──
 function buildEstimatingReports(){
+  if(confirmed){rebuildAllReportSurfaces();return;}
   loadThemesIntoProject();
   const clientEl=document.getElementById('report-client');
   const contractorEl=document.getElementById('report-contractor');
@@ -3590,6 +3635,7 @@ function buildEstimatingReports(){
 
 // ── ACTIVE JOB REPORTS ──
 function buildActiveReports(){
+  if(confirmed){rebuildAllReportSurfaces();return;}
   loadThemesIntoProject();
   const c=document.getElementById('report-client-a');
   const f=document.getElementById('report-foreman-a');
@@ -3602,6 +3648,7 @@ function buildActiveReports(){
 
 // ── COMPLETE REPORTS ──
 function buildCompleteReports(){
+  if(confirmed){rebuildAllReportSurfaces();return;}
   loadThemesIntoProject();
   const c=document.getElementById('report-client-c');
   const f=document.getElementById('report-foreman-c');
