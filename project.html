@@ -855,8 +855,11 @@ function toggleThemeProj(){
   document.getElementById('bc-name').textContent=name;
   document.getElementById('ph-sqft').textContent=projectData.totalSqft?projectData.totalSqft.toLocaleString():'—';
   document.getElementById('ph-cost').textContent=projectData.totalCost?'$'+projectData.totalCost.toLocaleString():'—';
-  const typeLabels={paving:'Paving',sealcoat:'Sealcoating',both:'Paving + Sealcoat',striping:'Line Striping'};
-  document.getElementById('ph-type').textContent=typeLabels[projectData.jobType]||'Paving';
+  const typeLabels={paving:'Paving',sealcoat:'Sealcoating',striping:'Line Striping'};
+  const selectedHeaderTypes=(Array.isArray(projectData.jobTypes)&&projectData.jobTypes.length)
+    ?projectData.jobTypes
+    :(projectData.jobType==='both'?['paving','sealcoat']:[projectData.jobType||'paving']);
+  document.getElementById('ph-type').textContent=selectedHeaderTypes.map(t=>typeLabels[t]||'Paving').join(', ');
   document.getElementById('ph-stalls').textContent=(projectData.stallCount||0)+(projectData.adaCount||0)||'—';
   document.getElementById('ph-date').textContent=new Date(proj.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
   document.getElementById('btn-edit-takeoff').onclick=()=>window.location.href='app.html?project='+projectId;
@@ -1745,16 +1748,28 @@ function populateEqPicker(){
 function polyArea(pts){if(!pts||pts.length<3)return 0;let a=0;for(let i=0;i<pts.length;i++){const j=(i+1)%pts.length;a+=pts[i].x*pts[j].y-pts[j].x*pts[i].y;}return Math.abs(a)/2;}
 function sc(){return(projectData.scaleFt||40)/(projectData.scalePx||70);}
 function fv(id,fb){return parseFloat(document.getElementById(id)?.value)||fb||0;}
-function activeJobType(){
+function selectedJobTypesForCalc(){
+  if(Array.isArray(projectData.jobTypes)&&projectData.jobTypes.length){
+    return projectData.jobTypes
+      .map(v=>String(v).toLowerCase())
+      .filter(v=>['paving','sealcoat','striping'].includes(v));
+  }
   const jt=String(projectData.jobType||'paving').toLowerCase();
-  if(jt==='striping-only')return'striping';
-  if(['paving','sealcoat','striping','both'].includes(jt))return jt;
-  return 'paving';
+  if(jt==='both')return['paving','sealcoat'];
+  if(jt==='striping-only')return['striping'];
+  if(['paving','sealcoat','striping'].includes(jt))return[jt];
+  return['paving'];
 }
 function getCalc(){
   const scale=sc();
   const closed=(projectData.zones||[]).filter(z=>!z.obstruct);
-  const jobType=activeJobType();
+  const jobTypes=selectedJobTypesForCalc();
+  const has=(t)=>jobTypes.includes(t);
+  const jobType=has('striping')&&!has('paving')&&!has('sealcoat')
+    ?'striping'
+    :(has('sealcoat')&&!has('paving')&&!has('striping')
+      ?'sealcoat'
+      :(has('paving')&&has('sealcoat')&&!has('striping')?'both':'mixed'));
   const depth=fv('f-depth',projectData.depth||3);
   const comp=fv('f-comp',projectData.comp||1.05);
   const base=fv('f-base',projectData.base||6);
@@ -1792,12 +1807,13 @@ function getCalc(){
   const sealerGallons=totalSqft*Math.max(1,sealerCoats)/Math.max(1,sealerCov);
   const sealcoatCost=(totalSqft*pseal)+(linearFt*pcrack)+(sealerGallons*sealerGal);
   const stripingCost=(stallCount*pstripe)+(adaCount*pada)+(linearFt*plin)+((crosswalkSqft+adaHatchSqft)*pcross);
-  let totalCost=pavingCost;
-  if(jobType==='sealcoat')totalCost=sealcoatCost;
-  else if(jobType==='striping')totalCost=stripingCost;
-  else if(jobType==='both')totalCost=pavingCost+sealcoatCost;
+  let totalCost=0;
+  if(has('paving'))totalCost+=pavingCost;
+  if(has('sealcoat'))totalCost+=sealcoatCost;
+  if(has('striping'))totalCost+=stripingCost;
+  if(!totalCost)totalCost=pavingCost;
   return{
-    jobType,closed,scale,depth,comp,base,pa,pb,pl,plin,pseal,pcrack,pstripe,pada,pcross,sealerGal,sealerCov,sealerCoats,
+    jobType,jobTypes,closed,scale,depth,comp,base,pa,pb,pl,plin,pseal,pcrack,pstripe,pada,pcross,sealerGal,sealerCov,sealerCoats,
     totalSqft,totalTons,totalBase,totalCost,linearFt,crosswalkSqft,adaHatchSqft,stallCount,adaCount,
     pavingCost,sealcoatCost,stripingCost,sealerGallons
   };
@@ -2830,17 +2846,17 @@ function inventoryRows(showPricing,calc){
   // Linear segments - each with its label
   (inv.linearItems||[]).forEach(seg=>{
     if(seg.ft>0){
-      const rate=c.jobType==='sealcoat'?(c.pcrack||2.5):(c.plin||3);
+      const rate=(c.jobTypes||[]).includes('sealcoat')?(c.pcrack||2.5):(c.plin||3);
       const cost=seg.ft*rate;
-      const labelPrefix=c.jobType==='sealcoat'?'Crack Fill':'Linear';
+      const labelPrefix=(c.jobTypes||[]).includes('sealcoat')?'Crack Fill':'Linear';
       rows += `<tr><td>${labelPrefix} — ${seg.label}</td><td class="num">${seg.ft.toLocaleString()}</td><td class="num">lin ft</td><td class="num">${showPricing?'$'+Math.round(cost).toLocaleString():'—'}</td></tr>`;
     }
   });
   // Fallback total linear if no items
   if(!(inv.linearItems||[]).length && inv.linearFt > 0){
-    const rate=c.jobType==='sealcoat'?(c.pcrack||2.5):(c.plin||3);
+    const rate=(c.jobTypes||[]).includes('sealcoat')?(c.pcrack||2.5):(c.plin||3);
     const cost=inv.linearFt*rate;
-    const label=c.jobType==='sealcoat'?'Crack Fill':'Fire Lane / Linear Striping';
+    const label=(c.jobTypes||[]).includes('sealcoat')?'Crack Fill':'Fire Lane / Linear Striping';
     rows += `<tr><td>${label}</td><td class="num">${Math.round(inv.linearFt).toLocaleString()}</td><td class="num">lin ft</td><td class="num">${showPricing?'$'+Math.round(cost).toLocaleString():'—'}</td></tr>`;
   }
   // Measurements
@@ -2867,9 +2883,9 @@ function inventoryCards(){
 }
 
 function pricingSettingsBlock(calc){
-  const jt=calc.jobType||'paving';
+  const has=(t)=>(calc.jobTypes||[]).includes(t);
   let rows='';
-  if(jt==='paving'||jt==='both'){
+  if(has('paving')){
     rows+=`<tr><td>Asphalt ($/ton)</td><td class="num">$${calc.pa.toFixed(2)}</td></tr>
       <tr><td>Base Aggregate ($/ton)</td><td class="num">$${calc.pb.toFixed(2)}</td></tr>
       <tr><td>Labor ($/sq ft)</td><td class="num">$${calc.pl.toFixed(2)}</td></tr>
@@ -2877,14 +2893,14 @@ function pricingSettingsBlock(calc){
       <tr><td>Base Depth</td><td class="num">${calc.base}"</td></tr>
       <tr><td>Compaction Factor</td><td class="num">${calc.comp.toFixed(2)}</td></tr>`;
   }
-  if(jt==='sealcoat'||jt==='both'){
+  if(has('sealcoat')){
     rows+=`<tr><td>Sealcoat Labor ($/sq ft)</td><td class="num">$${calc.pseal.toFixed(2)}</td></tr>
       <tr><td>Crack Fill ($/lin ft)</td><td class="num">$${calc.pcrack.toFixed(2)}</td></tr>
       <tr><td>Sealer ($/gal)</td><td class="num">$${calc.sealerGal.toFixed(2)}</td></tr>
       <tr><td>Coverage (sf/gal)</td><td class="num">${Math.round(calc.sealerCov)}</td></tr>
       <tr><td>Coats</td><td class="num">${Math.round(calc.sealerCoats)}</td></tr>`;
   }
-  if(jt==='striping'){
+  if(has('striping')){
     rows+=`<tr><td>Standard Stall ($/stall)</td><td class="num">$${calc.pstripe.toFixed(2)}</td></tr>
       <tr><td>ADA Stall ($/stall)</td><td class="num">$${calc.pada.toFixed(2)}</td></tr>
       <tr><td>Linear Striping ($/lin ft)</td><td class="num">$${calc.plin.toFixed(2)}</td></tr>
@@ -3031,8 +3047,9 @@ function buildThemedReportHtml(type,rMapId){
 
   function scopeRows(showPricing){
     let rows='';
-    const isContractorPaving=type==='contractor'&&(calc.jobType==='paving'||calc.jobType==='both');
-    if(calc.jobType==='paving'||calc.jobType==='both'){
+    const has=(t)=>(calc.jobTypes||[]).includes(t);
+    const isContractorPaving=type==='contractor'&&has('paving');
+    if(has('paving')){
       (calc.closed||[]).forEach(z=>{
         const a=polyArea(z.pts||[])*calc.scale*calc.scale;
         const tons=a*(calc.depth/12)*145/2000*calc.comp;
@@ -3045,7 +3062,7 @@ function buildThemedReportHtml(type,rMapId){
         }
       });
     }
-    if(calc.jobType==='sealcoat'||calc.jobType==='both'){
+    if(has('sealcoat')){
       (calc.closed||[]).forEach(z=>{
         const a=polyArea(z.pts||[])*calc.scale*calc.scale;
         const gallons=a*Math.max(1,calc.sealerCoats)/Math.max(1,calc.sealerCov);
@@ -3080,7 +3097,7 @@ function buildThemedReportHtml(type,rMapId){
     if(s.type==='kpis')return kpiCardsHtml();
     if(s.type==='map')return`<div style="padding:0 ${PAD}">${labelHtml(s.label||'Site Plan')}${mapHtml||'<div style="background:#f5f5f5;border:1px dashed #ddd;padding:30px;text-align:center;color:#999;font-family:JetBrains Mono,monospace;font-size:10px">Map preview unavailable</div>'}</div>`;
     if(s.type==='scope'){
-      const contractor=type==='contractor'&&(calc.jobType==='paving'||calc.jobType==='both');
+      const contractor=type==='contractor'&&((calc.jobTypes||[]).includes('paving'));
       const rows=scopeRows(contractor||type==='client');
       const total=type==='foreman'?(c.total||'See Estimate'):('$'+Math.round(calc.totalCost||0).toLocaleString());
       return`<div style="padding:0 ${PAD}">${labelHtml(s.label||'Scope of Work')}
@@ -3130,15 +3147,15 @@ function buildThemedReportHtml(type,rMapId){
   let html=`<div class="rpage" style="background:${BG};color:${TX};font-family:'${BF}'">${tableCss()}`;
   t.sections.forEach(s=>{html+=renderSection(s);});
   if(!t.sections.some(s=>s&&s.type==='pricing'))html+=`<div style="padding:0 ${PAD}">${labelHtml('Price Settings')}<table class="th-rptbl"><thead><tr><th>Setting</th><th style="text-align:right">Value</th></tr></thead><tbody>${(function(){
-    const jt=calc.jobType||'paving';
+    const has=(t)=>(calc.jobTypes||[]).includes(t);
     let rows='';
-    if(jt==='paving'||jt==='both'){
+    if(has('paving')){
       rows+=`<tr><td>Asphalt ($/ton)</td><td class="n">$${calc.pa.toFixed(2)}</td></tr><tr><td>Base Aggregate ($/ton)</td><td class="n">$${calc.pb.toFixed(2)}</td></tr><tr><td>Labor ($/sq ft)</td><td class="n">$${calc.pl.toFixed(2)}</td></tr><tr><td>Asphalt Depth</td><td class="n">${calc.depth}"</td></tr><tr><td>Base Depth</td><td class="n">${calc.base}"</td></tr><tr><td>Compaction Factor</td><td class="n">${calc.comp.toFixed(2)}</td></tr>`;
     }
-    if(jt==='sealcoat'||jt==='both'){
+    if(has('sealcoat')){
       rows+=`<tr><td>Sealcoat Labor ($/sq ft)</td><td class="n">$${calc.pseal.toFixed(2)}</td></tr><tr><td>Crack Fill ($/lin ft)</td><td class="n">$${calc.pcrack.toFixed(2)}</td></tr><tr><td>Sealer ($/gal)</td><td class="n">$${calc.sealerGal.toFixed(2)}</td></tr><tr><td>Coverage (sf/gal)</td><td class="n">${Math.round(calc.sealerCov)}</td></tr><tr><td>Coats</td><td class="n">${Math.round(calc.sealerCoats)}</td></tr>`;
     }
-    if(jt==='striping'){
+    if(has('striping')){
       rows+=`<tr><td>Standard Stall ($/stall)</td><td class="n">$${calc.pstripe.toFixed(2)}</td></tr><tr><td>ADA Stall ($/stall)</td><td class="n">$${calc.pada.toFixed(2)}</td></tr><tr><td>Linear Striping ($/lin ft)</td><td class="n">$${calc.plin.toFixed(2)}</td></tr><tr><td>Crosswalk / ADA Hatch ($/sq ft)</td><td class="n">$${calc.pcross.toFixed(2)}</td></tr>`;
     }
     return rows;
@@ -3245,7 +3262,7 @@ function buildClientHtml(rMapId){
       <th style="text-align:right">Est. Cost</th>
     </tr></thead>
     <tbody>`;
-  if(calc.jobType==='paving'||calc.jobType==='both'){
+  if((calc.jobTypes||[]).includes('paving')){
     calc.closed.forEach(z=>{
       const a=polyArea(z.pts||[])*calc.scale*calc.scale;
       const t=a*(calc.depth/12)*145/2000*calc.comp;
@@ -3259,7 +3276,7 @@ function buildClientHtml(rMapId){
       </tr>`;
     });
   }
-  if(calc.jobType==='sealcoat'||calc.jobType==='both'){
+  if((calc.jobTypes||[]).includes('sealcoat')){
     calc.closed.forEach(z=>{
       const a=polyArea(z.pts||[])*calc.scale*calc.scale;
       const gallons=a*Math.max(1,calc.sealerCoats)/Math.max(1,calc.sealerCov);
@@ -3395,14 +3412,14 @@ function buildContractorHtml(rMapId){
   html+='<div class="rstripe"></div>';
   html+=`<div class="rproj-name">${projName()}</div>`;
   if(d.address)html+=`<div style="font-size:11px;color:#888;margin-bottom:12px">${d.address}</div>`;
-  const showAdditionalScope = (calc.jobType==='paving'||calc.jobType==='both');
+  const showAdditionalScope = (calc.jobTypes||[]).includes('paving');
   if(showAdditionalScope){
     html+='<div class="rsec">Zone Breakdown</div><table class="rtbl"><thead><tr><th>Zone</th><th class="num">Area (sf)</th><th class="num">Tons</th><th class="num">Base (t)</th><th class="num">Cost</th></tr></thead><tbody>';
     calc.closed.forEach(z=>{const a=polyArea(z.pts||[])*calc.scale*calc.scale;const t=a*(calc.depth/12)*145/2000*calc.comp;const b=a*(calc.base/12)*110/2000;const cost=t*calc.pa+b*calc.pb+a*calc.pl;html+=`<tr><td>${z.name}</td><td class="num">${Math.round(a).toLocaleString()}</td><td class="num">${t.toFixed(1)}</td><td class="num">${b.toFixed(1)}</td><td class="num">$${Math.round(cost).toLocaleString()}</td></tr>`;});
     html+=`<tr class="gtot"><td colspan="4">TOTAL</td><td class="num">$${Math.round(calc.totalCost).toLocaleString()}</td></tr></tbody></table>`;
   }else{
     html+='<div class="rsec">Scope Breakdown</div><table class="rtbl"><thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr></thead><tbody>';
-    if(calc.jobType==='sealcoat'){
+    if((calc.jobTypes||[]).includes('sealcoat')){
       calc.closed.forEach(z=>{
         const a=polyArea(z.pts||[])*calc.scale*calc.scale;
         const gallons=a*Math.max(1,calc.sealerCoats)/Math.max(1,calc.sealerCov);
