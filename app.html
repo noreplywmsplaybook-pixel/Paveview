@@ -768,12 +768,7 @@ select.sc-inp{cursor:pointer;width:40px}
   <div class="tsep"></div>
   <input type="text" id="search-inp" placeholder="Search labels…" style="background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 8px;outline:none;width:130px;transition:border-color .15s" oninput="searchCanvas(this.value)" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
   <span class="tlbl">Job</span>
-  <select id="job-type" style="background:var(--surface);border:1px solid var(--border);color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 5px;outline:none;cursor:pointer">
-    <option value="paving">Paving</option>
-    <option value="sealcoat">Sealcoating</option>
-    <option value="both">Paving + Sealcoat</option>
-    <option value="striping">Striping Only</option>
-  </select>
+  <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3)">Use right panel checkboxes</span>
 </div>
 
 
@@ -928,12 +923,13 @@ select.sc-inp{cursor:pointer;width:40px}
       <div id="stencil-breakdown"></div>
     </div>
 
-    <!-- Materials -->
-    <div class="sb-sec" style="border-bottom:none">
-      <div class="sb-sec-lbl">Materials</div>
-      <div class="rs-stat"><div class="rs-lbl">Asphalt</div><div class="rs-val" id="calc-tons">—</div></div>
-      <div class="rs-stat"><div class="rs-lbl">Base agg</div><div class="rs-val" id="calc-base">—</div></div>
-      <div class="rs-stat"><div class="rs-lbl">Est. Total</div><div class="rs-val" id="calc-total" style="color:var(--blue)">—</div></div>
+    <!-- Job Types -->
+    <div class="sb-sec">
+      <div class="sb-sec-lbl">Job Types</div>
+      <label class="ir" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="job-opt-paving" checked> <span class="il">Paving</span></label>
+      <label class="ir" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="job-opt-sealcoat"> <span class="il">Sealcoating</span></label>
+      <label class="ir" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="job-opt-striping"> <span class="il">Line Striping</span></label>
+      <div id="job-types-summary" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);padding:6px 8px 0">Selected: Paving</div>
     </div>
 
     <!-- Hidden settings values -->
@@ -1111,8 +1107,7 @@ select.sc-inp{cursor:pointer;width:40px}
             <select class="sinp" id="si-default-job" style="width:130px">
               <option value="paving">Paving</option>
               <option value="sealcoat">Sealcoating</option>
-              <option value="both">Paving + Sealcoat</option>
-              <option value="striping">Striping Only</option>
+              <option value="striping">Line Striping</option>
             </select>
           </div>
         </div>
@@ -5403,12 +5398,27 @@ function updateStats(){
     const depth=sv('s-depth')||3,comp=sv('s-comp')||1.05,base=sv('s-base')||6;
     const pa=sv('s-pa')||85,pb=sv('s-pb')||22,pl=sv('s-pl')||1.25;
     const tons=calcTons(disp,depth,comp),baseTons=calcBase(disp,base);
-    const cost=tons*pa+baseTons*pb+disp*pl;
-    document.getElementById('calc-tons').textContent=tons.toFixed(1);
-    document.getElementById('calc-base').textContent=baseTons.toFixed(1);
-    document.getElementById('calc-total').textContent='$'+cost.toLocaleString('en-US',{maximumFractionDigits:0});
+    const selected=getSelectedJobTypes();
+    const plin=sv('s-plin')||3;
+    const pseal=sv('s-pseal')||0.18;
+    const pcrack=sv('s-pcrack')||2.5;
+    const pstripe=sv('s-pstripe')||8;
+    const pada=parseFloat(document.getElementById('si-pada')?.value)||25;
+    const pcross=parseFloat(document.getElementById('si-pcross')?.value)||2.5;
+    const sealerGal=parseFloat(document.getElementById('si-sealer-gal')?.value)||4.5;
+    const sealerCov=parseFloat(document.getElementById('si-sealer-cov')?.value)||80;
+    const sealerCoats=parseFloat(document.getElementById('si-sealer-coats')?.value)||2;
+    const sealerGallons=disp*Math.max(1,sealerCoats)/Math.max(1,sealerCov);
+    const pavingCost=tons*pa+baseTons*pb+disp*pl;
+    const sealcoatCost=disp*pseal+linFt*pcrack+sealerGallons*sealerGal;
+    const stripingCost=(stallC+(mc.stall||0))*pstripe+(adaC+(mc.ada||0))*pada+linFt*plin+hatchA*pcross;
+    let cost=0;
+    if(selected.includes('paving'))cost+=pavingCost;
+    if(selected.includes('sealcoat'))cost+=sealcoatCost;
+    if(selected.includes('striping'))cost+=stripingCost;
+    if(!selected.length)cost=pavingCost;
   }else{
-    ['stat-area','stat-acres','stat-perim','calc-tons','calc-base','calc-total'].forEach(id=>document.getElementById(id).innerHTML='—');
+    ['stat-area','stat-acres','stat-perim'].forEach(id=>document.getElementById(id).innerHTML='—');
   }
   document.getElementById('stat-linear').innerHTML=linFt>0?`${linFt.toFixed(0)}<span class="scu">ft</span>`:'—';
   document.getElementById('stat-hatch').innerHTML=hatchA>0?`${hatchA.toLocaleString('en-US',{maximumFractionDigits:0})}<span class="scu">sq ft</span>`:'—';
@@ -5994,12 +6004,23 @@ function loadSettingsValues(){
   if(fsEl&&window.setFontSize){
     window.setFontSize(parseInt(fsEl.value||localStorage.getItem('paveview_fontsize')||'14'));
   }
+  syncRuntimeSettingsFromInputs();
+  // Keep job type checks synced to account default on settings load.
+  const defJob=document.getElementById('si-default-job')?.value||'paving';
+  if(defJob==='both')setSelectedJobTypes(['paving','sealcoat']);
+  else setSelectedJobTypes([defJob]);
 }
 document.getElementById('btn-settings-close').onclick=()=>closeModal('settings-modal');
 document.getElementById('btn-settings-cancel').onclick=()=>closeModal('settings-modal');
-document.getElementById('btn-settings-save').onclick=()=>{
+function syncRuntimeSettingsFromInputs(){
   const map={'si-depth':'s-depth','si-comp':'s-comp','si-base':'s-base','si-pa':'s-pa','si-pb':'s-pb','si-pl':'s-pl','si-plin':'s-plin','si-pseal':'s-pseal','si-pcrack':'s-pcrack','si-pstripe':'s-pstripe'};
-  Object.entries(map).forEach(([src,dst])=>{document.getElementById(dst).value=document.getElementById(src).value});
+  Object.entries(map).forEach(([src,dst])=>{
+    const s=document.getElementById(src),d=document.getElementById(dst);
+    if(s&&d)d.value=s.value;
+  });
+}
+document.getElementById('btn-settings-save').onclick=()=>{
+  syncRuntimeSettingsFromInputs();
   document.getElementById('s-company').value=document.getElementById('si-company').value;
   // Persist all settings inputs
   const savedSettings={};
@@ -6073,13 +6094,44 @@ async function doSave(){
     closed.forEach(z=>totalSqft+=polyArea(z.pts)*sc*sc);
     const depth=sv('s-depth')||3,comp=sv('s-comp')||1.05,base=sv('s-base')||6;
     const pa=sv('s-pa')||85,pb=sv('s-pb')||22,pl=sv('s-pl')||1.25;
+    const plin=sv('s-plin')||3;
+    const pseal=sv('s-pseal')||0.18;
+    const pcrack=sv('s-pcrack')||2.5;
+    const pstripe=sv('s-pstripe')||8;
+    const pada=parseFloat(document.getElementById('si-pada')?.value)||25;
+    const pcross=parseFloat(document.getElementById('si-pcross')?.value)||2.5;
+    const sealerGal=parseFloat(document.getElementById('si-sealer-gal')?.value)||4.5;
+    const sealerCov=parseFloat(document.getElementById('si-sealer-cov')?.value)||80;
+    const sealerCoats=parseFloat(document.getElementById('si-sealer-coats')?.value)||2;
     const tons=closed.reduce((t,z)=>{const a=polyArea(z.pts)*sc*sc;return t+(a*(depth/12)*145/2000*comp);},0);
     const baseTons=closed.reduce((t,z)=>{const a=polyArea(z.pts)*sc*sc;return t+(a*(base/12)*110/2000);},0);
-    const totalCost=tons*pa+baseTons*pb+totalSqft*pl;
     const stallC=markers.filter(m=>m.type==='stall').length+(typeof manualCounts!=='undefined'?manualCounts.stall||0:0);
     const adaC=markers.filter(m=>m.type==='ada').length+(typeof manualCounts!=='undefined'?manualCounts.ada||0:0);
     const projName=document.getElementById('proj-name')?.value||'Untitled Project';
-    const jobType=document.getElementById('job-type')?.value||'paving';
+    const selectedJobTypes=getSelectedJobTypes();
+    const jobType=selectedJobTypes.length===2&&selectedJobTypes.includes('paving')&&selectedJobTypes.includes('sealcoat')
+      ?'both'
+      :(selectedJobTypes[0]||'paving');
+    let linearFt=0;
+    linearSegs.forEach(seg=>{
+      const pts=seg.pts||[];
+      for(let i=0;i<pts.length-1;i++)linearFt+=Math.hypot(pts[i+1].x-pts[i].x,pts[i+1].y-pts[i].y)*sc;
+    });
+    let crosswalkSqft=0,adaHatchSqft=0;
+    hatchZones.forEach(h=>{
+      const a=polyArea(h.pts||[])*sc*sc;
+      if(h.type==='crosswalk')crosswalkSqft+=a;
+      else if(h.type==='ada-hatch')adaHatchSqft+=a;
+    });
+    const pavingCost=tons*pa+baseTons*pb+totalSqft*pl;
+    const sealerGallons=totalSqft*Math.max(1,sealerCoats)/Math.max(1,sealerCov);
+    const sealcoatCost=totalSqft*pseal+linearFt*pcrack+sealerGallons*sealerGal;
+    const stripingCost=stallC*pstripe+adaC*pada+linearFt*plin+(crosswalkSqft+adaHatchSqft)*pcross;
+    let totalCost=0;
+    if(selectedJobTypes.includes('paving'))totalCost+=pavingCost;
+    if(selectedJobTypes.includes('sealcoat'))totalCost+=sealcoatCost;
+    if(selectedJobTypes.includes('striping'))totalCost+=stripingCost;
+    if(!selectedJobTypes.length)totalCost=pavingCost;
     // Save current plan before building save data
       savePlanData();
       // Build per-plan data for save
@@ -6097,7 +6149,7 @@ async function doSave(){
       const _fp=_allPlanData[0]||{};
       const projectData={
       totalSqft:Math.round(totalSqft),totalCost:Math.round(totalCost),
-      stallCount:stallC,adaCount:adaC,jobType,
+      stallCount:stallC,adaCount:adaC,jobType,jobTypes:selectedJobTypes,
       scalePx:parseFloat(document.getElementById('scale-px').value)||70,
       scaleFt:parseFloat(document.getElementById('scale-ft').value)||40,
       scaleUnit:document.getElementById('scale-unit').value||'ft',
@@ -6106,7 +6158,7 @@ async function doSave(){
       measurements:_fp.measurements||measurements.map(m=>({label:m.label,type:m.type,sqft:m.sqft,pts:m.pts,labelSize:m.labelSize||12})),
       linearSegs:_fp.linearSegs||[...linearSegs],hatchZones:_fp.hatchZones||[...hatchZones],
       plans:_allPlanData,currentPlanIdx,
-      depth,comp,base,pa,pb,pl,
+      depth,comp,base,pa,pb,pl,plin,pseal,pcrack,pstripe,pada,pcross,sealerGal,sealerCov,sealerCoats,
     };
     let planPath=null;
     try{
@@ -6232,7 +6284,12 @@ async function loadProjectFromUrl(){
     currentProjectId=proj.id;
     const pd=typeof proj.data==='string'?JSON.parse(proj.data):proj.data||{};
     if(proj.name){const pn=document.getElementById('proj-name');if(pn)pn.value=proj.name;}
-    if(pd.jobType){const jt=document.getElementById('job-type');if(jt)jt.value=pd.jobType;}
+    if(Array.isArray(pd.jobTypes)&&pd.jobTypes.length){
+      setSelectedJobTypes(pd.jobTypes);
+    }else if(pd.jobType){
+      if(pd.jobType==='both')setSelectedJobTypes(['paving','sealcoat']);
+      else setSelectedJobTypes([pd.jobType]);
+    }
     if(pd.plans?.length){
       // Multi-plan project - restore plan metadata (images will reload from Supabase)
       plans=pd.plans.map((pl2,i)=>({id:pl2.id||'plan'+i,label:pl2.label||'File '+(i+1),imgEl:null,imgW:pl2.imgW||0,imgH:pl2.imgH||0}));
@@ -6320,7 +6377,40 @@ document.getElementById('stall-mode-click').onclick=()=>{stallDotMode=false;docu
 ['stall','ada','bollard','stopblock','stencil'].forEach(t=>{const el=document.getElementById('manual-'+t);if(el)el.addEventListener('input',()=>{manualCounts[t]=parseInt(el.value)||0;updateStats();});});
 
 // ── Job Type ──
-document.getElementById('job-type').addEventListener('change',updateStats);
+function getSelectedJobTypes(){
+  const opts=[
+    {id:'job-opt-paving',val:'paving'},
+    {id:'job-opt-sealcoat',val:'sealcoat'},
+    {id:'job-opt-striping',val:'striping'},
+  ];
+  return opts.filter(o=>document.getElementById(o.id)?.checked).map(o=>o.val);
+}
+function setSelectedJobTypes(types){
+  const normalized=new Set((types||[]).map(v=>String(v).toLowerCase()));
+  const p=document.getElementById('job-opt-paving');
+  const s=document.getElementById('job-opt-sealcoat');
+  const l=document.getElementById('job-opt-striping');
+  if(p)p.checked=normalized.has('paving');
+  if(s)s.checked=normalized.has('sealcoat');
+  if(l)l.checked=normalized.has('striping');
+  syncJobTypeSummary();
+}
+function syncJobTypeSummary(){
+  const types=getSelectedJobTypes();
+  if(!types.length){
+    const p=document.getElementById('job-opt-paving');
+    if(p)p.checked=true;
+  }
+  const selected=getSelectedJobTypes();
+  const labels={paving:'Paving',sealcoat:'Sealcoating',striping:'Line Striping'};
+  const summary=document.getElementById('job-types-summary');
+  if(summary)summary.textContent='Selected: '+selected.map(t=>labels[t]||t).join(', ');
+}
+['job-opt-paving','job-opt-sealcoat','job-opt-striping'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el)el.addEventListener('change',()=>{syncJobTypeSummary();updateStats();});
+});
+syncJobTypeSummary();
 
 </script>
 
