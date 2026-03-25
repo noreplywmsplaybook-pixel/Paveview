@@ -771,8 +771,7 @@ select.sc-inp{cursor:pointer;width:40px}
   <select id="job-type" style="background:var(--surface);border:1px solid var(--border);color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 5px;outline:none;cursor:pointer">
     <option value="paving">Paving</option>
     <option value="sealcoat">Sealcoating</option>
-    <option value="both">Paving + Sealcoat</option>
-    <option value="striping">Striping Only</option>
+    <option value="striping">Line Striping</option>
   </select>
 </div>
 
@@ -1111,8 +1110,7 @@ select.sc-inp{cursor:pointer;width:40px}
             <select class="sinp" id="si-default-job" style="width:130px">
               <option value="paving">Paving</option>
               <option value="sealcoat">Sealcoating</option>
-              <option value="both">Paving + Sealcoat</option>
-              <option value="striping">Striping Only</option>
+              <option value="striping">Line Striping</option>
             </select>
           </div>
         </div>
@@ -6073,13 +6071,40 @@ async function doSave(){
     closed.forEach(z=>totalSqft+=polyArea(z.pts)*sc*sc);
     const depth=sv('s-depth')||3,comp=sv('s-comp')||1.05,base=sv('s-base')||6;
     const pa=sv('s-pa')||85,pb=sv('s-pb')||22,pl=sv('s-pl')||1.25;
+    const plin=sv('s-plin')||3;
+    const pseal=sv('s-pseal')||0.18;
+    const pcrack=sv('s-pcrack')||2.5;
+    const pstripe=sv('s-pstripe')||8;
+    const pada=parseFloat(document.getElementById('si-pada')?.value)||25;
+    const pcross=parseFloat(document.getElementById('si-pcross')?.value)||2.5;
+    const sealerGal=parseFloat(document.getElementById('si-sealer-gal')?.value)||4.5;
+    const sealerCov=parseFloat(document.getElementById('si-sealer-cov')?.value)||80;
+    const sealerCoats=parseFloat(document.getElementById('si-sealer-coats')?.value)||2;
     const tons=closed.reduce((t,z)=>{const a=polyArea(z.pts)*sc*sc;return t+(a*(depth/12)*145/2000*comp);},0);
     const baseTons=closed.reduce((t,z)=>{const a=polyArea(z.pts)*sc*sc;return t+(a*(base/12)*110/2000);},0);
-    const totalCost=tons*pa+baseTons*pb+totalSqft*pl;
     const stallC=markers.filter(m=>m.type==='stall').length+(typeof manualCounts!=='undefined'?manualCounts.stall||0:0);
     const adaC=markers.filter(m=>m.type==='ada').length+(typeof manualCounts!=='undefined'?manualCounts.ada||0:0);
     const projName=document.getElementById('proj-name')?.value||'Untitled Project';
     const jobType=document.getElementById('job-type')?.value||'paving';
+    let linearFt=0;
+    linearSegs.forEach(seg=>{
+      const pts=seg.pts||[];
+      for(let i=0;i<pts.length-1;i++)linearFt+=Math.hypot(pts[i+1].x-pts[i].x,pts[i+1].y-pts[i].y)*sc;
+    });
+    let crosswalkSqft=0,adaHatchSqft=0;
+    hatchZones.forEach(h=>{
+      const a=polyArea(h.pts||[])*sc*sc;
+      if(h.type==='crosswalk')crosswalkSqft+=a;
+      else if(h.type==='ada-hatch')adaHatchSqft+=a;
+    });
+    const pavingCost=tons*pa+baseTons*pb+totalSqft*pl;
+    const sealerGallons=totalSqft*Math.max(1,sealerCoats)/Math.max(1,sealerCov);
+    const sealcoatCost=totalSqft*pseal+linearFt*pcrack+sealerGallons*sealerGal;
+    const stripingCost=stallC*pstripe+adaC*pada+linearFt*plin+(crosswalkSqft+adaHatchSqft)*pcross;
+    let totalCost=pavingCost;
+    if(jobType==='sealcoat')totalCost=sealcoatCost;
+    else if(jobType==='striping')totalCost=stripingCost;
+    else if(jobType==='both')totalCost=pavingCost+sealcoatCost; // legacy compatibility
     // Save current plan before building save data
       savePlanData();
       // Build per-plan data for save
@@ -6106,7 +6131,7 @@ async function doSave(){
       measurements:_fp.measurements||measurements.map(m=>({label:m.label,type:m.type,sqft:m.sqft,pts:m.pts,labelSize:m.labelSize||12})),
       linearSegs:_fp.linearSegs||[...linearSegs],hatchZones:_fp.hatchZones||[...hatchZones],
       plans:_allPlanData,currentPlanIdx,
-      depth,comp,base,pa,pb,pl,
+      depth,comp,base,pa,pb,pl,plin,pseal,pcrack,pstripe,pada,pcross,sealerGal,sealerCov,sealerCoats,
     };
     let planPath=null;
     try{
