@@ -1549,6 +1549,8 @@ let mapRoiDrawMode=false; // explicit ROI draw mode toggle
 let mapWheelAccum=0;
 let mapWheelRaf=0;
 let mapWheelClientX=0,mapWheelClientY=0;
+const MAP_WHEEL_ZOOM_THRESHOLD=92;
+let waybackManifestFetched=false;
 let mapThrottleTimer=null;
 let lastMapPreviewThrottle=0;
 const MAP_PREVIEW_THROTTLE_MS=72;
@@ -3444,7 +3446,10 @@ function syncMapInputsFromState(){
 }
 function populateWaybackYearsDropdown(){
   const years=listWaybackYears();
+  const prev=mapHistoricalYearSel&&mapHistoricalYearSel.value;
   mapHistoricalYearSel.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  if(prev&&years.includes(prev)) mapHistoricalYearSel.value=prev;
+  else if(years.length) mapHistoricalYearSel.value=years[0];
 }
 function ensureFallbackWaybackYears(){
   if(!waybackByYear)waybackByYear={...WAYBACK_FALLBACK_BY_YEAR};
@@ -3454,30 +3459,42 @@ function ensureFallbackWaybackYears(){
 function listWaybackYears(){
   return Object.keys(waybackByYear||{}).sort((a,b)=>b.localeCompare(a));
 }
-async function ensureWaybackYears(){
-  if(waybackByYear&&Object.keys(waybackByYear).length>0){
+function mergeWaybackSelectionRows(rows){
+  const byYear={};
+  (rows||[]).forEach(row=>{
+    const m=String(row.M||row.m||'').trim();
+    const name=String(row.Name||row.name||'');
+    const dateMatch=name.match(/(\d{4}-\d{2}-\d{2})/);
+    if(!m||!dateMatch)return;
+    const date=dateMatch[1];
+    const year=date.slice(0,4);
+    if(!byYear[year]||date>byYear[year].date)byYear[year]={m,date,label:name};
+  });
+  return byYear;
+}
+async function ensureWaybackYears(force=false){
+  if(!waybackByYear||Object.keys(waybackByYear).length===0){
+    ensureFallbackWaybackYears();
+  }else{
     populateWaybackYearsDropdown();
-    return;
   }
-  ensureFallbackWaybackYears();
+  if(waybackManifestFetched&&!force)return;
   try{
     const res=await fetch(WAYBACK_SELECTION_URL);
+    if(!res.ok)throw new Error('Wayback manifest HTTP '+res.status);
     const data=await res.json();
-    const byYear={};
-    (data.Selection||[]).forEach(row=>{
-      const m=String(row.M||'').trim();
-      const name=String(row.Name||'');
-      const dateMatch=name.match(/(\d{4}-\d{2}-\d{2})/);
-      if(!m||!dateMatch)return;
-      const date=dateMatch[1];
-      const year=date.slice(0,4);
-      if(!byYear[year]||date>byYear[year].date)byYear[year]={m,date,label:name};
-    });
-    waybackByYear={...WAYBACK_FALLBACK_BY_YEAR,...byYear};
+    const byYear=mergeWaybackSelectionRows(data.Selection);
+    if(Object.keys(byYear).length){
+      waybackByYear={...WAYBACK_FALLBACK_BY_YEAR,...byYear};
+      waybackManifestFetched=true;
+    }else{
+      throw new Error('Empty Wayback Selection');
+    }
     populateWaybackYearsDropdown();
   }catch(e){
-    console.warn('Falling back to bundled historical years:',e);
+    console.warn('Wayback manifest fetch failed, using bundled release map:',e);
     ensureFallbackWaybackYears();
+    waybackManifestFetched=false;
   }
 }
 
@@ -3508,9 +3525,9 @@ async function drawTilePreview(mode,lat,lng,zoomLv,year){
       let url='';
       let cacheKey='';
       if(mode==='historical'){
-        const rel=waybackByYear?.[year];
-        if(!rel)continue;
-        url=`https://wayback.maptiles.arcgis.com/arcgis/rest/services/world_imagery/mapserver/tile/${rel.m}/${zoomLv}/${ty}/${wrapped}`;
+        const rel=waybackByYear?.[String(year||'').trim()];
+        if(!rel||!rel.m)continue;
+        url=`https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/${rel.m}/${zoomLv}/${ty}/${wrapped}`;
         cacheKey=`h:${year}:${zoomLv}:${ty}:${wrapped}`;
       }else{
         url=`https://mt1.google.com/vt/lyrs=s&x=${wrapped}&y=${ty}&z=${zoomLv}`;
@@ -3733,15 +3750,13 @@ async function loadMapPreview(opts={}){
   if(!Number.isFinite(lat)||!Number.isFinite(lng)){setImportStatus('Enter valid latitude and longitude.',true);return;}
   setImportStatus(opts.reason||'Loading map imagery…');
   try{
-    if(!waybackByYear){
-      try{await ensureWaybackYears();}catch(e){console.warn('Wayback year list unavailable:',e);}
-    }
     if(mapViewState.mode==='historical'){
+      try{await ensureWaybackYears();}catch(e){console.warn('Wayback year list unavailable:',e);}
       if(!mapViewState.year){
         const first=listWaybackYears()[0];
         mapViewState.year=first||'';
       }
-      if(mapHistoricalYearSel.value!==mapViewState.year)mapHistoricalYearSel.value=mapViewState.year;
+      if(mapHistoricalYearSel&&mapHistoricalYearSel.value!==mapViewState.year)mapHistoricalYearSel.value=mapViewState.year;
     }
     const tiled=await drawTilePreview(mapViewState.mode,lat,lng,zoomLv,mapViewState.year);
     if(reqId!==mapRenderReqId)return;
@@ -4197,7 +4212,13 @@ mapImageryModeSel.addEventListener('change',async()=>{
   if(mapViewState.mode==='historical'){try{await ensureWaybackYears();}catch(e){console.warn(e);}}
   await loadMapPreview({fromInputs:true});
 });
-mapHistoricalYearSel.addEventListener('change',()=>{mapViewState.year=mapHistoricalYearSel.value;loadMapPreview({fromInputs:false,reason:'Loading selected year…'});});
+mapHistoricalYearSel.addEventListener('change',()=>{
+  for(const k of [...mapTileImageCache.keys()]){
+    if(String(k).startsWith('h:')) mapTileImageCache.delete(k);
+  }
+  mapViewState.year=mapHistoricalYearSel.value;
+  loadMapPreview({fromInputs:false,reason:'Loading selected year…'});
+});
 btnMapCapture.addEventListener('click',captureMapImageryIntoPlan);
 if(btnMapDetect)btnMapDetect.addEventListener('click',runRoboflowDetection);
 if(btnMapAiDetect)btnMapAiDetect.addEventListener('click',runRoboflowDetection);
@@ -4222,28 +4243,25 @@ mapPreviewCanvas.addEventListener('wheel',e=>{
     return;
   }
   let mult=1;
-  if(e.deltaMode===1) mult=20;
-  else if(e.deltaMode===2) mult=600;
+  if(e.deltaMode===1) mult=14;
+  else if(e.deltaMode===2) mult=420;
   mapWheelAccum+=Number(e.deltaY||0)*mult;
   mapWheelClientX=e.clientX;
   mapWheelClientY=e.clientY;
   if(mapWheelRaf)return;
   mapWheelRaf=requestAnimationFrame(()=>{
     mapWheelRaf=0;
-    const acc=mapWheelAccum;
-    mapWheelAccum=0;
-    if(Math.abs(acc)<6)return;
+    let acc=mapWheelAccum;
+    const th=MAP_WHEEL_ZOOM_THRESHOLD;
+    if(Math.abs(acc)<th)return;
     const sign=acc<0?1:-1;
+    acc-=sign*th;
+    mapWheelAccum=Math.abs(acc)<th*0.35?0:acc;
     const rect=mapPreviewCanvas.getBoundingClientRect();
     const {x:cx,y:cy}=mapPointerToCanvasPx(mapWheelClientX,mapWheelClientY,rect);
-    let steps=1;
-    if(Math.abs(acc)>=48) steps=2;
-    if(Math.abs(acc)>=120) steps=3;
-    steps=Math.min(steps,3);
-    for(let i=0;i<steps;i++){
-      const z=Math.round(Number(mapViewState.zoom)||20);
-      const next=Math.max(14,Math.min(22,z+sign));
-      if(next===z)break;
+    const z=Math.round(Number(mapViewState.zoom)||20);
+    const next=Math.max(14,Math.min(22,z+sign));
+    if(next!==z){
       const oldWorld=latLngToWorldPixel(mapViewState.lat,mapViewState.lng,z);
       const cursorWorld={x:oldWorld.x+(cx-mapPreviewCanvas.width/2),y:oldWorld.y+(cy-mapPreviewCanvas.height/2)};
       const sc=Math.pow(2,next-z);
@@ -4253,9 +4271,11 @@ mapPreviewCanvas.addEventListener('wheel',e=>{
       mapViewState.zoom=next;
       mapViewState.lat=Math.max(-85.05112878,Math.min(85.05112878,ll.lat));
       mapViewState.lng=normalizeLng(ll.lng);
+      setImportStatus(`Loading imagery… z${mapViewState.zoom}`);
+      throttleMapPreview('Zooming imagery…');
+    }else{
+      setImportStatus(z<=14?'Minimum zoom level':'Maximum zoom level');
     }
-    setImportStatus(`Loading imagery… z${mapViewState.zoom}`);
-    throttleMapPreview('Zooming imagery…');
   });
 },{passive:false});
 mapPreviewCanvas.addEventListener('mousedown',e=>{
