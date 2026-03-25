@@ -1241,6 +1241,12 @@ function loadSavedDetails(){
   if(Array.isArray(d.reportPhases)) reportPhases=d.reportPhases;
   reportMapSnapshot=d.reportMapSnapshot||'';
   if(d.phases){phases=d.phases;}
+  if((!phases||!phases.length)&&Array.isArray(reportPhases)&&reportPhases.length){
+    phases=reportPhases.map((rp,idx)=>normalizePhase({
+      id:rp.id,name:rp.name||'',zoneIds:Array.isArray(rp.zoneIds)?rp.zoneIds:[],done:!!rp.done,
+      time:'',area:'',hours:'',crew:'',traffic:'',notes:''
+    },idx));
+  }
   normalizePhases();
   renderPhases();
   renderPhasesMgmt();
@@ -1576,6 +1582,12 @@ function addPhase(){
   syncReportPhasesFromPhases();
   renderPhases();
   renderPhasesMgmt();
+  const pm=document.getElementById('phase-modal');
+  if(pm&&pm.style.display==='block'){
+    renderPhaseBuilderList();
+    activePhaseIdx=Math.max(0,reportPhases.length-1);
+    drawPhasePreview(activePhaseIdx);
+  }
   saveDetails();
 }
 
@@ -2328,6 +2340,10 @@ function addReportPhase(){
   drawPhasePreview(activePhaseIdx);
 }
 
+function escJsStr(s){
+  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r?\n/g,'\\n');
+}
+
 function renderPhaseBuilderList(){
   const list=document.getElementById('phase-builder-list');
   if(!list)return;
@@ -2337,7 +2353,7 @@ function renderPhaseBuilderList(){
     <div style="background:var(--surface,#1c1c1e);border:1px solid ${ph.done?'rgba(34,197,94,.4)':'var(--border,#2a2a2c)'};border-radius:3px;padding:12px;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
         <div style="width:10px;height:10px;border-radius:50%;background:${ph.screenshot?'#22c55e':'#444'}"></div>
-        <input type="text" value="${ph.name}" placeholder="Phase name"
+        <input type="text" value="${(ph.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" placeholder="Phase name"
           style="flex:1;background:var(--bg,#141416);border:1px solid var(--border,#2a2a2c);color:var(--text,#f0eeea);font-family:'JetBrains Mono',monospace;font-size:10px;padding:4px 8px;outline:none"
           oninput="renamePhase(${i},this.value)">
         <span class="phase-pill ${ph.done?'done':'active'}">${ph.done?'Complete':'Open'}</span>
@@ -2351,8 +2367,8 @@ function renderPhaseBuilderList(){
       <div style="display:flex;flex-wrap:wrap;gap:4px">
         ${allZones.map(z=>`
           <label style="display:flex;align-items:center;gap:4px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text2,#aaa);cursor:pointer">
-            <input type="checkbox" ${ph.zoneIds.includes(z.id)?'checked':''} onchange="togglePhaseZone(${i},'${z.id}',this.checked)" style="accent-color:${z.color||'#d4a843'}">
-            <span style="color:${z.color||'#d4a843'}">${z.name}</span>
+            <input type="checkbox" ${ph.zoneIds.includes(z.id)?'checked':''} onchange="togglePhaseZone(${i},'${escJsStr(z.id)}',this.checked)" style="accent-color:${z.color||'#d4a843'}">
+            <span style="color:${z.color||'#d4a843'}">${(z.name||'').replace(/</g,'&lt;')}</span>
           </label>`).join('')}
       </div>
       ${ph.screenshot?`<div style="margin-top:8px;display:flex;justify-content:flex-start"><div style="width:120px;height:120px;border:1px solid var(--border,#2a2a2c);border-radius:2px;background:#0d0d0f;display:flex;align-items:center;justify-content:center;overflow:hidden"><img src="${ph.screenshot}" style="width:100%;height:100%;object-fit:contain"></div></div>`:''}
@@ -3032,6 +3048,9 @@ function buildThemedReportHtml(type,rMapId){
   const BF=t.fonts.body||'Inter';
   const PAD={normal:'48px',tight:'28px',wide:'64px'}[t.pagePad]||'48px';
   const docLbl={client:'CLIENT PROPOSAL',foreman:'FOREMAN WORK ORDER',contractor:'CONTRACTOR COPY'}[type]||'REPORT';
+  // Auto-assign captured phase index across multiple "phase" sections in a theme.
+  // If a theme section provides `content.phaseOrder`, we respect it; otherwise we pick next in order.
+  let phaseAutoIdx=0; // last auto-selected phase order (1-based). Next auto selection is phaseAutoIdx+1.
   const logoEl=logo?`<img src="${logo}" style="height:52px;max-width:160px;object-fit:contain;display:block;margin-bottom:10px">`:'';
 
   function stripeHtml(){
@@ -3209,9 +3228,23 @@ function buildThemedReportHtml(type,rMapId){
       return`<div style="padding:0 ${PAD}"><div style="${ds[c.style||'line']||ds.line};margin:12px 0"></div></div>`;
     }
     if(s.type==='phase'){
-      const phase=(reportPhases||[]).find(ph=>ph.screenshot);
+      const captured=(reportPhases||[]).filter(ph=>ph&&ph.screenshot);
+      let ordRaw=(c&&c.phaseOrder!==undefined)?c.phaseOrder:undefined;
+      let ord=(!ordRaw||ordRaw==='')?NaN:parseInt(ordRaw,10);
+      const explicit=Number.isFinite(ord)&&ord>=1;
+      // Heuristic: if multiple Phase Map sections all defaulted to phaseOrder=1,
+      // avoid showing the same capture repeatedly by treating subsequent "1" as auto.
+      const explicitTreatedAsAuto = explicit && ord === 1 && phaseAutoIdx >= 1;
+      if(!explicit || explicitTreatedAsAuto){
+        ord=phaseAutoIdx+1;
+        phaseAutoIdx++;
+      }else{
+        phaseAutoIdx=Math.max(phaseAutoIdx,ord);
+      }
+      const slot=Math.min(ord-1,Math.max(0,captured.length-1));
+      const phase=captured.length?captured[slot]:null;
       const phaseName=(phase&&phase.name)||c.phaseName||'Phase 1';
-      const zoneNames=phase?(projectData.zones||[]).filter(z=>phase.zoneIds.includes(z.id)).map(z=>z.name).join(', '):(c.zoneNames||'');
+      const zoneNames=phase?(projectData.zones||[]).filter(z=>(phase.zoneIds||[]).includes(z.id)).map(z=>z.name).join(', '):(c.zoneNames||'');
       const screenshot=(phase&&phase.screenshot)||c.screenshot||'';
       return`<div style="padding:0"><div style="height:4px;background:${A}"></div><div style="padding:28px ${PAD} 16px"><div style="font-size:8px;font-weight:700;color:${A};letter-spacing:.2em;text-transform:uppercase;margin-bottom:8px;font-family:'JetBrains Mono',monospace">${c.phaseLabel||'Phase Map'}</div><div style="font-size:22px;font-weight:800;font-family:'${HF}';color:${TX};letter-spacing:-.02em;margin-bottom:6px">${phaseName}</div>${zoneNames?`<div style="font-size:11px;color:#6b7280">Zones: ${zoneNames}</div>`:''}</div>${screenshot?`<div style="padding:0 ${PAD} 28px"><img src="${screenshot}" style="width:100%;border-radius:4px;border:1px solid #e5e7eb"></div>`:`<div style="margin:0 ${PAD} 28px;background:#f5f5f5;border:2px dashed #ddd;height:200px;display:flex;align-items:center;justify-content:center;border-radius:3px"><span style="font-size:11px;color:#aaa;font-family:'JetBrains Mono',monospace">Phase screenshot unavailable</span></div>`}${c.description?`<div style="padding:0 ${PAD} 24px"><div style="font-size:12px;color:#6b7280;line-height:1.7;font-family:'${BF}'">${c.description}</div></div>`:''}</div>`;
     }
