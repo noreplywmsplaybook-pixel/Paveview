@@ -1064,12 +1064,12 @@ select.sc-inp{cursor:pointer;width:40px}
           <button class="btn" id="btn-map-debug-snap" title="Debug only: show before/after vertex snap deltas">Show Snap Changes</button>
           <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
         </div>
-        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Drag the map to pan; use the <strong>Zoom</strong> slider (about 5 ft/px steps). Use <strong>Draw Scan Box</strong> to focus AI on a lot area.</div>
+        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Drag the map to pan. The <strong>Zoom</strong> slider is centered on the zoom when imagery loads (middle = that view): drag left/right to zoom out/in with small steps. Use <strong>Draw Scan Box</strong> to focus AI on a lot area.</div>
         <div class="map-row">
           <label>Zoom</label>
-          <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);flex:0 0 auto">coarse</span>
-          <input type="range" id="map-zoom-slider" min="0" max="1" value="0" step="1" aria-label="Map zoom, about feet per pixel">
-          <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);flex:0 0 auto">fine</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);flex:0 0 auto">out</span>
+          <input type="range" id="map-zoom-slider" min="0" max="1000" value="500" step="1" aria-label="Map zoom relative to loaded view (50 percent = load zoom)">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);flex:0 0 auto">in</span>
           <span id="map-zoom-slider-lbl">—</span>
         </div>
         <div id="map-import-status">Pick a location and click Refresh.</div>
@@ -1555,7 +1555,7 @@ let mapRoiBox=null; // optional scan ROI in detection coords {x,y,w,h}
 let mapRoiDrawState=null; // {startX,startY}
 let mapRoiDrawMode=false; // explicit ROI draw mode toggle
 let waybackManifestFetched=false;
-let mapZoomSliderStepsFt=[];
+let mapZoomBaselineZ=20;
 let mapThrottleTimer=null;
 let lastMapPreviewThrottle=0;
 const MAP_PREVIEW_THROTTLE_MS=72;
@@ -3433,66 +3433,39 @@ function worldPixelToLatLng(x,y,zoomLv){
 function metersPerPixel(lat,zoomLv){
   return (156543.03392*Math.cos(lat*Math.PI/180))/Math.pow(2,zoomLv);
 }
-const MAP_ZOOM_FT_STEP=5;
 const MAP_ZOOM_MIN_Z=14;
 const MAP_ZOOM_MAX_Z=22;
+const MAP_ZOOM_SLIDER_CENTER=500;
+const MAP_ZOOM_SLIDER_MAX=1000;
+const MAP_ZOOM_SLIDER_RANGE=1;
 function mapFeetPerPixel(lat,zoomLv){
   return metersPerPixel(lat,zoomLv)*3.28084;
 }
-function mapZoomFromTargetFeetPerPx(lat,targetFtPx){
-  const ft=Math.max(MAP_ZOOM_FT_STEP,Number(targetFtPx)||MAP_ZOOM_FT_STEP);
-  const mpp=ft/3.28084;
-  const cosLat=Math.cos(lat*Math.PI/180);
-  if(!Number.isFinite(cosLat)||Math.abs(cosLat)<0.02)return MAP_ZOOM_MIN_Z;
-  const zRaw=Math.log2((156543.03392*cosLat)/mpp);
-  if(!Number.isFinite(zRaw))return MAP_ZOOM_MIN_Z;
-  return Math.round(Math.max(MAP_ZOOM_MIN_Z,Math.min(MAP_ZOOM_MAX_Z,zRaw)));
-}
-function rebuildMapZoomSliderSteps(){
-  const lat=Number(mapViewState.lat)||0;
-  const ftFine=mapFeetPerPixel(lat,MAP_ZOOM_MAX_Z);
-  const ftWide=mapFeetPerPixel(lat,MAP_ZOOM_MIN_Z);
-  let minFt=Math.max(MAP_ZOOM_FT_STEP,Math.floor(ftFine/MAP_ZOOM_FT_STEP)*MAP_ZOOM_FT_STEP);
-  let maxFt=Math.max(minFt+MAP_ZOOM_FT_STEP,Math.ceil(ftWide/MAP_ZOOM_FT_STEP)*MAP_ZOOM_FT_STEP);
-  const steps=[];
-  for(let f=maxFt;f>=minFt;f-=MAP_ZOOM_FT_STEP)steps.push(f);
-  mapZoomSliderStepsFt=steps;
-  const slider=document.getElementById('map-zoom-slider');
-  if(!slider)return;
-  slider.min='0';
-  slider.max=String(Math.max(0,steps.length-1));
-  slider.step='1';
-}
 function syncMapZoomSliderToViewState(){
-  rebuildMapZoomSliderSteps();
   const slider=document.getElementById('map-zoom-slider');
   const lbl=document.getElementById('map-zoom-slider-lbl');
-  if(!slider||!mapZoomSliderStepsFt.length)return;
+  if(!slider)return;
+  const z=Number(mapViewState.zoom);
+  const zz=Number.isFinite(z)?z:20;
+  let t=(zz-mapZoomBaselineZ)/MAP_ZOOM_SLIDER_RANGE;
+  t=Math.max(-1,Math.min(1,t));
+  slider.value=String(Math.round(MAP_ZOOM_SLIDER_CENTER+t*MAP_ZOOM_SLIDER_CENTER));
   const lat=Number(mapViewState.lat)||0;
-  const z=Math.round(Number(mapViewState.zoom)||20);
-  const steps=mapZoomSliderStepsFt;
-  let bestIdx=Math.round((steps.length-1)/2);
-  let bestD=1e9;
-  for(let i=0;i<steps.length;i++){
-    const zz=mapZoomFromTargetFeetPerPx(lat,steps[i]);
-    const d=Math.abs(zz-z);
-    if(d<bestD){bestD=d;bestIdx=i;}
-  }
-  slider.value=String(bestIdx);
-  const actFt=mapFeetPerPixel(lat,z);
-  const shownFt=Math.round(actFt/MAP_ZOOM_FT_STEP)*MAP_ZOOM_FT_STEP;
-  if(lbl) lbl.textContent=`~${shownFt} ft/px · z${z} (slider: ${MAP_ZOOM_FT_STEP} ft steps)`;
+  const actFt=mapFeetPerPixel(lat,zz);
+  const shownFt=Math.max(0.01,Math.round(actFt*100)/100);
+  if(lbl) lbl.textContent=`~${shownFt} ft/px · z${zz.toFixed(2)} · 50% = load zoom`;
 }
-function applyMapZoomSliderIndex(idx){
-  const steps=mapZoomSliderStepsFt;
-  if(!steps.length)rebuildMapZoomSliderSteps();
-  const i=Math.min(steps.length-1,Math.max(0,Number(idx)||0));
-  const targetFt=steps[i] ?? MAP_ZOOM_FT_STEP;
+function applyMapZoomSliderFromUi(){
+  const slider=document.getElementById('map-zoom-slider');
+  if(!slider)return;
+  const v=Number(slider.value);
+  const t=(v-MAP_ZOOM_SLIDER_CENTER)/MAP_ZOOM_SLIDER_CENTER;
+  let z=mapZoomBaselineZ+t*MAP_ZOOM_SLIDER_RANGE;
+  z=Math.max(MAP_ZOOM_MIN_Z,Math.min(MAP_ZOOM_MAX_Z,z));
+  mapViewState.zoom=z;
   const lat=mapViewState.lat;
-  const newZ=mapZoomFromTargetFeetPerPx(lat,targetFt);
-  mapViewState.zoom=newZ;
-  const approxFt=Math.round(mapFeetPerPixel(lat,newZ)/MAP_ZOOM_FT_STEP)*MAP_ZOOM_FT_STEP;
-  setImportStatus(`Zoom ~${approxFt} ft/px · level z${newZ} — drag map to pan`);
+  const ft=mapFeetPerPixel(lat,z);
+  setImportStatus(`Zoom ~${ft.toFixed(2)} ft/px · z${z.toFixed(2)} — drag to pan`);
   throttleMapPreview('Updating map zoom…');
 }
 function normalizeLng(lng){
@@ -3586,14 +3559,20 @@ async function ensureWaybackYears(force=false){
 async function drawTilePreview(mode,lat,lng,zoomLv,year){
   const reqAtStart=mapRenderReqId;
   const tileSize=256;
-  const world=latLngToWorldPixel(lat,lng,zoomLv);
+  const z=Math.max(MAP_ZOOM_MIN_Z,Math.min(MAP_ZOOM_MAX_Z,Number(zoomLv)));
+  const zi=Math.min(MAP_ZOOM_MAX_Z,Math.max(MAP_ZOOM_MIN_Z,Math.floor(z)));
+  const zfrac=z-zi;
+  const scaleDraw=Math.pow(2,zfrac);
+  const world=latLngToWorldPixel(lat,lng,z);
   const startX=world.x-mapPreviewCanvas.width/2;
   const startY=world.y-mapPreviewCanvas.height/2;
-  const endX=startX+mapPreviewCanvas.width;
-  const endY=startY+mapPreviewCanvas.height;
-  const minTx=Math.floor(startX/tileSize),maxTx=Math.floor((endX-1)/tileSize);
-  const minTy=Math.floor(startY/tileSize),maxTy=Math.floor((endY-1)/tileSize);
-  const n=Math.pow(2,zoomLv);
+  const startX_zi=startX/scaleDraw;
+  const startY_zi=startY/scaleDraw;
+  const endX_zi=startX_zi+mapPreviewCanvas.width/scaleDraw;
+  const endY_zi=startY_zi+mapPreviewCanvas.height/scaleDraw;
+  const minTx=Math.floor(startX_zi/tileSize),maxTx=Math.floor((endX_zi-1)/tileSize);
+  const minTy=Math.floor(startY_zi/tileSize),maxTy=Math.floor((endY_zi-1)/tileSize);
+  const n=Math.pow(2,zi);
   const off=document.createElement('canvas');
   off.width=mapPreviewCanvas.width;
   off.height=mapPreviewCanvas.height;
@@ -3605,22 +3584,26 @@ async function drawTilePreview(mode,lat,lng,zoomLv,year){
     if(ty<0||ty>=n)continue;
     for(let tx=minTx;tx<=maxTx;tx++){
       const wrapped=((tx%n)+n)%n;
-      const dx=tx*tileSize-startX;
-      const dy=ty*tileSize-startY;
+      const dx=tx*tileSize-startX_zi;
+      const dy=ty*tileSize-startY_zi;
+      const screenDx=dx*scaleDraw;
+      const screenDy=dy*scaleDraw;
+      const drawW=tileSize*scaleDraw;
+      const drawH=tileSize*scaleDraw;
       let url='';
       let cacheKey='';
       if(mode==='historical'){
         const rel=waybackByYear?.[String(year||'').trim()];
         if(!rel||!rel.m)continue;
-        url=`https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/${rel.m}/${zoomLv}/${ty}/${wrapped}`;
-        cacheKey=`h:${year}:${zoomLv}:${ty}:${wrapped}`;
+        url=`https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/${rel.m}/${zi}/${ty}/${wrapped}`;
+        cacheKey=`h:${year}:${zi}:${ty}:${wrapped}`;
       }else{
-        url=`https://mt1.google.com/vt/lyrs=s&x=${wrapped}&y=${ty}&z=${zoomLv}`;
-        cacheKey=`g:${zoomLv}:${ty}:${wrapped}`;
+        url=`https://mt1.google.com/vt/lyrs=s&x=${wrapped}&y=${ty}&z=${zi}`;
+        cacheKey=`g:${zi}:${ty}:${wrapped}`;
       }
       tasks.push(getCachedTile(cacheKey,url).then(img=>{
         if(reqAtStart!==mapRenderReqId)return;
-        try{octx.drawImage(img,dx,dy,tileSize,tileSize);}catch(_){}
+        try{octx.drawImage(img,screenDx,screenDy,drawW,drawH);}catch(_){}
       }).catch(()=>{}));
     }
   }
@@ -3679,7 +3662,7 @@ function drawMapOverlay(){
   const modeLabel=debugBwMode
     ? ((mapViewState.mode==='historical'?`Historical ${mapViewState.year||''}`:'Google Current')+' · DEBUG B/W')
     : (mapViewState.mode==='historical'?`Historical ${mapViewState.year||''}`:'Google Current');
-  mapPreviewCtx.fillText(`${modeLabel} · z${mapViewState.zoom} · ${mapViewState.lat.toFixed(5)}, ${mapViewState.lng.toFixed(5)}`,14,24);
+  mapPreviewCtx.fillText(`${modeLabel} · z${Number(mapViewState.zoom).toFixed(2)} · ${mapViewState.lat.toFixed(5)}, ${mapViewState.lng.toFixed(5)}`,14,24);
   if(yearLines.length){
     mapPreviewCtx.fillText('Available historical years:',14,38);
     yearLines.forEach((ln,i)=>mapPreviewCtx.fillText(ln,14,50+i*12));
@@ -3849,8 +3832,9 @@ async function loadMapPreview(opts={}){
     if(tiled===false)return;
     drawMapOverlay();
     syncMapInputsFromState();
+    if(opts.syncMapZoomBaseline)mapZoomBaselineZ=Number(mapViewState.zoom);
     syncMapZoomSliderToViewState();
-    setImportStatus('Drag to pan; use the zoom slider (5 ft/px steps), then click "Use Imagery".');
+    setImportStatus('Drag to pan; use the zoom slider (50% = zoom when this view loaded), then click "Use Imagery".');
   }catch(e){
     console.error(e);
     if(reqId!==mapRenderReqId)return;
@@ -3873,7 +3857,7 @@ async function geocodeMapSearch(){
     mapViewState.lat=loc.lat;
     mapViewState.lng=loc.lng;
     syncMapInputsFromState();
-    await loadMapPreview({fromInputs:false,reason:'Loading searched location…'});
+    await loadMapPreview({fromInputs:false,syncMapZoomBaseline:true,reason:'Loading searched location…'});
   }catch(e){
     console.error(e);
     setImportStatus('Location search failed. Try a full address.',true);
@@ -4199,7 +4183,7 @@ document.getElementById('btn-import-source-map').addEventListener('click',async(
   updateHistoricalControls();
   readMapInputsIntoState();
   if(mapViewState.mode==='historical'){try{await ensureWaybackYears();}catch(e){console.warn(e);}}
-  await loadMapPreview({fromInputs:false});
+  await loadMapPreview({fromInputs:false,syncMapZoomBaseline:true});
 });
 importFileInput.addEventListener('change',e=>{if(e.target.files[0])startImportFromFile(e.target.files[0]);e.target.value='';});
 btnImportBack.addEventListener('click',()=>setPageModalView('source'));
@@ -4306,7 +4290,7 @@ mapImageryModeSel.addEventListener('change',async()=>{
     populateWaybackYearsDropdown();
     updateHistoricalControls();
   }
-  await loadMapPreview({fromInputs:true});
+  await loadMapPreview({fromInputs:true,syncMapZoomBaseline:true});
 });
 const mapHistoricalYearEl=document.getElementById('map-historical-year');
 if(mapHistoricalYearEl){
@@ -4315,7 +4299,7 @@ if(mapHistoricalYearEl){
       if(String(k).startsWith('h:')) mapTileImageCache.delete(k);
     }
     mapViewState.year=mapHistoricalYearEl.value;
-    loadMapPreview({fromInputs:false,reason:'Loading selected year…'});
+    loadMapPreview({fromInputs:false,syncMapZoomBaseline:true,reason:'Loading selected year…'});
   });
 }
 btnMapCapture.addEventListener('click',captureMapImageryIntoPlan);
@@ -4345,7 +4329,7 @@ mapPreviewCanvas.addEventListener('wheel',e=>{
 const mapZoomSliderEl=document.getElementById('map-zoom-slider');
 if(mapZoomSliderEl){
   const onMapZoomSlider=()=>{
-    applyMapZoomSliderIndex(mapZoomSliderEl.value);
+    applyMapZoomSliderFromUi();
   };
   mapZoomSliderEl.addEventListener('input',onMapZoomSlider);
   mapZoomSliderEl.addEventListener('change',onMapZoomSlider);
