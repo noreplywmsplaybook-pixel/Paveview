@@ -1,6 +1,14 @@
 const DEFAULT_SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
-const LIFETIME_PRODUCT_KEY = 'takeoff';
-const LIFETIME_AMOUNT_CENTS = 500000;
+const PLAN_BY_AMOUNT_CENTS = {
+  9999: { product: 'takeoff_tier1_monthly', label: 'Tier 1 Monthly' },
+  99900: { product: 'takeoff_tier1_annual', label: 'Tier 1 Annual' },
+  19999: { product: 'takeoff_tier2_monthly', label: 'Tier 2 Monthly' },
+  199999: { product: 'takeoff_tier2_annual', label: 'Tier 2 Annual' },
+  39999: { product: 'takeoff_tier3_monthly', label: 'Tier 3 Monthly' },
+  399999: { product: 'takeoff_tier3_annual', label: 'Tier 3 Annual' },
+  // Backward compatibility for prior lifetime checkouts.
+  500000: { product: 'takeoff', label: 'Legacy Lifetime' }
+};
 
 function sendJson(res, statusCode, payload) {
   res.statusCode = statusCode;
@@ -73,7 +81,7 @@ async function verifyPaidStripeSession({ stripeSecretKey, email, sessionId }) {
   const normalizedEmail = normalizeEmail(email);
 
   if (sessionId) {
-    const byId = await stripeGet(`/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, stripeSecretKey);
+    const byId = await stripeGet(`/v1/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=line_items.data.price`, stripeSecretKey);
     if (!byId.ok) {
       return { error: byId.payload?.error?.message || 'Unable to verify Stripe session.' };
     }
@@ -105,7 +113,11 @@ async function verifyPaidStripeSession({ stripeSecretKey, email, sessionId }) {
   if (!matched) {
     return { error: 'No paid Stripe checkout found for this email yet.' };
   }
-  return { session: matched };
+  const byId = await stripeGet(`/v1/checkout/sessions/${encodeURIComponent(String(matched.id || ''))}?expand[]=line_items.data.price`, stripeSecretKey);
+  if (!byId.ok || !byId.payload) {
+    return { error: byId.payload?.error?.message || 'Unable to load Stripe session details.' };
+  }
+  return { session: byId.payload };
 }
 
 async function createAuthUser({ email, password, name, serviceRoleKey }) {
@@ -121,11 +133,32 @@ async function createAuthUser({ email, password, name, serviceRoleKey }) {
   });
 }
 
-async function insertLifetimePurchase({ userId, stripePaymentIntent, serviceRoleKey }) {
+function resolvePurchasedPlan(session) {
+  const lineItems = Array.isArray(session?.line_items?.data) ? session.line_items.data : [];
+  for (const item of lineItems) {
+    const unitAmount = Number(item?.price?.unit_amount || item?.amount_subtotal || 0);
+    if (PLAN_BY_AMOUNT_CENTS[unitAmount]) {
+      return { ...PLAN_BY_AMOUNT_CENTS[unitAmount], amountCents: unitAmount };
+    }
+  }
+
+  const subtotal = Number(session?.amount_subtotal || 0);
+  if (PLAN_BY_AMOUNT_CENTS[subtotal]) {
+    return { ...PLAN_BY_AMOUNT_CENTS[subtotal], amountCents: subtotal };
+  }
+  const total = Number(session?.amount_total || 0);
+  if (PLAN_BY_AMOUNT_CENTS[total]) {
+    return { ...PLAN_BY_AMOUNT_CENTS[total], amountCents: total };
+  }
+
+  return null;
+}
+
+async function insertPaidPurchase({ userId, product, amountPaidCents, stripePaymentIntent, serviceRoleKey }) {
   const baseRecord = {
     user_id: userId,
-    product: LIFETIME_PRODUCT_KEY,
-    amount_paid: LIFETIME_AMOUNT_CENTS,
+    product,
+    amount_paid: amountPaidCents,
     status: 'active'
   };
   const withStripe = stripePaymentIntent ? { ...baseRecord, stripe_payment_intent: stripePaymentIntent } : baseRecord;
@@ -182,6 +215,12 @@ async function handlePost(req, res, serviceRoleKey, stripeSecretKey) {
     return;
   }
 
+  const purchasedPlan = resolvePurchasedPlan(verified.session);
+  if (!purchasedPlan) {
+    sendJson(res, 422, { error: 'Could not determine purchased plan from Stripe session.' });
+    return;
+  }
+
   const created = await createAuthUser({ email, password, name, serviceRoleKey });
   if (!created.ok) {
     const msg = created.payload?.msg || created.payload?.message || 'Failed to create account.';
@@ -214,10 +253,16 @@ async function handlePost(req, res, serviceRoleKey, stripeSecretKey) {
   });
 
   const stripePaymentIntent = String(verified.session?.payment_intent || '').trim() || null;
-  const purchaseInsert = await insertLifetimePurchase({ userId, stripePaymentIntent, serviceRoleKey });
+  const purchaseInsert = await insertPaidPurchase({
+    userId,
+    product: purchasedPlan.product,
+    amountPaidCents: purchasedPlan.amountCents,
+    stripePaymentIntent,
+    serviceRoleKey
+  });
   if (!purchaseInsert.ok) {
     sendJson(res, purchaseInsert.status || 500, {
-      error: purchaseInsert.payload?.message || 'Account created, but failed to activate lifetime access.'
+      error: purchaseInsert.payload?.message || 'Account created, but failed to activate paid subscription.'
     });
     return;
   }
@@ -229,7 +274,7 @@ async function handlePost(req, res, serviceRoleKey, stripeSecretKey) {
       email,
       full_name: name || ''
     },
-    product: LIFETIME_PRODUCT_KEY
+    product: purchasedPlan.product
   });
 }
 

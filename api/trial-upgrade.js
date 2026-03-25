@@ -1,7 +1,15 @@
 const DEFAULT_SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const TRIAL_PRODUCT_KEY = 'takeoff_trial_24h';
-const LIFETIME_PRODUCT_KEY = 'takeoff';
-const LIFETIME_AMOUNT_CENTS = 500000;
+const LEGACY_LIFETIME_PRODUCT_KEY = 'takeoff';
+const LEGACY_LIFETIME_AMOUNT_CENTS = 500000;
+const PLAN_BY_AMOUNT_CENTS = {
+  9999: { product: 'takeoff_tier1_monthly', amount_paid: 9999 },
+  99900: { product: 'takeoff_tier1_annual', amount_paid: 99900 },
+  19999: { product: 'takeoff_tier2_monthly', amount_paid: 19999 },
+  199999: { product: 'takeoff_tier2_annual', amount_paid: 199999 },
+  39999: { product: 'takeoff_tier3_monthly', amount_paid: 39999 },
+  399999: { product: 'takeoff_tier3_annual', amount_paid: 399999 }
+};
 
 function sendJson(res, statusCode, payload) {
   res.statusCode = statusCode;
@@ -158,11 +166,22 @@ async function getVerifiedPaidSession({ stripeSecretKey, sessionId, email }) {
   return { session: matched };
 }
 
-async function insertPaidPurchase({ userId, stripePaymentIntent, serviceRoleKey }) {
+function purchaseRecordFromSession(session) {
+  const amount = Number(session?.amount_total || 0);
+  const mapped = PLAN_BY_AMOUNT_CENTS[amount];
+  if (mapped) return mapped;
+  return {
+    product: LEGACY_LIFETIME_PRODUCT_KEY,
+    amount_paid: amount > 0 ? amount : LEGACY_LIFETIME_AMOUNT_CENTS
+  };
+}
+
+async function insertPaidPurchase({ userId, stripePaymentIntent, serviceRoleKey, session }) {
+  const resolved = purchaseRecordFromSession(session);
   const baseRecord = {
     user_id: userId,
-    product: LIFETIME_PRODUCT_KEY,
-    amount_paid: LIFETIME_AMOUNT_CENTS,
+    product: resolved.product,
+    amount_paid: resolved.amount_paid,
     status: 'active'
   };
 
@@ -259,7 +278,12 @@ async function handlePost(req, res, serviceRoleKey, stripeSecretKey) {
   );
 
   const stripePaymentIntent = String(verified.session?.payment_intent || '').trim() || null;
-  const insertPaid = await insertPaidPurchase({ userId, stripePaymentIntent, serviceRoleKey });
+  const insertPaid = await insertPaidPurchase({
+    userId,
+    stripePaymentIntent,
+    serviceRoleKey,
+    session: verified.session
+  });
   if (!insertPaid.ok) {
     sendJson(res, insertPaid.status || 500, {
       error: insertPaid.payload?.message || 'Payment verified, but failed to activate paid lifetime access.'
@@ -273,7 +297,7 @@ async function handlePost(req, res, serviceRoleKey, stripeSecretKey) {
     upgraded: true,
     user_id: userId,
     purchase_id: insertedRecord?.id || null,
-    product: LIFETIME_PRODUCT_KEY
+    product: insertedRecord?.product || purchaseRecordFromSession(verified.session).product
   });
 }
 
