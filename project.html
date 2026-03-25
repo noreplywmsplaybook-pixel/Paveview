@@ -451,15 +451,42 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
           <button class="btn ghost" id="btn-load-defaults" style="padding:2px 10px;font-size:8px" onclick="loadAccountDefaults()">↓ Load Account Defaults</button>
         </div>
         <div id="pricing-defaults-banner" style="display:none;padding:8px 14px;background:var(--ok-bg);border-bottom:1px solid var(--ok-border);font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ok)">✓ Account defaults loaded — override any field below for this job</div>
-        <div class="frow three">
-          <div class="field"><div class="flbl">Asphalt ($/ton) <span class="req">*</span></div><input class="finp" type="number" id="f-pa" placeholder="85"></div>
-          <div class="field"><div class="flbl">Base agg ($/ton)</div><input class="finp" type="number" id="f-pb" placeholder="22"></div>
-          <div class="field"><div class="flbl">Labor ($/sq ft)</div><input class="finp" type="number" id="f-pl" placeholder="1.25" step=".05"></div>
+        <div id="pricing-jobtype-note" style="padding:8px 14px;border-bottom:1px solid var(--border2);font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3)"></div>
+        <div id="pricing-group-paving">
+          <div class="frow three">
+            <div class="field"><div class="flbl">Asphalt ($/ton) <span class="req">*</span></div><input class="finp" type="number" id="f-pa" placeholder="85"></div>
+            <div class="field"><div class="flbl">Base agg ($/ton)</div><input class="finp" type="number" id="f-pb" placeholder="22"></div>
+            <div class="field"><div class="flbl">Labor ($/sq ft)</div><input class="finp" type="number" id="f-pl" placeholder="1.25" step=".05"></div>
+          </div>
+          <div class="frow three">
+            <div class="field"><div class="flbl">Asphalt depth (in)</div><input class="finp" type="number" id="f-depth" placeholder="3" step=".5"></div>
+            <div class="field"><div class="flbl">Base depth (in)</div><input class="finp" type="number" id="f-base" placeholder="6"></div>
+            <div class="field"><div class="flbl">Compaction factor</div><input class="finp" type="number" id="f-comp" placeholder="1.05" step=".01"></div>
+          </div>
         </div>
-        <div class="frow three">
-          <div class="field"><div class="flbl">Asphalt depth (in)</div><input class="finp" type="number" id="f-depth" placeholder="3" step=".5"></div>
-          <div class="field"><div class="flbl">Base depth (in)</div><input class="finp" type="number" id="f-base" placeholder="6"></div>
-          <div class="field"><div class="flbl">Compaction factor</div><input class="finp" type="number" id="f-comp" placeholder="1.05" step=".01"></div>
+        <div id="pricing-group-sealcoat" style="display:none">
+          <div class="frow three">
+            <div class="field"><div class="flbl">Sealcoat Labor ($/sq ft) <span class="req">*</span></div><input class="finp" type="number" id="f-pseal" placeholder="0.18" step=".01"></div>
+            <div class="field"><div class="flbl">Crack Fill ($/lin ft)</div><input class="finp" type="number" id="f-pcrack" placeholder="2.50" step=".25"></div>
+            <div class="field"><div class="flbl">Sealer ($/gal)</div><input class="finp" type="number" id="f-sealer-gal" placeholder="4.50" step=".01"></div>
+          </div>
+          <div class="frow three">
+            <div class="field"><div class="flbl">Coverage (sf/gal)</div><input class="finp" type="number" id="f-sealer-cov" placeholder="80" step="1"></div>
+            <div class="field"><div class="flbl">Coats</div><input class="finp" type="number" id="f-sealer-coats" placeholder="2" step="1"></div>
+            <div class="field"></div>
+          </div>
+        </div>
+        <div id="pricing-group-striping" style="display:none">
+          <div class="frow three">
+            <div class="field"><div class="flbl">Standard Stall ($/stall) <span class="req">*</span></div><input class="finp" type="number" id="f-pstripe" placeholder="8" step=".25"></div>
+            <div class="field"><div class="flbl">ADA Stall ($/stall)</div><input class="finp" type="number" id="f-pada" placeholder="25" step=".25"></div>
+            <div class="field"><div class="flbl">Linear Striping ($/lin ft)</div><input class="finp" type="number" id="f-plin" placeholder="3" step=".25"></div>
+          </div>
+          <div class="frow three">
+            <div class="field"><div class="flbl">Crosswalk / ADA Hatch ($/sq ft)</div><input class="finp" type="number" id="f-pcross" placeholder="2.50" step=".25"></div>
+            <div class="field"></div>
+            <div class="field"></div>
+          </div>
         </div>
         <div class="frow">
           <div class="field"><div class="flbl">Scope Notes / Exclusions</div><textarea class="finp" id="f-scope" placeholder="e.g. Excludes milling. Includes 2 coats sealcoat on north lot."></textarea></div>
@@ -865,13 +892,25 @@ function toggleThemeProj(){
   document.getElementById('btn-edit-takeoff').onclick=()=>window.location.href='app.html?project='+projectId;
   document.getElementById('btn-delete').onclick=deleteProject;
   // Pre-fill pricing from projectData
-  ['pa','pb','pl','depth','base','comp'].forEach(k=>{if(projectData[k])sv2('f-'+k,projectData[k]);});
+  const projectPricingMap={
+    pa:'f-pa',pb:'f-pb',pl:'f-pl',depth:'f-depth',base:'f-base',comp:'f-comp',
+    plin:'f-plin',pseal:'f-pseal',pcrack:'f-pcrack',pstripe:'f-pstripe',pada:'f-pada',pcross:'f-pcross',
+    sealerGal:'f-sealer-gal',sealerCov:'f-sealer-cov',sealerCoats:'f-sealer-coats'
+  };
+  Object.entries(projectPricingMap).forEach(([k,id])=>{
+    if(projectData[k]!==undefined&&projectData[k]!==null&&projectData[k]!=='')sv2(id,projectData[k]);
+  });
   await syncThemesFromIndexedDb();
   loadSavedDetails();
+  syncPricingFieldsByJobType();
   // Auto-load account defaults if no pricing has been set yet
-  if(!gv('f-pa')&&!projectData.pa){
+  if(!hasAnyPricingData()){
     const pricing=JSON.parse(localStorage.getItem('paveview_pricing')||'{}');
-    const map={pa:'f-pa',pb:'f-pb',pl:'f-pl',depth:'f-depth',base:'f-base',comp:'f-comp'};
+    const map={
+      pa:'f-pa',pb:'f-pb',pl:'f-pl',depth:'f-depth',base:'f-base',comp:'f-comp',
+      plin:'f-plin',pseal:'f-pseal',pcrack:'f-pcrack',pstripe:'f-pstripe',pada:'f-pada',pcross:'f-pcross',
+      sealerGal:'f-sealer-gal',sealerCov:'f-sealer-cov',sealerCoats:'f-sealer-coats'
+    };
     Object.entries(map).forEach(([k,id])=>{if(pricing[k])sv2(id,pricing[k]);});
   }
   document.getElementById('auth-check').remove();
@@ -1149,12 +1188,22 @@ function captureSiteMapScreenshot(){
 // ── SAVE / LOAD ──
 function gv(id){return document.getElementById(id)?.value?.trim()||'';}
 function sv2(id,val){const el=document.getElementById(id);if(el&&val!==undefined&&val!==null)el.value=val;}
+function hasAnyPricingData(){
+  const fields=[
+    ['pa','f-pa'],['pb','f-pb'],['pl','f-pl'],['depth','f-depth'],['base','f-base'],['comp','f-comp'],
+    ['plin','f-plin'],['pseal','f-pseal'],['pcrack','f-pcrack'],['pstripe','f-pstripe'],['pada','f-pada'],['pcross','f-pcross'],
+    ['sealerGal','f-sealer-gal'],['sealerCov','f-sealer-cov'],['sealerCoats','f-sealer-coats']
+  ];
+  return fields.some(([k,id])=>Boolean(gv(id)||projectData[k]));
+}
 
 function getDetails(){
   return{
     clientName:gv('f-client-name'),contact:gv('f-contact'),phone:gv('f-phone'),email:gv('f-email'),
     address:gv('f-address'),jobNum:gv('f-job-num'),
     pa:gv('f-pa'),pb:gv('f-pb'),pl:gv('f-pl'),depth:gv('f-depth'),base:gv('f-base'),comp:gv('f-comp'),
+    plin:gv('f-plin'),pseal:gv('f-pseal'),pcrack:gv('f-pcrack'),pstripe:gv('f-pstripe'),
+    pada:gv('f-pada'),pcross:gv('f-pcross'),sealerGal:gv('f-sealer-gal'),sealerCov:gv('f-sealer-cov'),sealerCoats:gv('f-sealer-coats'),
     scope:gv('f-scope'),conditions:gv('f-conditions'),
     estimator:gv('f-estimator'),pm:gv('f-pm'),startDate:gv('f-start-date'),
     plant:gv('f-plant'),plantContact:gv('f-plant-contact'),mix:gv('f-mix'),
@@ -1178,7 +1227,9 @@ function loadSavedDetails(){
   const fieldMap={
     'f-client-name':'clientName','f-contact':'contact','f-phone':'phone','f-email':'email',
     'f-address':'address','f-job-num':'jobNum','f-pa':'pa','f-pb':'pb','f-pl':'pl',
-    'f-depth':'depth','f-base':'base','f-comp':'comp','f-scope':'scope','f-conditions':'conditions',
+    'f-depth':'depth','f-base':'base','f-comp':'comp','f-plin':'plin','f-pseal':'pseal','f-pcrack':'pcrack',
+    'f-pstripe':'pstripe','f-pada':'pada','f-pcross':'pcross','f-sealer-gal':'sealerGal','f-sealer-cov':'sealerCov','f-sealer-coats':'sealerCoats',
+    'f-scope':'scope','f-conditions':'conditions',
     'f-estimator':'estimator','f-pm':'pm','f-start-date':'startDate',
     'f-plant':'plant','f-plant-contact':'plantContact','f-mix':'mix',
     'f-trucking':'trucking','f-trucking-contact':'truckingContact','f-dump':'dump',
@@ -1246,9 +1297,13 @@ document.getElementById('btn-save-details').onclick=()=>{
 // ── CONFIRM ──
 document.getElementById('btn-confirm').onclick=()=>{
   const missing=[];
+  const selectedTypes=selectedJobTypesForCalc();
+  const hasType=(t)=>selectedTypes.includes(t);
   if(!gv('f-client-name'))missing.push('Client Name');
   if(!gv('f-address'))missing.push('Job Address');
-  if(!gv('f-pa')&&!projectData.pa)missing.push('Asphalt pricing ($/ton)');
+  if(hasType('paving')&&!gv('f-pa')&&!projectData.pa)missing.push('Asphalt pricing ($/ton)');
+  if(hasType('sealcoat')&&!gv('f-pseal')&&!projectData.pseal)missing.push('Sealcoat labor pricing ($/sq ft)');
+  if(hasType('striping')&&!gv('f-pstripe')&&!projectData.pstripe)missing.push('Striping pricing ($/stall)');
   if(missing.length){alert('Please fill in:\n• '+missing.join('\n• '));return;}
   confirmed=true;
   saveDetails();
@@ -1707,7 +1762,11 @@ function toggleMat(i){const el=document.getElementById('mat-'+i);if(el)el.style.
 // ── ACCOUNT DEFAULTS ──
 function loadAccountDefaults(){
   const pricing=JSON.parse(localStorage.getItem('paveview_pricing')||'{}');
-  const map={pa:'f-pa',pb:'f-pb',pl:'f-pl',depth:'f-depth',base:'f-base',comp:'f-comp'};
+  const map={
+    pa:'f-pa',pb:'f-pb',pl:'f-pl',depth:'f-depth',base:'f-base',comp:'f-comp',
+    plin:'f-plin',pseal:'f-pseal',pcrack:'f-pcrack',pstripe:'f-pstripe',pada:'f-pada',pcross:'f-pcross',
+    sealerGal:'f-sealer-gal',sealerCov:'f-sealer-cov',sealerCoats:'f-sealer-coats'
+  };
   let loaded=false;
   Object.entries(map).forEach(([k,id])=>{
     if(pricing[k]){sv2(id,pricing[k]);loaded=true;}
@@ -1759,6 +1818,21 @@ function selectedJobTypesForCalc(){
   if(jt==='striping-only')return['striping'];
   if(['paving','sealcoat','striping'].includes(jt))return[jt];
   return['paving'];
+}
+function syncPricingFieldsByJobType(){
+  const types=selectedJobTypesForCalc();
+  const has=(t)=>types.includes(t);
+  const labels={paving:'Paving',sealcoat:'Sealcoating',striping:'Line Striping'};
+  const note=document.getElementById('pricing-jobtype-note');
+  if(note){
+    note.textContent='Showing pricing for: '+types.map(t=>labels[t]||'Paving').join(', ');
+  }
+  const pavingGroup=document.getElementById('pricing-group-paving');
+  const sealcoatGroup=document.getElementById('pricing-group-sealcoat');
+  const stripingGroup=document.getElementById('pricing-group-striping');
+  if(pavingGroup)pavingGroup.style.display=has('paving')?'block':'none';
+  if(sealcoatGroup)sealcoatGroup.style.display=has('sealcoat')?'block':'none';
+  if(stripingGroup)stripingGroup.style.display=has('striping')?'block':'none';
 }
 function getCalc(){
   const scale=sc();
