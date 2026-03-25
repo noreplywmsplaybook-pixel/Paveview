@@ -458,6 +458,8 @@ select.sc-inp{cursor:pointer;width:40px}
 #map-search{min-width:220px;flex:1}
 #map-search{min-width:260px}
 #map-historical-year{min-width:96px}
+#map-zoom-slider{flex:1;min-width:120px;max-width:340px;accent-color:var(--accent)}
+#map-zoom-slider-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text2);min-width:120px;white-space:nowrap}
 #map-import-status{
   font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);
   border:1px solid var(--border);background:var(--surface2);padding:6px 8px;margin-bottom:8px;min-height:30px;
@@ -1062,7 +1064,14 @@ select.sc-inp{cursor:pointer;width:40px}
           <button class="btn" id="btn-map-debug-snap" title="Debug only: show before/after vertex snap deltas">Show Snap Changes</button>
           <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
         </div>
-        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Use <strong>Draw Scan Box</strong> to focus zoom phases on a selected lot area.</div>
+        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Drag the map to pan; use the <strong>Zoom</strong> slider (about 5 ft/px steps). Use <strong>Draw Scan Box</strong> to focus AI on a lot area.</div>
+        <div class="map-row">
+          <label>Zoom</label>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);flex:0 0 auto">coarse</span>
+          <input type="range" id="map-zoom-slider" min="0" max="1" value="0" step="1" aria-label="Map zoom, about feet per pixel">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);flex:0 0 auto">fine</span>
+          <span id="map-zoom-slider-lbl">—</span>
+        </div>
         <div id="map-import-status">Pick a location and click Refresh.</div>
         <canvas id="map-preview" width="1024" height="1024"></canvas>
       </div>
@@ -1545,11 +1554,8 @@ let mapRoiDragState=null; // {mode:'new'|'move'|'resize',edge?,startX,startY,ori
 let mapRoiBox=null; // optional scan ROI in detection coords {x,y,w,h}
 let mapRoiDrawState=null; // {startX,startY}
 let mapRoiDrawMode=false; // explicit ROI draw mode toggle
-let mapWheelAccum=0;
-let mapWheelRaf=0;
-let mapWheelClientX=0,mapWheelClientY=0;
-const MAP_WHEEL_ZOOM_THRESHOLD=92;
 let waybackManifestFetched=false;
+let mapZoomSliderStepsFt=[];
 let mapThrottleTimer=null;
 let lastMapPreviewThrottle=0;
 const MAP_PREVIEW_THROTTLE_MS=72;
@@ -3357,6 +3363,7 @@ function setPageModalView(view){
     populateWaybackYearsDropdown();
     updateHistoricalControls();
     void ensureWaybackYears(false);
+    syncMapZoomSliderToViewState();
   }
 }
 
@@ -3425,6 +3432,68 @@ function worldPixelToLatLng(x,y,zoomLv){
 }
 function metersPerPixel(lat,zoomLv){
   return (156543.03392*Math.cos(lat*Math.PI/180))/Math.pow(2,zoomLv);
+}
+const MAP_ZOOM_FT_STEP=5;
+const MAP_ZOOM_MIN_Z=14;
+const MAP_ZOOM_MAX_Z=22;
+function mapFeetPerPixel(lat,zoomLv){
+  return metersPerPixel(lat,zoomLv)*3.28084;
+}
+function mapZoomFromTargetFeetPerPx(lat,targetFtPx){
+  const ft=Math.max(MAP_ZOOM_FT_STEP,Number(targetFtPx)||MAP_ZOOM_FT_STEP);
+  const mpp=ft/3.28084;
+  const cosLat=Math.cos(lat*Math.PI/180);
+  if(!Number.isFinite(cosLat)||Math.abs(cosLat)<0.02)return MAP_ZOOM_MIN_Z;
+  const zRaw=Math.log2((156543.03392*cosLat)/mpp);
+  if(!Number.isFinite(zRaw))return MAP_ZOOM_MIN_Z;
+  return Math.round(Math.max(MAP_ZOOM_MIN_Z,Math.min(MAP_ZOOM_MAX_Z,zRaw)));
+}
+function rebuildMapZoomSliderSteps(){
+  const lat=Number(mapViewState.lat)||0;
+  const ftFine=mapFeetPerPixel(lat,MAP_ZOOM_MAX_Z);
+  const ftWide=mapFeetPerPixel(lat,MAP_ZOOM_MIN_Z);
+  let minFt=Math.max(MAP_ZOOM_FT_STEP,Math.floor(ftFine/MAP_ZOOM_FT_STEP)*MAP_ZOOM_FT_STEP);
+  let maxFt=Math.max(minFt+MAP_ZOOM_FT_STEP,Math.ceil(ftWide/MAP_ZOOM_FT_STEP)*MAP_ZOOM_FT_STEP);
+  const steps=[];
+  for(let f=maxFt;f>=minFt;f-=MAP_ZOOM_FT_STEP)steps.push(f);
+  mapZoomSliderStepsFt=steps;
+  const slider=document.getElementById('map-zoom-slider');
+  if(!slider)return;
+  slider.min='0';
+  slider.max=String(Math.max(0,steps.length-1));
+  slider.step='1';
+}
+function syncMapZoomSliderToViewState(){
+  rebuildMapZoomSliderSteps();
+  const slider=document.getElementById('map-zoom-slider');
+  const lbl=document.getElementById('map-zoom-slider-lbl');
+  if(!slider||!mapZoomSliderStepsFt.length)return;
+  const lat=Number(mapViewState.lat)||0;
+  const z=Math.round(Number(mapViewState.zoom)||20);
+  const steps=mapZoomSliderStepsFt;
+  let bestIdx=Math.round((steps.length-1)/2);
+  let bestD=1e9;
+  for(let i=0;i<steps.length;i++){
+    const zz=mapZoomFromTargetFeetPerPx(lat,steps[i]);
+    const d=Math.abs(zz-z);
+    if(d<bestD){bestD=d;bestIdx=i;}
+  }
+  slider.value=String(bestIdx);
+  const actFt=mapFeetPerPixel(lat,z);
+  const shownFt=Math.round(actFt/MAP_ZOOM_FT_STEP)*MAP_ZOOM_FT_STEP;
+  if(lbl) lbl.textContent=`~${shownFt} ft/px · z${z} (slider: ${MAP_ZOOM_FT_STEP} ft steps)`;
+}
+function applyMapZoomSliderIndex(idx){
+  const steps=mapZoomSliderStepsFt;
+  if(!steps.length)rebuildMapZoomSliderSteps();
+  const i=Math.min(steps.length-1,Math.max(0,Number(idx)||0));
+  const targetFt=steps[i] ?? MAP_ZOOM_FT_STEP;
+  const lat=mapViewState.lat;
+  const newZ=mapZoomFromTargetFeetPerPx(lat,targetFt);
+  mapViewState.zoom=newZ;
+  const approxFt=Math.round(mapFeetPerPixel(lat,newZ)/MAP_ZOOM_FT_STEP)*MAP_ZOOM_FT_STEP;
+  setImportStatus(`Zoom ~${approxFt} ft/px · level z${newZ} — drag map to pan`);
+  throttleMapPreview('Updating map zoom…');
 }
 function normalizeLng(lng){
   let v=lng;
@@ -3780,7 +3849,8 @@ async function loadMapPreview(opts={}){
     if(tiled===false)return;
     drawMapOverlay();
     syncMapInputsFromState();
-    setImportStatus('Drag to pan, scroll to zoom, then click "Use Imagery".');
+    syncMapZoomSliderToViewState();
+    setImportStatus('Drag to pan; use the zoom slider (5 ft/px steps), then click "Use Imagery".');
   }catch(e){
     console.error(e);
     if(reqId!==mapRenderReqId)return;
@@ -4254,9 +4324,8 @@ if(btnMapAiDetect)btnMapAiDetect.addEventListener('click',runRoboflowDetection);
 
 mapPreviewCanvas.addEventListener('wheel',e=>{
   if(pageModalView!=='map')return;
-  if(mapVectorDrawState.active)return;
-  e.preventDefault();
   if(mapReviewState.active){
+    e.preventDefault();
     const rect=mapPreviewCanvas.getBoundingClientRect();
     const {x:sx,y:sy}=mapPointerToCanvasPx(e.clientX,e.clientY,rect);
     const oldScale=mapReviewState.scale;
@@ -4271,42 +4340,16 @@ mapPreviewCanvas.addEventListener('wheel',e=>{
     setImportStatus('Review mode: zooming detections');
     return;
   }
-  let mult=1;
-  if(e.deltaMode===1) mult=14;
-  else if(e.deltaMode===2) mult=420;
-  mapWheelAccum+=Number(e.deltaY||0)*mult;
-  mapWheelClientX=e.clientX;
-  mapWheelClientY=e.clientY;
-  if(mapWheelRaf)return;
-  mapWheelRaf=requestAnimationFrame(()=>{
-    mapWheelRaf=0;
-    let acc=mapWheelAccum;
-    const th=MAP_WHEEL_ZOOM_THRESHOLD;
-    if(Math.abs(acc)<th)return;
-    const sign=acc<0?1:-1;
-    acc-=sign*th;
-    mapWheelAccum=Math.abs(acc)<th*0.35?0:acc;
-    const rect=mapPreviewCanvas.getBoundingClientRect();
-    const {x:cx,y:cy}=mapPointerToCanvasPx(mapWheelClientX,mapWheelClientY,rect);
-    const z=Math.round(Number(mapViewState.zoom)||20);
-    const next=Math.max(14,Math.min(22,z+sign));
-    if(next!==z){
-      const oldWorld=latLngToWorldPixel(mapViewState.lat,mapViewState.lng,z);
-      const cursorWorld={x:oldWorld.x+(cx-mapPreviewCanvas.width/2),y:oldWorld.y+(cy-mapPreviewCanvas.height/2)};
-      const sc=Math.pow(2,next-z);
-      const newCursorWorld={x:cursorWorld.x*sc,y:cursorWorld.y*sc};
-      const newCenterWorld={x:newCursorWorld.x-(cx-mapPreviewCanvas.width/2),y:newCursorWorld.y-(cy-mapPreviewCanvas.height/2)};
-      const ll=worldPixelToLatLng(newCenterWorld.x,newCenterWorld.y,next);
-      mapViewState.zoom=next;
-      mapViewState.lat=Math.max(-85.05112878,Math.min(85.05112878,ll.lat));
-      mapViewState.lng=normalizeLng(ll.lng);
-      setImportStatus(`Loading imagery… z${mapViewState.zoom}`);
-      throttleMapPreview('Zooming imagery…');
-    }else{
-      setImportStatus(z<=14?'Minimum zoom level':'Maximum zoom level');
-    }
-  });
+  e.preventDefault();
 },{passive:false});
+const mapZoomSliderEl=document.getElementById('map-zoom-slider');
+if(mapZoomSliderEl){
+  const onMapZoomSlider=()=>{
+    applyMapZoomSliderIndex(mapZoomSliderEl.value);
+  };
+  mapZoomSliderEl.addEventListener('input',onMapZoomSlider);
+  mapZoomSliderEl.addEventListener('change',onMapZoomSlider);
+}
 mapPreviewCanvas.addEventListener('mousedown',e=>{
   if(pageModalView!=='map')return;
   if(mapDebugSnapOverlay){
