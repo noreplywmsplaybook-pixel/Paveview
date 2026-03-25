@@ -140,12 +140,14 @@ select.sc-inp{cursor:pointer;width:40px}
   width:64px;background:var(--surface);
   display:flex;flex-direction:column;
   flex-shrink:0;overflow:hidden;z-index:10;
+  min-height:0;
   transition:width .2s cubic-bezier(.4,0,.2,1);
   position:relative;
 }
 .sidebar.expanded{width:220px;overflow-y:auto;overflow-x:hidden}
 .sidebar-left{border-right:1px solid var(--border)}
 .sidebar-right{border-left:1px solid var(--border)}
+.sidebar-right.expanded{padding-bottom:20px}
 
 /* expand handle */
 .sb-handle {
@@ -292,6 +294,7 @@ select.sc-inp{cursor:pointer;width:40px}
   display:none;
 }
 .sidebar.expanded .ir{display:flex}
+.ir input[type=checkbox]{margin:0}
 .ir .id{width:6px;height:6px;border-radius:50%;flex-shrink:0}
 .ir .il{font-size:10px;color:var(--text3);flex:1}
 .ir input[type=number]{
@@ -926,9 +929,9 @@ select.sc-inp{cursor:pointer;width:40px}
     <!-- Job Types -->
     <div class="sb-sec">
       <div class="sb-sec-lbl">Job Types</div>
-      <label class="ir" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="job-opt-paving" checked> <span class="il">Paving</span></label>
-      <label class="ir" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="job-opt-sealcoat"> <span class="il">Sealcoating</span></label>
-      <label class="ir" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="job-opt-striping"> <span class="il">Line Striping</span></label>
+      <label class="ir"><input type="checkbox" id="job-opt-paving" checked> <span class="il">Paving</span></label>
+      <label class="ir"><input type="checkbox" id="job-opt-sealcoat"> <span class="il">Sealcoating</span></label>
+      <label class="ir"><input type="checkbox" id="job-opt-striping"> <span class="il">Line Striping</span></label>
       <div id="job-types-summary" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);padding:6px 8px 0">Selected: Paving</div>
     </div>
 
