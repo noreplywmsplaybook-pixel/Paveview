@@ -1546,8 +1546,53 @@ let mapRoiDragState=null; // {mode:'new'|'move'|'resize',edge?,startX,startY,ori
 let mapRoiBox=null; // optional scan ROI in detection coords {x,y,w,h}
 let mapRoiDrawState=null; // {startX,startY}
 let mapRoiDrawMode=false; // explicit ROI draw mode toggle
-let mapWheelCarry=0;
-let mapWheelLockUntil=0;
+let mapWheelAccum=0;
+let mapWheelRaf=0;
+let mapWheelClientX=0,mapWheelClientY=0;
+let mapThrottleTimer=null;
+let lastMapPreviewThrottle=0;
+const MAP_PREVIEW_THROTTLE_MS=72;
+const MAP_TILE_CACHE_MAX=200;
+const mapTileImageCache=new Map();
+
+function mapPointerToCanvasPx(clientX,clientY,rect){
+  const sw=mapPreviewCanvas.width/Math.max(1,rect.width);
+  const sh=mapPreviewCanvas.height/Math.max(1,rect.height);
+  return{
+    x:(clientX-rect.left)*sw,
+    y:(clientY-rect.top)*sh,
+    sw,sh
+  };
+}
+function throttleMapPreview(reason){
+  const now=Date.now();
+  const gap=MAP_PREVIEW_THROTTLE_MS;
+  const elapsed=now-lastMapPreviewThrottle;
+  if(elapsed>=gap){
+    lastMapPreviewThrottle=now;
+    clearTimeout(mapThrottleTimer);
+    mapThrottleTimer=null;
+    loadMapPreview({fromInputs:false,reason});
+    return;
+  }
+  clearTimeout(mapThrottleTimer);
+  mapThrottleTimer=setTimeout(()=>{
+    mapThrottleTimer=null;
+    lastMapPreviewThrottle=Date.now();
+    loadMapPreview({fromInputs:false,reason});
+  },gap-elapsed);
+}
+function getCachedTile(cacheKey,url){
+  if(mapTileImageCache.has(cacheKey))return Promise.resolve(mapTileImageCache.get(cacheKey));
+  return loadImageFromUrl(url).then(img=>{
+    if(mapTileImageCache.size>=MAP_TILE_CACHE_MAX){
+      const it=mapTileImageCache.keys().next();
+      if(!it.done) mapTileImageCache.delete(it.value);
+    }
+    mapTileImageCache.set(cacheKey,img);
+    return img;
+  });
+}
 
 function classStyleForVector(cls){
   const c=String(cls||'').toLowerCase();
@@ -3437,6 +3482,7 @@ async function ensureWaybackYears(){
 }
 
 async function drawTilePreview(mode,lat,lng,zoomLv,year){
+  const reqAtStart=mapRenderReqId;
   const tileSize=256;
   const world=latLngToWorldPixel(lat,lng,zoomLv);
   const startX=world.x-mapPreviewCanvas.width/2;
@@ -3446,8 +3492,12 @@ async function drawTilePreview(mode,lat,lng,zoomLv,year){
   const minTx=Math.floor(startX/tileSize),maxTx=Math.floor((endX-1)/tileSize);
   const minTy=Math.floor(startY/tileSize),maxTy=Math.floor((endY-1)/tileSize);
   const n=Math.pow(2,zoomLv);
-  mapPreviewCtx.fillStyle='#151515';
-  mapPreviewCtx.fillRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  const off=document.createElement('canvas');
+  off.width=mapPreviewCanvas.width;
+  off.height=mapPreviewCanvas.height;
+  const octx=off.getContext('2d');
+  octx.fillStyle='#151515';
+  octx.fillRect(0,0,off.width,off.height);
   const tasks=[];
   for(let ty=minTy;ty<=maxTy;ty++){
     if(ty<0||ty>=n)continue;
@@ -3456,25 +3506,35 @@ async function drawTilePreview(mode,lat,lng,zoomLv,year){
       const dx=tx*tileSize-startX;
       const dy=ty*tileSize-startY;
       let url='';
+      let cacheKey='';
       if(mode==='historical'){
         const rel=waybackByYear?.[year];
         if(!rel)continue;
         url=`https://wayback.maptiles.arcgis.com/arcgis/rest/services/world_imagery/mapserver/tile/${rel.m}/${zoomLv}/${ty}/${wrapped}`;
+        cacheKey=`h:${year}:${zoomLv}:${ty}:${wrapped}`;
       }else{
         url=`https://mt1.google.com/vt/lyrs=s&x=${wrapped}&y=${ty}&z=${zoomLv}`;
+        cacheKey=`g:${zoomLv}:${ty}:${wrapped}`;
       }
-      tasks.push(loadImageFromUrl(url).then(img=>mapPreviewCtx.drawImage(img,dx,dy,tileSize,tileSize)).catch(()=>{}));
+      tasks.push(getCachedTile(cacheKey,url).then(img=>{
+        if(reqAtStart!==mapRenderReqId)return;
+        try{octx.drawImage(img,dx,dy,tileSize,tileSize);}catch(_){}
+      }).catch(()=>{}));
     }
   }
   await Promise.all(tasks);
+  if(reqAtStart!==mapRenderReqId)return false;
+  mapPreviewCtx.fillStyle='#151515';
+  mapPreviewCtx.fillRect(0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
+  mapPreviewCtx.drawImage(off,0,0);
   mapDetectionRenderSize={w:mapPreviewCanvas.width,h:mapPreviewCanvas.height};
-  // Capture raw tile render for preprocess/blueprint rendering.
   const rawCanvas=document.createElement('canvas');
   rawCanvas.width=mapPreviewCanvas.width;rawCanvas.height=mapPreviewCanvas.height;
-  rawCanvas.getContext('2d').drawImage(mapPreviewCanvas,0,0);
+  rawCanvas.getContext('2d').drawImage(off,0,0);
   mapBaseRawImage=rawCanvas;
   mapBaseProcessedImage=preprocessImageDataForBlueprint(rawCanvas);
   mapSnapBwImage=preprocessImageDataForSnapBw(rawCanvas);
+  return true;
 }
 
 function drawMapOverlay(){
@@ -3664,6 +3724,8 @@ function mapVectorDetectionsToSvgMarkup(opts={}){
 }
 
 async function loadMapPreview(opts={}){
+  clearTimeout(mapThrottleTimer);
+  mapThrottleTimer=null;
   if(opts.fromInputs!==false)readMapInputsIntoState();
   const reqId=++mapRenderReqId;
   const lat=mapViewState.lat,lng=mapViewState.lng,zoomLv=mapViewState.zoom;
@@ -3681,8 +3743,9 @@ async function loadMapPreview(opts={}){
       }
       if(mapHistoricalYearSel.value!==mapViewState.year)mapHistoricalYearSel.value=mapViewState.year;
     }
-    await drawTilePreview(mapViewState.mode,lat,lng,zoomLv,mapViewState.year);
+    const tiled=await drawTilePreview(mapViewState.mode,lat,lng,zoomLv,mapViewState.year);
     if(reqId!==mapRenderReqId)return;
+    if(tiled===false)return;
     drawMapOverlay();
     syncMapInputsFromState();
     setImportStatus('Drag to pan, scroll to zoom, then click "Use Imagery".');
@@ -4128,6 +4191,7 @@ if(btnMapRoiClear){
   });
 }
 mapImageryModeSel.addEventListener('change',async()=>{
+  mapTileImageCache.clear();
   mapViewState.mode=mapImageryModeSel.value;
   updateHistoricalControls();
   if(mapViewState.mode==='historical'){try{await ensureWaybackYears();}catch(e){console.warn(e);}}
@@ -4144,8 +4208,7 @@ mapPreviewCanvas.addEventListener('wheel',e=>{
   e.preventDefault();
   if(mapReviewState.active){
     const rect=mapPreviewCanvas.getBoundingClientRect();
-    const sx=e.clientX-rect.left;
-    const sy=e.clientY-rect.top;
+    const {x:sx,y:sy}=mapPointerToCanvasPx(e.clientX,e.clientY,rect);
     const oldScale=mapReviewState.scale;
     const newScale=Math.max(0.3,Math.min(5,oldScale*(e.deltaY<0?1.1:1/1.1)));
     if(newScale===oldScale)return;
@@ -4158,32 +4221,42 @@ mapPreviewCanvas.addEventListener('wheel',e=>{
     setImportStatus('Review mode: zooming detections');
     return;
   }
-  const now=Date.now();
-  if(now<mapWheelLockUntil){
-    mapWheelCarry+=Number(e.deltaY)||0;
-    return;
-  }
-  mapWheelCarry+=Number(e.deltaY)||0;
-  if(Math.abs(mapWheelCarry)<60)return;
-  const oldZoom=Math.round(Number(mapViewState.zoom)||20);
-  const sign=(mapWheelCarry<0)?1:-1;
-  mapWheelCarry=0;
-  mapWheelLockUntil=now+120;
-  const next=Math.max(14,Math.min(22,oldZoom+sign));
-  if(next===oldZoom)return;
-  const rect=mapPreviewCanvas.getBoundingClientRect();
-  const sx=e.clientX-rect.left;
-  const sy=e.clientY-rect.top;
-  const oldWorld=latLngToWorldPixel(mapViewState.lat,mapViewState.lng,oldZoom);
-  const cursorWorld={x:oldWorld.x+(sx-mapPreviewCanvas.width/2),y:oldWorld.y+(sy-mapPreviewCanvas.height/2)};
-  const scale=Math.pow(2,next-oldZoom);
-  const newCursorWorld={x:cursorWorld.x*scale,y:cursorWorld.y*scale};
-  const newCenterWorld={x:newCursorWorld.x-(sx-mapPreviewCanvas.width/2),y:newCursorWorld.y-(sy-mapPreviewCanvas.height/2)};
-  const ll=worldPixelToLatLng(newCenterWorld.x,newCenterWorld.y,next);
-  mapViewState.zoom=next;
-  mapViewState.lat=Math.max(-85.05112878,Math.min(85.05112878,ll.lat));
-  mapViewState.lng=normalizeLng(ll.lng);
-  loadMapPreview({fromInputs:false,reason:'Zooming imagery…'});
+  let mult=1;
+  if(e.deltaMode===1) mult=20;
+  else if(e.deltaMode===2) mult=600;
+  mapWheelAccum+=Number(e.deltaY||0)*mult;
+  mapWheelClientX=e.clientX;
+  mapWheelClientY=e.clientY;
+  if(mapWheelRaf)return;
+  mapWheelRaf=requestAnimationFrame(()=>{
+    mapWheelRaf=0;
+    const acc=mapWheelAccum;
+    mapWheelAccum=0;
+    if(Math.abs(acc)<6)return;
+    const sign=acc<0?1:-1;
+    const rect=mapPreviewCanvas.getBoundingClientRect();
+    const {x:cx,y:cy}=mapPointerToCanvasPx(mapWheelClientX,mapWheelClientY,rect);
+    let steps=1;
+    if(Math.abs(acc)>=48) steps=2;
+    if(Math.abs(acc)>=120) steps=3;
+    steps=Math.min(steps,3);
+    for(let i=0;i<steps;i++){
+      const z=Math.round(Number(mapViewState.zoom)||20);
+      const next=Math.max(14,Math.min(22,z+sign));
+      if(next===z)break;
+      const oldWorld=latLngToWorldPixel(mapViewState.lat,mapViewState.lng,z);
+      const cursorWorld={x:oldWorld.x+(cx-mapPreviewCanvas.width/2),y:oldWorld.y+(cy-mapPreviewCanvas.height/2)};
+      const sc=Math.pow(2,next-z);
+      const newCursorWorld={x:cursorWorld.x*sc,y:cursorWorld.y*sc};
+      const newCenterWorld={x:newCursorWorld.x-(cx-mapPreviewCanvas.width/2),y:newCursorWorld.y-(cy-mapPreviewCanvas.height/2)};
+      const ll=worldPixelToLatLng(newCenterWorld.x,newCenterWorld.y,next);
+      mapViewState.zoom=next;
+      mapViewState.lat=Math.max(-85.05112878,Math.min(85.05112878,ll.lat));
+      mapViewState.lng=normalizeLng(ll.lng);
+    }
+    setImportStatus(`Loading imagery… z${mapViewState.zoom}`);
+    throttleMapPreview('Zooming imagery…');
+  });
 },{passive:false});
 mapPreviewCanvas.addEventListener('mousedown',e=>{
   if(pageModalView!=='map')return;
@@ -4291,6 +4364,7 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
     mapPreviewCanvas.style.cursor='grabbing';
     return;
   }
+  mapRenderReqId++;
   mapInteraction.startLat=mapViewState.lat;
   mapInteraction.startLng=mapViewState.lng;
   mapInteraction.startWorld=latLngToWorldPixel(mapViewState.lat,mapViewState.lng,mapViewState.zoom);
@@ -4376,26 +4450,32 @@ window.addEventListener('mousemove',e=>{
   }
   if(!mapInteraction.dragging)return;
   if(mapReviewState.active){
-    const dx=e.clientX-mapInteraction.startX;
-    const dy=e.clientY-mapInteraction.startY;
-    mapReviewState.tx=mapInteraction.startTx+dx;
-    mapReviewState.ty=mapInteraction.startTy+dy;
+    const rect=mapPreviewCanvas.getBoundingClientRect();
+    const sw=mapPreviewCanvas.width/Math.max(1,rect.width);
+    const sh=mapPreviewCanvas.height/Math.max(1,rect.height);
+    const dcx=(e.clientX-mapInteraction.startX)*sw;
+    const dcy=(e.clientY-mapInteraction.startY)*sh;
+    mapReviewState.tx=mapInteraction.startTx+dcx;
+    mapReviewState.ty=mapInteraction.startTy+dcy;
     renderDetectionReview();
     setImportStatus('Review mode: panning detections…');
     return;
   }
-  const dx=e.clientX-mapInteraction.startX;
-  const dy=e.clientY-mapInteraction.startY;
+  const rect=mapPreviewCanvas.getBoundingClientRect();
+  const sw=mapPreviewCanvas.width/Math.max(1,rect.width);
+  const sh=mapPreviewCanvas.height/Math.max(1,rect.height);
+  const dcx=(e.clientX-mapInteraction.startX)*sw;
+  const dcy=(e.clientY-mapInteraction.startY)*sh;
   const c={
-    x:mapInteraction.startWorld.x-dx,
-    y:mapInteraction.startWorld.y-dy
+    x:mapInteraction.startWorld.x-dcx,
+    y:mapInteraction.startWorld.y-dcy
   };
   const ll=worldPixelToLatLng(c.x,c.y,mapViewState.zoom);
   mapViewState.lat=Math.max(-85.05112878,Math.min(85.05112878,ll.lat));
   mapViewState.lng=normalizeLng(ll.lng);
   syncMapInputsFromState();
-  mapRenderReqId++;
   setImportStatus('Panning map…');
+  throttleMapPreview('Panning imagery…');
 });
 window.addEventListener('mouseup',()=>{
   if(mapRoiDragState){
