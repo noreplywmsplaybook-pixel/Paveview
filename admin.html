@@ -1489,11 +1489,22 @@ async function confirmRevoke() {
   if (!revokeTarget) return;
   const btn = document.getElementById('confirm-btn');
   btn.disabled = true; btn.textContent = 'Revoking…';
-  await sb.from('purchases').update({ status: 'revoked' }).eq('user_id', revokeTarget.userId).eq('status', 'active');
-  btn.disabled = false; btn.textContent = 'Revoke Access';
-  closeModal('confirm-modal');
-  revokeTarget = null;
-  loadData();
+  try {
+    const resp = await fetch(ADMIN_API_URL, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'revoke_access', userId: revokeTarget.userId })
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(payload.error || `Revoke failed (${resp.status})`);
+    closeModal('confirm-modal');
+    revokeTarget = null;
+    loadData();
+  } catch (e) {
+    alert(e.message || 'Failed to revoke access.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Revoke Access';
+  }
 }
 
 // ── RESTORE ──
@@ -1507,11 +1518,22 @@ async function confirmRestore() {
   if (!restoreTarget) return;
   const btn = document.getElementById('restore-btn');
   btn.disabled = true; btn.textContent = 'Restoring…';
-  await sb.from('purchases').update({ status: 'active' }).eq('id', restoreTarget.purchaseId);
-  btn.disabled = false; btn.textContent = 'Restore Access';
-  closeModal('restore-modal');
-  restoreTarget = null;
-  loadData();
+  try {
+    const resp = await fetch(ADMIN_API_URL, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'restore_access', purchaseId: restoreTarget.purchaseId })
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(payload.error || `Restore failed (${resp.status})`);
+    closeModal('restore-modal');
+    restoreTarget = null;
+    loadData();
+  } catch (e) {
+    alert(e.message || 'Failed to restore access.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Restore Access';
+  }
 }
 
 // ── GRANT ACCESS (no purchase yet) ──

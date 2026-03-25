@@ -229,6 +229,62 @@ async function handlePatch(req, res, serviceRoleKey) {
     return;
   }
 
+  if (action === 'revoke_access') {
+    const userId = String(body.userId || '').trim();
+    if (!userId) {
+      sendJson(res, 400, { error: 'userId is required.' });
+      return;
+    }
+    const revoke = await supabaseFetch(
+      `/rest/v1/purchases?user_id=eq.${encodeURIComponent(userId)}&status=eq.active`,
+      {
+        method: 'PATCH',
+        serviceRoleKey,
+        prefer: 'return=representation',
+        body: { status: 'revoked', updated_at: new Date().toISOString() }
+      }
+    );
+    if (!revoke.ok) {
+      sendJson(res, revoke.status || 500, { error: revoke.payload?.message || 'Failed to revoke access.' });
+      return;
+    }
+    const revokedRows = Array.isArray(revoke.payload) ? revoke.payload.length : 0;
+    if (revokedRows < 1) {
+      sendJson(res, 404, { error: 'No active access records found for this user.' });
+      return;
+    }
+    sendJson(res, 200, { ok: true, userId, revoked: revokedRows });
+    return;
+  }
+
+  if (action === 'restore_access') {
+    const purchaseId = String(body.purchaseId || '').trim();
+    if (!purchaseId) {
+      sendJson(res, 400, { error: 'purchaseId is required.' });
+      return;
+    }
+    const restore = await supabaseFetch(
+      `/rest/v1/purchases?id=eq.${encodeURIComponent(purchaseId)}`,
+      {
+        method: 'PATCH',
+        serviceRoleKey,
+        prefer: 'return=representation',
+        body: { status: 'active', updated_at: new Date().toISOString() }
+      }
+    );
+    if (!restore.ok) {
+      sendJson(res, restore.status || 500, { error: restore.payload?.message || 'Failed to restore access.' });
+      return;
+    }
+    const restoredRow = Array.isArray(restore.payload) ? restore.payload[0] : null;
+    if (!restoredRow?.id) {
+      sendJson(res, 404, { error: 'Purchase record not found.' });
+      return;
+    }
+    sendJson(res, 200, { ok: true, purchaseId: String(restoredRow.id) });
+    return;
+  }
+
   if (action === 'set_learning_status') {
     const sampleId = String(body.sampleId || '').trim();
     const status = String(body.status || '').trim().toLowerCase();

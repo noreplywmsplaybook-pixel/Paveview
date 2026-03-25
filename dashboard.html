@@ -94,6 +94,29 @@ body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-s
 .kpi-val{font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:var(--text)}
 .kpi-val.accent{color:var(--accent)}
 .kpi-sub{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);margin-top:3px}
+.plan-banner{
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 12px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: baseline;
+}
+.plan-banner .lbl{
+  font-family:'JetBrains Mono',monospace;
+  font-size:8px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--text3);
+}
+.plan-banner .val{
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px;
+  color:var(--text2);
+}
+.plan-banner .val strong{ color:var(--text); }
 
 /* ── HISTORY / ACTIVE TAB ── */
 .section-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
@@ -204,6 +227,10 @@ body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-s
       <div class="kpi"><div class="kpi-lbl">Takeoffs Completed</div><div class="kpi-val accent" id="s-takeoffs">—</div></div>
       <div class="kpi"><div class="kpi-lbl">Reports Generated</div><div class="kpi-val" id="s-reports">—</div></div>
       <div class="kpi"><div class="kpi-lbl">Member Since</div><div class="kpi-val" id="s-since" style="font-size:16px;margin-top:4px">—</div></div>
+    </div>
+    <div class="plan-banner">
+      <div><span class="lbl">Plan</span> <span class="val" id="plan-label"><strong>—</strong></span></div>
+      <div><span class="lbl">Monthly usage</span> <span class="val" id="plan-usage"><strong>—</strong></span></div>
     </div>
   </div>
 
@@ -431,8 +458,27 @@ const SUPABASE_URL='https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const SUPABASE_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON);
 const TRIAL_DURATION_MS=24*60*60*1000;
+const PLAN_LIMIT_BY_PRODUCT={
+  takeoff_tier1_monthly:{limit:15,label:'Tier 1 Monthly'},
+  takeoff_tier1_annual:{limit:15,label:'Tier 1 Annual'},
+  takeoff_tier2_monthly:{limit:30,label:'Tier 2 Monthly'},
+  takeoff_tier2_annual:{limit:30,label:'Tier 2 Annual'},
+  takeoff_tier3_monthly:{limit:60,label:'Tier 3 Monthly'},
+  takeoff_tier3_annual:{limit:60,label:'Tier 3 Annual'},
+  takeoff:{limit:Infinity,label:'Legacy Lifetime'}
+};
+const PLAN_LIMIT_BY_AMOUNT={
+  9999:{limit:15,label:'Tier 1 Monthly'},
+  99900:{limit:15,label:'Tier 1 Annual'},
+  19999:{limit:30,label:'Tier 2 Monthly'},
+  199999:{limit:30,label:'Tier 2 Annual'},
+  39999:{limit:60,label:'Tier 3 Monthly'},
+  399999:{limit:60,label:'Tier 3 Annual'},
+  500000:{limit:Infinity,label:'Legacy Lifetime'}
+};
 let currentUser=null;
 let logoDataUrl=null;
+let currentPurchases=[];
 
 function isTrialPurchase(p){
   const product=String(p?.product||'').toLowerCase();
@@ -446,6 +492,45 @@ function hasActiveAccess(p){
   if(!createdAt)return false;
   return(Date.now()-createdAt)<TRIAL_DURATION_MS;
 }
+function resolvePlanFromPurchase(purchase){
+  const product=String(purchase?.product||'').trim().toLowerCase();
+  if(product&&PLAN_LIMIT_BY_PRODUCT[product])return PLAN_LIMIT_BY_PRODUCT[product];
+  const amount=Number(purchase?.amount_paid||0);
+  if(PLAN_LIMIT_BY_AMOUNT[amount])return PLAN_LIMIT_BY_AMOUNT[amount];
+  if(product.includes('trial'))return{limit:Infinity,label:'24-Hour Trial'};
+  return null;
+}
+function getBestPlanFromPurchases(purchases){
+  const list=Array.isArray(purchases)?purchases:[];
+  let best=null;
+  list.forEach((purchase)=>{
+    if(!hasActiveAccess(purchase))return;
+    const plan=resolvePlanFromPurchase(purchase);
+    if(!plan)return;
+    if(!best){best=plan;return;}
+    if(!Number.isFinite(plan.limit)){best=plan;return;}
+    if(!Number.isFinite(best.limit))return;
+    if(plan.limit>best.limit)best=plan;
+  });
+  return best||{limit:Infinity,label:'Active Access'};
+}
+function monthRangeUtcIso(date=new Date()){
+  const start=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),1,0,0,0,0));
+  const end=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,1,0,0,0,0));
+  return{startIso:start.toISOString(),endIso:end.toISOString()};
+}
+function updatePlanBanner(plan,used){
+  const labelEl=document.getElementById('plan-label');
+  const usageEl=document.getElementById('plan-usage');
+  if(labelEl)labelEl.innerHTML=`<strong>${plan?.label||'—'}</strong>`;
+  if(usageEl){
+    if(Number.isFinite(plan?.limit)){
+      usageEl.innerHTML=`<strong>${used}/${plan.limit}</strong> proposals this month`;
+    }else{
+      usageEl.innerHTML=`<strong>${used}</strong> proposals this month`;
+    }
+  }
+}
 
 // ── INIT ──
 (async()=>{
@@ -453,6 +538,7 @@ function hasActiveAccess(p){
   if(!session){window.location.replace('login.html');return;}
   currentUser=session.user;
   const {data:purchases}=await sb.from('purchases').select('id,product,status,amount_paid,created_at').eq('user_id',currentUser.id).eq('status','active').order('created_at',{ascending:false}).limit(20);
+  currentPurchases=Array.isArray(purchases)?purchases:[];
   if(!purchases||!purchases.find(hasActiveAccess)){window.location.replace('index.html');return;}
   await sb.from('profiles').upsert({id:currentUser.id,email:currentUser.email||null,updated_at:new Date().toISOString()},{onConflict:'id'});
   const emailEl=document.getElementById('hdr-email');
@@ -524,6 +610,11 @@ async function loadStats(){
   const {data:projects}=await sb.from('projects').select('id').eq('user_id',currentUser.id);
   document.getElementById('s-takeoffs').textContent=projects?.length||0;
   document.getElementById('s-reports').textContent=projects?.length||0;
+
+  const plan=getBestPlanFromPurchases(currentPurchases);
+  const {startIso,endIso}=monthRangeUtcIso(new Date());
+  const {data:monthlyProjects}=await sb.from('projects').select('id').eq('user_id',currentUser.id).gte('created_at',startIso).lt('created_at',endIso);
+  updatePlanBanner(plan,(monthlyProjects||[]).length);
 }
 
 async function loadHistory(){
