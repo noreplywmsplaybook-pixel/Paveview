@@ -635,11 +635,11 @@ async function loadHistory(){
     const typeLabels={paving:'Paving',sealcoat:'Sealcoat',both:'Paving+Seal',striping:'Striping'};
     let status='estimating';
     try{
-      const statusKey=localStorage.getItem('paveview_proj_status_'+p.id);
-      if(statusKey) status=statusKey;
       const det=localStorage.getItem('paveview_proj_details_'+p.id);
       if(det){const parsed=JSON.parse(det);status=parsed.status||'estimating';}
       else{const s=localStorage.getItem('paveview_completion_'+p.id);if(s){const comp=JSON.parse(s);status=comp.status||'estimating';}}
+      const statusKey=localStorage.getItem('paveview_proj_status_'+p.id);
+      if(statusKey) status=statusKey;
     }catch(e){}
     const statusColors={estimating:'#444',active:'#444',awarded:'#3b82f6',in_progress:'#d4a843',complete:'#22c55e',cancelled:'#ef4444'};
     const statusLabels={estimating:'Estimating',active:'Estimating',awarded:'Awarded',in_progress:'In Progress',complete:'Complete',cancelled:'Cancelled'};
@@ -817,6 +817,7 @@ async function renameProject(id, currentName){
 async function deleteProject(id){
   if(!confirm('Delete this project? This cannot be undone.'))return;
   localStorage.removeItem('paveview_proj_details_'+id);
+  localStorage.removeItem('paveview_proj_status_'+id);
   const {error}=await sb.from('projects').delete().eq('id',id).eq('user_id',currentUser.id);
   if(error){alert('Delete failed: '+error.message);return;}
   loadStats();loadHistory();
@@ -831,11 +832,11 @@ async function loadActive(){
   const active=projects.filter(p=>{
     let status='estimating';
     try{
-      const statusKey=localStorage.getItem('paveview_proj_status_'+p.id);
-      if(statusKey) status=statusKey;
       const det=localStorage.getItem('paveview_proj_details_'+p.id);
       if(det){const parsed=JSON.parse(det);status=parsed.status||'estimating';}
       else{const s=localStorage.getItem('paveview_completion_'+p.id);if(s){const comp=JSON.parse(s);status=comp.status||'estimating';}}
+      const statusKey=localStorage.getItem('paveview_proj_status_'+p.id);
+      if(statusKey) status=statusKey;
     }catch(e){}
     return status==='awarded'||status==='in_progress';
   });
@@ -848,13 +849,13 @@ async function loadActive(){
     const jobType=pd.jobType||'paving';
     const typeLabels={paving:'Paving',sealcoat:'Sealcoat',both:'Paving+Seal',striping:'Striping'};
     const dotColors={paving:'#d4a843',sealcoat:'#22c55e',both:'#3b82f6',striping:'#a855f7'};
-    let rowStatus='awarded';
+    let rowStatus='estimating';
     try{
+      const det=localStorage.getItem('paveview_proj_details_'+p.id);
+      if(det){rowStatus=JSON.parse(det).status||'estimating';}
+      else{const s=localStorage.getItem('paveview_completion_'+p.id);if(s){const comp=JSON.parse(s);rowStatus=comp.status||'estimating';}}
       const statusKey=localStorage.getItem('paveview_proj_status_'+p.id);
       if(statusKey) rowStatus=statusKey;
-      const det=localStorage.getItem('paveview_proj_details_'+p.id);
-      if(det){rowStatus=JSON.parse(det).status||'awarded';}
-      else{const s=localStorage.getItem('paveview_completion_'+p.id);if(s){const comp=JSON.parse(s);rowStatus=comp.status||'awarded';}}
     }catch(e){}
     const status=rowStatus;
     html+=`<tr>
@@ -906,6 +907,8 @@ async function loadAnalytics(){
         const det=localStorage.getItem('paveview_proj_details_'+p.id);
         if(det){const dd=JSON.parse(det);status=dd.status||'estimating';logs=dd.dailyLogs||[];invoice=parseFloat(dd.invoice)||0;changeOrder=parseFloat(dd.changeOrder)||0;compNotes=dd.compNotes||'';}
         else{const saved=localStorage.getItem('paveview_completion_'+p.id);if(saved){const comp=JSON.parse(saved);status=comp.status||'estimating';logs=comp.logs||[];invoice=parseFloat(comp.compData?.invoice)||0;}}
+        const sk=localStorage.getItem('paveview_proj_status_'+p.id);
+        if(sk) status=sk;
       }catch(e){}
       return{
         id:p.id,name:p.name||'Untitled',

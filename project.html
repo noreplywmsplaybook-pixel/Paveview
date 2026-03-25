@@ -1218,6 +1218,8 @@ function getDetails(){
     reportThemeId:projectReportThemeId||'',
     reportPhases,
     reportMapSnapshot,
+    customPages,
+    attachedPages,
     status:currentStatus(),phases,equipment,dailyLogs,confirmed,
   };
 }
@@ -1256,11 +1258,19 @@ function loadSavedDetails(){
   if(d.equipment){equipment=d.equipment;renderEquipment();}
   if(d.dailyLogs){dailyLogs=d.dailyLogs;renderDailyLogs();}
   if(d.confirmed){confirmed=true;}
+  if(d.customPages&&typeof d.customPages==='object'){
+    const base={client:[],foreman:[],contractor:[]};
+    customPages=Object.assign(base,d.customPages);
+    ['client','foreman','contractor'].forEach(k=>{if(!Array.isArray(customPages[k]))customPages[k]=[];});
+  }
+  if(Array.isArray(d.attachedPages)) attachedPages=d.attachedPages;
   loadThemesIntoProject();
   const statusKey=(()=>{try{return localStorage.getItem('paveview_proj_status_'+projectId)||'';}catch(e){return'';}})();
-  setStatus(d.status||statusKey||'estimating');
+  setStatus(statusKey||d.status||'estimating');
   populateEqPicker();
+  ['client','foreman','contractor'].forEach(t=>renderCustomPageEditor(t));
   if(confirmed) showConfirmedState();
+  renderAttachedPages();
 }
 
 function saveDetails(){
@@ -2016,6 +2026,7 @@ async function attachReportPages(e){
     }
   }
   renderAttachedPages();
+  saveDetails();
   e.target.value=''; // reset so same file can be re-added
 }
 
@@ -2051,6 +2062,7 @@ function renderAttachedPages(){
 function removeAttachedPage(idx){
   attachedPages.splice(idx,1);
   renderAttachedPages();
+  saveDetails();
 }
 
 // ── THEME FROM REPORT BUILDER ──
@@ -2733,6 +2745,7 @@ function applyTemplate(templateId){
   document.getElementById('template-modal').style.display='none';
   renderCustomPageEditor(_templateTarget);
   refreshReport(_templateTarget);
+  saveDetails();
 }
 
 // ── CUSTOM REPORT PAGES ──
@@ -2746,6 +2759,7 @@ function removeCustomPage(type, id){
   customPages[type] = (customPages[type]||[]).filter(cp=>cp.id!==id);
   renderCustomPageEditor(type);
   refreshReport(type);
+  saveDetails();
 }
 
 function renderCustomPageEditor(type){
@@ -2771,7 +2785,7 @@ function renderCustomPageEditor(type){
           📎 Attach image
           <input type="file" accept="image/*" style="display:none" onchange="attachCustomPageImage(event,'${type}',${i})">
         </label>
-        ${cp.image?`<span style="font-size:10px;color:#22c55e">✓ Image attached</span><button onclick="customPages['${type}'][${i}].image='';renderCustomPageEditor('${type}');refreshReport('${type}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:10px">Remove</button>`:''}
+        ${cp.image?`<span style="font-size:10px;color:#22c55e">✓ Image attached</span><button onclick="customPages['${type}'][${i}].image='';renderCustomPageEditor('${type}');refreshReport('${type}');saveDetails()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:10px">Remove</button>`:''}
       </div>
     </div>`).join('');
 }
@@ -2783,6 +2797,7 @@ function attachCustomPageImage(e, type, idx){
     customPages[type][idx].image = ev.target.result;
     renderCustomPageEditor(type);
     refreshReport(type);
+    saveDetails();
   };
   reader.readAsDataURL(file);
 }
@@ -2847,6 +2862,7 @@ function refreshReport(type){
     const mapId = mapIds[type];
     if(mapId) requestAnimationFrame(()=>paintReportMap(mapId));
   }
+  renderAttachedPages();
 }
 
 // ── SITE INVENTORY — tallies everything from projectData ──
@@ -3569,6 +3585,7 @@ function buildEstimatingReports(){
   if(contractorEl)contractorEl.innerHTML=buildContractorHtml('rmap-est-contractor');
   if(foremanEl){foremanEl.innerHTML=buildForemanHtml('rmap-est-foreman');requestAnimationFrame(()=>paintReportMap('rmap-est-foreman'));}
   if(completionEl)completionEl.innerHTML=buildCompletionHtml();
+  renderAttachedPages();
 }
 
 // ── ACTIVE JOB REPORTS ──
@@ -3580,6 +3597,7 @@ function buildActiveReports(){
   if(c){c.innerHTML=buildClientHtml('rmap-act-client');requestAnimationFrame(()=>paintReportMap('rmap-act-client'));}
   if(f){f.innerHTML=buildForemanHtml('rmap-act-foreman');requestAnimationFrame(()=>paintReportMap('rmap-act-foreman'));}
   if(comp)comp.innerHTML=buildCompletionHtml();
+  renderAttachedPages();
 }
 
 // ── COMPLETE REPORTS ──
@@ -3591,6 +3609,7 @@ function buildCompleteReports(){
   if(c){c.innerHTML=buildClientHtml('rmap-comp-client');requestAnimationFrame(()=>paintReportMap('rmap-comp-client'));}
   if(f){f.innerHTML=buildForemanHtml('rmap-comp-foreman');requestAnimationFrame(()=>paintReportMap('rmap-comp-foreman'));}
   if(comp)comp.innerHTML=buildCompletionHtml();
+  renderAttachedPages();
 }
 
 // ── DELETE ──
@@ -3598,6 +3617,7 @@ async function deleteProject(){
   if(!confirm('Delete this project? Cannot be undone.'))return;
   await sb.from('projects').delete().eq('id',projectId).eq('user_id',currentUser.id);
   localStorage.removeItem('paveview_proj_details_'+projectId);
+  localStorage.removeItem('paveview_proj_status_'+projectId);
   window.location.replace('dashboard.html');
 }
 
