@@ -2626,18 +2626,18 @@ function drawMapVectorOverlay(){
   // Lightweight suggestion preview overlay (markers only; does not mutate vectors).
   if(mapStallSuggestionPreviewActive&&Array.isArray(mapStallSuggestionPoints)&&mapStallSuggestionPoints.length){
     mapPreviewCtx.save();
-    mapPreviewCtx.fillStyle='rgba(34,197,94,0.92)';
-    mapPreviewCtx.strokeStyle='rgba(0,0,0,0.55)';
+    // Render using the same visual language as stall dots, but lighter/yellowish.
+    mapPreviewCtx.fillStyle='rgba(255,248,184,0.78)';
+    mapPreviewCtx.strokeStyle='rgba(245,158,11,0.92)';
     mapPreviewCtx.lineWidth=1;
     mapStallSuggestionPoints.forEach((pt,i)=>{
       if(!pt||!Number.isFinite(pt.x)||!Number.isFinite(pt.y))return;
       const x=(pt.x||0)*sx;
       const y=(pt.y||0)*sy;
-      // Small square marker.
-      const s=5.2;
+      // Small dot marker.
+      const r=2.9;
       mapPreviewCtx.beginPath();
-      const r=s/2;
-      mapPreviewCtx.rect(x-r,y-r,s,s);
+      mapPreviewCtx.arc(x,y,r,0,Math.PI*2);
       mapPreviewCtx.fill();
       mapPreviewCtx.stroke();
     });
@@ -4553,10 +4553,10 @@ function previewStallSuggestions(){
   const candidates=suggestMissingStallVectorsHorizontal(mapVectorDetections,{
     yTol:10,
     dedupeRadius:10,
-    minRowPts:4,
-    expectedQuantile:0.25,
-    fillLow:1.4,
-    fillHigh:2.6,
+    minRowPts:3,
+    expectedQuantile:0.3,
+    fillLow:1.3,
+    fillHigh:2.9,
     debug:STALL_SUGGESTION_DEBUG
   });
   mapStallSuggestionCandidates=Array.isArray(candidates)?candidates:[];
