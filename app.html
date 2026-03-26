@@ -4229,24 +4229,11 @@ async function runAutoDetectFromCurrentPlan(){
       setAppInlineStatus('Load an image or plan before running Auto Detect.',true);
       return;
     }
-    const boundaryZones=()=>Array.isArray(zones)?zones.filter(z=>z&&!z.obstruct&&Array.isArray(z.pts)&&z.pts.length>=3):[];
-    let hasLotBoundary=boundaryZones().some(z=>z.closed);
-    // If user has an in-progress perimeter, auto-finalize it.
-    if(!hasLotBoundary&&activeZone&&!activeZone.obstruct&&Array.isArray(inProg)&&inProg.length>=3){
+    let hasLotBoundary=Array.isArray(zones)&&zones.some(z=>z&&z.closed&&!z.obstruct&&Array.isArray(z.pts)&&z.pts.length>=3);
+    // If user already plotted perimeter points, close the zone automatically and continue.
+    if(!hasLotBoundary&&mode==='draw'&&activeZone&&!activeZone.obstruct&&Array.isArray(inProg)&&inProg.length>=3){
       closeZone();
-      hasLotBoundary=boundaryZones().some(z=>z.closed);
-    }
-    // If a perimeter zone exists but isn't marked closed yet, force-close it.
-    if(!hasLotBoundary){
-      const fallback=boundaryZones()[0]||null;
-      if(fallback){
-        fallback.closed=true;
-        fallback.locked=true;
-        if(!String(fallback.name||'').trim())fallback.name='Lot Perimeter';
-        hasLotBoundary=true;
-        renderZoneList();
-        renderAll();
-      }
+      hasLotBoundary=Array.isArray(zones)&&zones.some(z=>z&&z.closed&&!z.obstruct&&Array.isArray(z.pts)&&z.pts.length>=3);
     }
     if(!hasLotBoundary){
       setMode('draw');
