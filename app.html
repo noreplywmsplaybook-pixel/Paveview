@@ -2873,7 +2873,10 @@ function syncMapRoiButtons(){
   }
 }
 function syncStallSuggestionButtons(){
-  const inMap=pageModalView==='map';
+  // pageModalView is not always enough (header "Auto Detect" flows can change state),
+  // so also check whether the import-map panel is currently visible.
+  const inMap=(pageModalView==='map')
+    || (importMapPanel&&importMapPanel.style&&importMapPanel.style.display==='block');
   if(btnMapSuggestions){
     btnMapSuggestions.style.display=inMap&&mapStallSuggestionsReady&&!mapStallSuggestionPreviewActive?'inline-block':'none';
   }
