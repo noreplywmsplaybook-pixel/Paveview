@@ -18,13 +18,25 @@ module.exports = async (req, res) => {
     return;
   }
 
+  let body = {};
+  try {
+    body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+  } catch (e) {
+    sendJson(res, 400, { error: 'Invalid JSON body.' });
+    return;
+  }
+
+  const requestApiKey = pickFirstNonEmpty([body.apiKey, body.roboflowApiKey]);
+  const requestModelId = pickFirstNonEmpty([body.modelId, body.roboflowModelId]);
   const apiKey = pickFirstNonEmpty([
+    requestApiKey,
     process.env.ROBOFLOW_API_KEY,
     process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY,
     process.env.ROBOFLOW_KEY,
     process.env.RF_API_KEY
   ]);
   const modelId = pickFirstNonEmpty([
+    requestModelId,
     process.env.ROBOFLOW_MODEL_ID,
     process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
     'my-first-project-ug0a7/4'
@@ -38,17 +50,10 @@ module.exports = async (req, res) => {
         has_ROBOFLOW_API_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_API_KEY])),
         has_NEXT_PUBLIC_ROBOFLOW_API_KEY: Boolean(pickFirstNonEmpty([process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY])),
         has_ROBOFLOW_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_KEY])),
-        has_RF_API_KEY: Boolean(pickFirstNonEmpty([process.env.RF_API_KEY]))
+        has_RF_API_KEY: Boolean(pickFirstNonEmpty([process.env.RF_API_KEY])),
+        has_request_apiKey: Boolean(requestApiKey)
       }
     });
-    return;
-  }
-
-  let body = {};
-  try {
-    body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-  } catch (e) {
-    sendJson(res, 400, { error: 'Invalid JSON body.' });
     return;
   }
 
@@ -119,6 +124,9 @@ module.exports = async (req, res) => {
           predictions: merged,
           image,
           meta: {
+            model_id: modelId,
+            model: modelId,
+            model_version: String(modelId.split('/').pop() || ''),
             mode: 'hybrid',
             segmentation_count: keepSeg.length,
             area_fallback_count: areaFallbackFromDet.length,
@@ -144,7 +152,19 @@ module.exports = async (req, res) => {
       return;
     }
 
-    sendJson(res, 200, result.payload || { predictions: [], meta: { mode } });
+    const safePayload = result.payload && typeof result.payload === 'object' ? result.payload : {};
+    const existingMeta = safePayload.meta && typeof safePayload.meta === 'object' ? safePayload.meta : {};
+    sendJson(res, 200, {
+      ...safePayload,
+      predictions: Array.isArray(safePayload.predictions) ? safePayload.predictions : [],
+      meta: {
+        ...existingMeta,
+        mode,
+        model_id: String(existingMeta.model_id || existingMeta.model || modelId),
+        model: String(existingMeta.model || existingMeta.model_id || modelId),
+        model_version: String(existingMeta.model_version || modelId.split('/').pop() || '')
+      }
+    });
   } catch (e) {
     sendJson(res, 500, { error: e.message || 'Roboflow request error.' });
   }

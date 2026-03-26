@@ -1332,6 +1332,25 @@ let currentPlanIdx=0;
 // Per-plan drawing data — keyed by plan id
 let planData={}; // {planId: {zones,markers,measurements,linearSegs,hatchZones}}
 const LEARNING_FEEDBACK_API='/api/learning-feedback';
+// Preview-only Roboflow override for testing; remove after validation.
+const ROBOFLOW_PREVIEW_CONFIG={
+  enabled:true,
+  modelId:'my-first-project-ug0a7/6',
+  apiKey:'xCbdGNy3dZ7miXCkkSj0'
+};
+function getRoboflowPreviewOverrides(){
+  if(!ROBOFLOW_PREVIEW_CONFIG?.enabled)return{};
+  const modelId=String(ROBOFLOW_PREVIEW_CONFIG.modelId||'').trim();
+  const apiKey=String(ROBOFLOW_PREVIEW_CONFIG.apiKey||'').trim();
+  const payload={};
+  if(modelId)payload.modelId=modelId;
+  if(apiKey)payload.apiKey=apiKey;
+  return payload;
+}
+function getActiveRoboflowModelId(){
+  const previewModel=String(ROBOFLOW_PREVIEW_CONFIG?.modelId||'').trim();
+  return (ROBOFLOW_PREVIEW_CONFIG?.enabled&&previewModel)?previewModel:'my-first-project-ug0a7/4';
+}
 
 const COLORS=['#f5c842','#3b82f6','#22c55e','#ef4444','#a855f7','#f97316','#06b6d4','#ec4899','#84cc16','#d97706'];
 
@@ -2425,8 +2444,9 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
         const payload={
           imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),
           mode:'detect',
-          confidence:18,
-          overlap:30
+          confidence:24,
+          overlap:32,
+          ...getRoboflowPreviewOverrides()
         };
         const res=await fetch('/api/roboflow-detect',{
           method:'POST',
@@ -2714,8 +2734,8 @@ async function submitLearningFeedbackSample(sample){
       zoom:Number.isFinite(mapViewState?.zoom)?mapViewState.zoom:null,
       lat:Number.isFinite(mapViewState?.lat)?mapViewState.lat:null,
       lng:Number.isFinite(mapViewState?.lng)?mapViewState.lng:null,
-      modelId:'my-first-project-ug0a7/4',
-      modelVersion:'4',
+      modelId:getActiveRoboflowModelId(),
+      modelVersion:String(getActiveRoboflowModelId().split('/').pop()||''),
       source:'imagery_review_confirm',
       ...sample
     };
@@ -3027,11 +3047,11 @@ function markerLikelyDuplicate(a,b,pxTol=12){
 }
 function confidenceThresholdForClass(cls){
   const c=String(cls||'').toLowerCase();
-  // Keep stall-like detections visible while filtering low-confidence noise.
-  if(c.includes('stall'))return 0.22;
-  if(c.includes('ada')||c.includes('handicap'))return 0.2;
-  if(c.includes('arrow')||c.includes('stencil'))return 0.18;
-  return 0.25;
+  // Balanced profile: reduce false positives while preserving stall recall.
+  if(c.includes('stall'))return 0.24;
+  if(c.includes('ada')||c.includes('handicap'))return 0.24;
+  if(c.includes('arrow')||c.includes('stencil'))return 0.22;
+  return 0.3;
 }
 function filterDetectionsByClassConfidence(detections){
   if(!Array.isArray(detections)||!detections.length)return [];
@@ -3051,9 +3071,9 @@ function dedupeStallLikeDetections(detections){
   if(!Array.isArray(detections)||!detections.length)return [];
   const dedupeRadiusByType=(type)=>{
     const t=String(type||'').toLowerCase();
-    if(t==='stall'||t==='ada')return 40;
-    if(t==='stencil')return 30;
-    return 20;
+    if(t==='stall'||t==='ada')return 46;
+    if(t==='stencil')return 34;
+    return 24;
   };
   const stallLike=(c)=>{
     const s=String(c||'').toLowerCase();
@@ -3074,7 +3094,7 @@ function dedupeStallLikeDetections(detections){
       const d=Math.hypot(center.x-pc.x,center.y-pc.y);
       // If two stall-like detections are nearly on top of each other, collapse them
       // even if one is misclassified (e.g. stall vs ada/arrow).
-      if(d<=14)return true;
+      if(d<=18)return true;
       if(prevType!==markerType)return false;
       const tol=Math.max(dedupeRadiusByType(markerType),dedupeRadiusByType(prevType));
       return d<=tol;
@@ -3927,7 +3947,13 @@ async function runRoboflowDetection(){
     inferCanvas.width=mapPreviewCanvas.width;
     inferCanvas.height=mapPreviewCanvas.height;
     inferCanvas.getContext('2d').drawImage(inferSrc||mapPreviewCanvas,0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
-    const payload={imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),mode:'hybrid'};
+    const payload={
+      imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),
+      mode:'hybrid',
+      confidence:24,
+      overlap:32,
+      ...getRoboflowPreviewOverrides()
+    };
     const res=await fetch('/api/roboflow-detect',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -4040,7 +4066,7 @@ async function runRoboflowDetection(){
     const assistVectors=assistSegs.map((seg,i)=>({
       id:'assist-stall-'+Date.now()+'-'+i,
       className:'parking_stall',
-      confidence:0.35,
+      confidence:0.4,
       points:segmentToThinStallPolygon(seg,2)
     }));
 
