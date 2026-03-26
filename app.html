@@ -3016,6 +3016,108 @@ function dedupeZoneDetections(detections){
   });
   return kept.map(k=>k.det);
 }
+function medianValue(values){
+  const nums=(Array.isArray(values)?values:[])
+    .map(v=>Number(v))
+    .filter(v=>Number.isFinite(v))
+    .sort((a,b)=>a-b);
+  if(!nums.length)return 0;
+  const mid=Math.floor(nums.length/2);
+  return nums.length%2?nums[mid]:(nums[mid-1]+nums[mid])/2;
+}
+function segmentIntersection(a,b,c,d){
+  if(!a||!b||!c||!d)return false;
+  const orient=(p,q,r)=>((q.x-p.x)*(r.y-p.y))-((q.y-p.y)*(r.x-p.x));
+  const onSeg=(p,q,r)=>(
+    q.x<=Math.max(p.x,r.x)+1e-6&&q.x>=Math.min(p.x,r.x)-1e-6
+    && q.y<=Math.max(p.y,r.y)+1e-6&&q.y>=Math.min(p.y,r.y)-1e-6
+  );
+  const o1=orient(a,b,c),o2=orient(a,b,d),o3=orient(c,d,a),o4=orient(c,d,b);
+  if((o1>0)!==(o2>0)&&(o3>0)!==(o4>0))return true;
+  if(Math.abs(o1)<1e-6&&onSeg(a,c,b))return true;
+  if(Math.abs(o2)<1e-6&&onSeg(a,d,b))return true;
+  if(Math.abs(o3)<1e-6&&onSeg(c,a,d))return true;
+  if(Math.abs(o4)<1e-6&&onSeg(c,b,d))return true;
+  return false;
+}
+function segmentIntersectsPolygon(a,b,poly){
+  if(!a||!b||!Array.isArray(poly)||poly.length<3)return false;
+  if(pointInPolygon(a,poly)||pointInPolygon(b,poly))return true;
+  for(let i=0;i<poly.length;i++){
+    const p1=poly[i],p2=poly[(i+1)%poly.length];
+    if(segmentIntersection(a,b,p1,p2))return true;
+  }
+  return false;
+}
+function suggestMissingStallVectors(vectors){
+  if(!Array.isArray(vectors)||vectors.length<3)return [];
+  const isCoreStall=(cls)=>{
+    const c=String(cls||'').toLowerCase();
+    return c.includes('stall')||c.includes('ada')||c.includes('handicap')||c.includes('accessible');
+  };
+  const stalls=vectors.filter(v=>isCoreStall(v?.className)&&Array.isArray(v?.points)&&v.points.length>=3);
+  if(stalls.length<3)return [];
+  const lotPoly=primaryLotPolygonFromVectors(vectors);
+  const obstructionPolys=vectors
+    .filter(v=>classIsObstruction(v?.className)&&Array.isArray(v?.points)&&v.points.length>=3)
+    .map(v=>v.points);
+  const nodes=stalls.map((v)=>{
+    const center=detectionCenterPoint({points:v.points});
+    const bb=polygonBounds(v.points)||{w:0,h:0};
+    const span=Math.max(8,Math.max(bb.w||0,bb.h||0));
+    return {vector:v,center,span};
+  });
+  const nearestSteps=[];
+  nodes.forEach((n,i)=>{
+    let best=Infinity;
+    nodes.forEach((m,j)=>{
+      if(i===j)return;
+      const d=Math.hypot((m.center.x||0)-(n.center.x||0),(m.center.y||0)-(n.center.y||0));
+      if(d<n.span*0.7||d>n.span*3.4)return;
+      if(d<best)best=d;
+    });
+    if(Number.isFinite(best))nearestSteps.push(best);
+  });
+  const baseStep=medianValue(nearestSteps);
+  if(!Number.isFinite(baseStep)||baseStep<=1)return [];
+  const existingCenters=nodes.map(n=>n.center);
+  const suggestedCenters=[];
+  const suggestions=[];
+  for(let i=0;i<nodes.length;i++){
+    for(let j=i+1;j<nodes.length;j++){
+      const a=nodes[i],b=nodes[j];
+      const d=Math.hypot((b.center.x||0)-(a.center.x||0),(b.center.y||0)-(a.center.y||0));
+      if(d<baseStep*1.8||d>baseStep*4.4)continue;
+      const missing=Math.round(d/baseStep)-1;
+      if(missing<1||missing>3)continue;
+      for(let k=1;k<=missing;k++){
+        const t=k/(missing+1);
+        const c={
+          x:(a.center.x||0)+((b.center.x||0)-(a.center.x||0))*t,
+          y:(a.center.y||0)+((b.center.y||0)-(a.center.y||0))*t
+        };
+        if(lotPoly&&lotPoly.length>=3&&!pointInPolygon(c,lotPoly))continue;
+        const tooCloseExisting=existingCenters.some(ec=>Math.hypot((ec.x||0)-c.x,(ec.y||0)-c.y)<=baseStep*0.38);
+        if(tooCloseExisting)continue;
+        const tooCloseSuggested=suggestedCenters.some(ec=>Math.hypot((ec.x||0)-c.x,(ec.y||0)-c.y)<=baseStep*0.4);
+        if(tooCloseSuggested)continue;
+        const blocked=obstructionPolys.some(poly=>pointInPolygon(c,poly)||segmentIntersectsPolygon(a.center,b.center,poly));
+        if(blocked)continue;
+        const template=(Math.hypot((a.center.x||0)-c.x,(a.center.y||0)-c.y)<=Math.hypot((b.center.x||0)-c.x,(b.center.y||0)-c.y))?a:b;
+        const tc=template.center;
+        const dx=c.x-(tc.x||0),dy=c.y-(tc.y||0);
+        suggestions.push({
+          id:`stall-suggest-${Date.now()}-${i}-${j}-${k}`,
+          className:'parking_stall',
+          confidence:0.34,
+          points:template.vector.points.map(pt=>({x:(pt.x||0)+dx,y:(pt.y||0)+dy}))
+        });
+        suggestedCenters.push(c);
+      }
+    }
+  }
+  return suggestions;
+}
 function zoneGeometryLikelyDuplicate(a,b){
   if(!a||!b||!Array.isArray(a.pts)||!Array.isArray(b.pts)||a.pts.length<3||b.pts.length<3)return false;
   const ab=polygonBounds(a.pts),bb=polygonBounds(b.pts);
@@ -4070,7 +4172,9 @@ async function runRoboflowDetection(){
       points:segmentToThinStallPolygon(seg,2)
     }));
 
-    const allVectors=draftVectors.concat(assistVectors);
+    const seedVectors=draftVectors.concat(assistVectors);
+    const suggestedStalls=suggestMissingStallVectors(seedVectors);
+    const allVectors=seedVectors.concat(suggestedStalls);
     mapVectorDetections=keepStallLikeVectorsInsideLot(allVectors);
     mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
     mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
@@ -4086,7 +4190,8 @@ async function runRoboflowDetection(){
     const zoomLabel=tileStats.tilesPlanned
       ? ` Zoom scan ${tileStats.tilesRan}/${tileStats.tilesPlanned} tiles, +${tileStats.added} merged stalls.`
       : '';
-    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%).${zoomLabel} ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
+    const suggestLabel=suggestedStalls.length?` Suggestions +${suggestedStalls.length} inferred stalls.`:'';
+    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%).${zoomLabel}${suggestLabel} ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
   }catch(e){
     console.error(e);
     setImportStatus(`Detection failed: ${e.message}`,true);
