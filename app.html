@@ -3407,15 +3407,12 @@ function detectionToMarker(det){
 }
 function transferDetectionsToEditableObjects(){
   const srcRaw=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
-  const manualLotZone=(Array.isArray(zones)?zones:[]).find(z=>z&&z.closed&&!z.obstruct&&Array.isArray(z.pts)&&z.pts.length>=3) || null;
-  const manualLotPoly=manualLotZone?manualLotZone.pts.map(pt=>({x:Number(pt?.x)||0,y:Number(pt?.y)||0})):null;
   const src=dedupeStallLikeDetections(
     dedupeZoneDetections(
       keepStallLikeDetectionsInsideLot(
         keepSinglePrimaryLotDetections(
           filterDetectionsByClassConfidence(srcRaw)
-        ),
-        manualLotPoly
+        )
       )
     )
   );
