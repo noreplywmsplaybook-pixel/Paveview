@@ -3310,8 +3310,8 @@ function suggestMissingStallVectorsHorizontal(vectors, opts={}){
   const dedupeRadius=Number.isFinite(opts.dedupeRadius)?opts.dedupeRadius:10;
   const minRowPts=Number.isFinite(opts.minRowPts)?opts.minRowPts:4; // conservative: 4+ points in a row
   const expectedQuantile=Number.isFinite(opts.expectedQuantile)?opts.expectedQuantile:0.3; // conservative but not too small
-  const fillLow=Number.isFinite(opts.fillLow)?opts.fillLow:1.2;
-  const fillHigh=Number.isFinite(opts.fillHigh)?opts.fillHigh:3.2;
+  const fillLow=Number.isFinite(opts.fillLow)?opts.fillLow:1.7;
+  const fillHigh=Number.isFinite(opts.fillHigh)?opts.fillHigh:2.5;
   const report=!!opts.report;
 
   const lotPoly=primaryLotPolygonFromVectors(vectors);
@@ -3367,7 +3367,10 @@ function suggestMissingStallVectorsHorizontal(vectors, opts={}){
   if(gaps.length<3)return [];
   gaps.sort((a,b)=>a-b);
   const qIdx=Math.floor((gaps.length-1)*Math.max(0,Math.min(1,expectedQuantile)));
-  const expectedSpacing=gaps[qIdx];
+  let expectedSpacing=gaps[qIdx];
+  // If detections are "every other stall", observed consecutive gaps ~ 2× real stall spacing.
+  // Halve the spacing estimate to make the gap ratio test align with missing-in-between logic.
+  if(Number.isFinite(expectedSpacing)&&expectedSpacing>1) expectedSpacing=expectedSpacing/2;
   if(!Number.isFinite(expectedSpacing)||expectedSpacing<=1)return [];
 
   const existingCenters=deduped.map(p=>({x:p.x,y:p.y}));
@@ -3389,7 +3392,7 @@ function suggestMissingStallVectorsHorizontal(vectors, opts={}){
     return false;
   };
 
-  const dupThr=Math.max(6,expectedSpacing*0.25);
+  const dupThr=Math.max(6,expectedSpacing*0.3);
 
   rows.forEach(row=>{
     if(row.pts.length<minRowPts)return;
@@ -3398,16 +3401,11 @@ function suggestMissingStallVectorsHorizontal(vectors, opts={}){
       const a=sorted[i], b=sorted[i+1];
       const gap=Math.abs((b.x||0)-(a.x||0));
       if(!Number.isFinite(gap))continue;
-      // Only fill gaps that look like ~2× expected spacing (missing every other stall).
+      // Only fill gaps that look like ~2× expected spacing.
       if(gap<fillLow*expectedSpacing||gap>fillHigh*expectedSpacing)continue;
 
-      // Conservative: only suggest when we predict exactly one missing stall.
-      const missingCount=Math.round(gap/expectedSpacing)-1;
-      if(missingCount!==1)continue;
-
-      // For one missing stall, the best local estimate is half the gap.
-      const localSpacing=gap/2;
-      const xCand=(a.x||0)+localSpacing;
+      // Missing stall midpoint between consecutive detections.
+      const xCand=(a.x||0)+gap/2;
       const yCand=row.yMean;
       const center={x:xCand,y:yCand};
 
@@ -4572,8 +4570,8 @@ function previewStallSuggestions(){
     dedupeRadius:14,
     minRowPts:4,
     expectedQuantile:0.3,
-    fillLow:1.2,
-    fillHigh:3.2,
+    fillLow:1.7,
+    fillHigh:2.5,
     report:true,
     debug:STALL_SUGGESTION_DEBUG
   });
