@@ -4209,6 +4209,41 @@ async function runRoboflowDetection(){
     setImportStatus(`Detection failed: ${e.message}`,true);
   }
 }
+async function runAutoDetectFromCurrentPlan(){
+  try{
+    if(!Array.isArray(plans)||!plans.length||!imgW||!imgH){
+      setImportStatus('Load an image or plan before running Auto Detect.',true);
+      return;
+    }
+    setPageModalView('map');
+    openModal('page-modal');
+    const srcCanvas=document.createElement('canvas');
+    srcCanvas.width=imgW;
+    srcCanvas.height=imgH;
+    srcCanvas.getContext('2d').drawImage(bgc,0,0,imgW,imgH);
+    mapPreviewCanvas.width=imgW;
+    mapPreviewCanvas.height=imgH;
+    mapPreviewCtx.clearRect(0,0,imgW,imgH);
+    mapPreviewCtx.drawImage(srcCanvas,0,0,imgW,imgH);
+    mapBaseRawImage=srcCanvas;
+    mapBaseProcessedImage=null;
+    mapReviewState={active:false,scale:1,tx:0,ty:0,image:null};
+    mapDetectionRenderSize={w:imgW,h:imgH};
+    await runRoboflowDetection();
+    const moved=transferDetectionsToEditableObjects();
+    if((moved.zonesAdded||0)+(moved.markersAdded||0)>0){
+      setImportStatus(`Auto Detect added ${moved.zonesAdded} zones and ${moved.markersAdded} markers.`);
+    }else{
+      setImportStatus('Auto Detect completed, but no new zones or markers were added.',true);
+    }
+  }catch(e){
+    console.error(e);
+    setImportStatus(`Auto Detect failed: ${e.message}`,true);
+  }finally{
+    closeModal('page-modal');
+    setPageModalView('source');
+  }
+}
 
 function startImportFromFile(f){
   if(!f)return;
@@ -4447,7 +4482,7 @@ if(mapHistoricalYearEl){
 }
 btnMapCapture.addEventListener('click',captureMapImageryIntoPlan);
 if(btnMapDetect)btnMapDetect.addEventListener('click',runRoboflowDetection);
-if(btnAiDetectMain)btnAiDetectMain.addEventListener('click',runRoboflowDetection);
+if(btnAiDetectMain)btnAiDetectMain.addEventListener('click',runAutoDetectFromCurrentPlan);
 syncMainAiDetectButton();
 
 mapPreviewCanvas.addEventListener('wheel',e=>{
