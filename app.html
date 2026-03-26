@@ -4229,7 +4229,12 @@ async function runAutoDetectFromCurrentPlan(){
       setAppInlineStatus('Load an image or plan before running Auto Detect.',true);
       return;
     }
-    const hasLotBoundary=Array.isArray(zones)&&zones.some(z=>z&&z.closed&&!z.obstruct&&Array.isArray(z.pts)&&z.pts.length>=3);
+    let hasLotBoundary=Array.isArray(zones)&&zones.some(z=>z&&z.closed&&!z.obstruct&&Array.isArray(z.pts)&&z.pts.length>=3);
+    // If user already plotted perimeter points, close the zone automatically and continue.
+    if(!hasLotBoundary&&mode==='draw'&&activeZone&&!activeZone.obstruct&&Array.isArray(inProg)&&inProg.length>=3){
+      closeZone();
+      hasLotBoundary=Array.isArray(zones)&&zones.some(z=>z&&z.closed&&!z.obstruct&&Array.isArray(z.pts)&&z.pts.length>=3);
+    }
     if(!hasLotBoundary){
       setMode('draw');
       if(!activeZone||activeZone.closed||activeZone.obstruct){
