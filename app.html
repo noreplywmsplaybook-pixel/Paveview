@@ -1082,6 +1082,9 @@ select.sc-inp{cursor:pointer;width:40px}
       <span id="map-footer-text" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);display:none">Capture current map imagery into takeoff</span>
       <div style="margin-left:auto;display:flex;gap:6px">
         <button class="btn" id="btn-map-detect" style="display:none">Run AI Detect</button>
+        <button class="btn y" id="btn-map-suggestions" style="display:none">Suggestions</button>
+        <button class="btn y" id="btn-map-suggestions-accept" style="display:none">Accept Suggestions</button>
+        <button class="btn" id="btn-map-suggestions-decline" style="display:none">Decline</button>
         <button class="btn y" id="btn-map-capture" style="display:none">Use Imagery →</button>
         <button class="btn y" id="btn-page-load">Load Selected →</button>
       </div>
@@ -1525,6 +1528,9 @@ const btnPageLoad=document.getElementById('btn-page-load');
 const btnMapCapture=document.getElementById('btn-map-capture');
 const btnMapDetect=document.getElementById('btn-map-detect');
 const btnMapAiDetect=document.getElementById('btn-map-ai-detect');
+const btnMapSuggestions=document.getElementById('btn-map-suggestions');
+const btnMapSuggestionsAccept=document.getElementById('btn-map-suggestions-accept');
+const btnMapSuggestionsDecline=document.getElementById('btn-map-suggestions-decline');
 const mapPreviewCanvas=document.getElementById('map-preview');
 const mapPreviewCtx=mapPreviewCanvas.getContext('2d');
 const mapImportStatus=document.getElementById('map-import-status');
@@ -1568,6 +1574,13 @@ let mapSelectedVectorIdx=-1;
 let mapVectorDrag=null; // {idx,ptIdx}
 let mapVectorDragEdge=null; // {idx,chainIdxs,lastX,lastY}
 let mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
+// Stall suggestion preview state (computed on-demand after AI detect).
+let mapStallSuggestionsReady=false; // AI detect complete, suggestions can be generated
+let mapStallSuggestionPreviewActive=false; // whether preview overlay should render
+let mapStallSuggestionPoints=[]; // [{x,y}] lightweight overlay points
+let mapStallSuggestionCandidates=[]; // [{x,y,templateVector,templateCenter}]
+let mapStallSuggestionGroups=null; // optional debug grouping metadata
+const STALL_SUGGESTION_DEBUG=false; // developer-only debug rendering
 let mapScanRoi=null; // detection ROI in detection-coordinate space: {x,y,w,h}
 let mapRoiDragState=null; // {mode:'new'|'move'|'resize',edge?,startX,startY,orig}
 let mapRoiBox=null; // optional scan ROI in detection coords {x,y,w,h}
@@ -2609,6 +2622,45 @@ function drawMapVectorOverlay(){
       });
     }
   });
+
+  // Lightweight suggestion preview overlay (markers only; does not mutate vectors).
+  if(mapStallSuggestionPreviewActive&&Array.isArray(mapStallSuggestionPoints)&&mapStallSuggestionPoints.length){
+    mapPreviewCtx.save();
+    mapPreviewCtx.fillStyle='rgba(34,197,94,0.92)';
+    mapPreviewCtx.strokeStyle='rgba(0,0,0,0.55)';
+    mapPreviewCtx.lineWidth=1;
+    mapStallSuggestionPoints.forEach((pt,i)=>{
+      if(!pt||!Number.isFinite(pt.x)||!Number.isFinite(pt.y))return;
+      const x=(pt.x||0)*sx;
+      const y=(pt.y||0)*sy;
+      // Small square marker.
+      const s=5.2;
+      mapPreviewCtx.beginPath();
+      const r=s/2;
+      mapPreviewCtx.rect(x-r,y-r,s,s);
+      mapPreviewCtx.fill();
+      mapPreviewCtx.stroke();
+    });
+    if(STALL_SUGGESTION_DEBUG&&mapStallSuggestionGroups&&Array.isArray(mapStallSuggestionGroups.rowSummaries)){
+      mapPreviewCtx.strokeStyle='rgba(59,130,246,0.55)';
+      mapPreviewCtx.lineWidth=1;
+      mapStallSuggestionGroups.rowSummaries.forEach(r=>{
+        if(!r||!Number.isFinite(r.yMean))return;
+        const y=(r.yMean||0)*sy;
+        mapPreviewCtx.beginPath();
+        mapPreviewCtx.moveTo(0,y);
+        mapPreviewCtx.lineTo(mapPreviewCanvas.width,y);
+        mapPreviewCtx.stroke();
+      });
+      if(Number.isFinite(mapStallSuggestionGroups.expectedSpacing)){
+        mapPreviewCtx.fillStyle='rgba(0,0,0,0.72)';
+        mapPreviewCtx.font='11px JetBrains Mono,monospace';
+        mapPreviewCtx.fillText(`exp spacing: ${Number(mapStallSuggestionGroups.expectedSpacing).toFixed(1)}px`,12,mapPreviewCanvas.height-70);
+      }
+    }
+    mapPreviewCtx.restore();
+  }
+
   if(mapVectorDrawState.active&&mapVectorDrawState.pts.length){
     const st=classStyleForVector(mapVectorDrawState.cls);
     mapPreviewCtx.beginPath();
@@ -2820,6 +2872,18 @@ function syncMapRoiButtons(){
     btnMapRoiClear.style.opacity=mapScanRoi?'1':'0.6';
   }
 }
+function syncStallSuggestionButtons(){
+  const inMap=pageModalView==='map';
+  if(btnMapSuggestions){
+    btnMapSuggestions.style.display=inMap&&mapStallSuggestionsReady&&!mapStallSuggestionPreviewActive?'inline-block':'none';
+  }
+  if(btnMapSuggestionsAccept){
+    btnMapSuggestionsAccept.style.display=inMap&&mapStallSuggestionPreviewActive?'inline-block':'none';
+  }
+  if(btnMapSuggestionsDecline){
+    btnMapSuggestionsDecline.style.display=inMap&&mapStallSuggestionPreviewActive?'inline-block':'inline-block';
+  }
+}
 function clearMapDetections(){
   mapDetections=[];
   mapDetectionRenderSize={w:0,h:0};
@@ -2831,9 +2895,15 @@ function clearMapDetections(){
   mapVectorDrag=null;
   mapVectorDragEdge=null;
   mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
+  mapStallSuggestionsReady=false;
+  mapStallSuggestionPreviewActive=false;
+  mapStallSuggestionPoints=[];
+  mapStallSuggestionCandidates=[];
+  mapStallSuggestionGroups=null;
   mapSnapDebugMoves=[];
   mapRoiDragState=null;
   syncMapRoiButtons();
+  syncStallSuggestionButtons();
 }
 function detKind(p){
   const c=String(p?.class||'').toLowerCase();
@@ -3049,74 +3119,183 @@ function segmentIntersectsPolygon(a,b,poly){
   }
   return false;
 }
-function suggestMissingStallVectors(vectors){
+function suggestMissingStallVectors(vectors, opts={}){
+  // Conservative horizontal-only stall-gap suggestion.
+  // Returns candidate objects, not vectors: [{x,y,templateVector,templateCenter,confidence}]
   if(!Array.isArray(vectors)||vectors.length<3)return [];
-  const isCoreStall=(cls)=>{
-    const c=String(cls||'').toLowerCase();
-    return c.includes('stall')||c.includes('ada')||c.includes('handicap')||c.includes('accessible');
-  };
-  const stalls=vectors.filter(v=>isCoreStall(v?.className)&&Array.isArray(v?.points)&&v.points.length>=3);
-  if(stalls.length<3)return [];
+
+  const yTol=Number.isFinite(opts.yTol)?opts.yTol:10; // detection-coordinate px
+  const dedupeRadius=Number.isFinite(opts.dedupeRadius)?opts.dedupeRadius:10;
+  const gapLow=Number.isFinite(opts.gapLow)?opts.gapLow:1.7; // gap >= gapLow * expectedSpacing
+  const gapHigh=Number.isFinite(opts.gapHigh)?opts.gapHigh:2.3; // gap <= gapHigh * expectedSpacing
+  const minClusterPoints=4; // requirement: 3 dots -> no suggestions
+  const debug=!!opts.debug;
+
   const lotPoly=primaryLotPolygonFromVectors(vectors);
   const obstructionPolys=vectors
     .filter(v=>classIsObstruction(v?.className)&&Array.isArray(v?.points)&&v.points.length>=3)
     .map(v=>v.points);
-  const nodes=stalls.map((v)=>{
+
+  const isCoreStall=(cls)=>{
+    const c=String(cls||'').toLowerCase();
+    return c.includes('stall')||c.includes('ada')||c.includes('handicap')||c.includes('accessible');
+  };
+
+  const stallVectors=(vectors||[])
+    .filter(v=>v&&isCoreStall(v.className)&&Array.isArray(v.points)&&v.points.length>=3);
+  if(stallVectors.length<minClusterPoints)return [];
+
+  // ── Prompt 1: clean input (dedupe stall centers) ──
+  const points=stallVectors.map(v=>{
     const center=detectionCenterPoint({points:v.points});
-    const bb=polygonBounds(v.points)||{w:0,h:0};
-    const span=Math.max(8,Math.max(bb.w||0,bb.h||0));
-    return {vector:v,center,span};
-  });
-  const nearestSteps=[];
-  nodes.forEach((n,i)=>{
-    let best=Infinity;
-    nodes.forEach((m,j)=>{
-      if(i===j)return;
-      const d=Math.hypot((m.center.x||0)-(n.center.x||0),(m.center.y||0)-(n.center.y||0));
-      if(d<n.span*0.7||d>n.span*3.4)return;
-      if(d<best)best=d;
-    });
-    if(Number.isFinite(best))nearestSteps.push(best);
-  });
-  const baseStep=medianValue(nearestSteps);
-  if(!Number.isFinite(baseStep)||baseStep<=1)return [];
-  const existingCenters=nodes.map(n=>n.center);
-  const suggestedCenters=[];
-  const suggestions=[];
-  for(let i=0;i<nodes.length;i++){
-    for(let j=i+1;j<nodes.length;j++){
-      const a=nodes[i],b=nodes[j];
-      const d=Math.hypot((b.center.x||0)-(a.center.x||0),(b.center.y||0)-(a.center.y||0));
-      if(d<baseStep*1.8||d>baseStep*4.4)continue;
-      const missing=Math.round(d/baseStep)-1;
-      if(missing<1||missing>3)continue;
-      for(let k=1;k<=missing;k++){
-        const t=k/(missing+1);
-        const c={
-          x:(a.center.x||0)+((b.center.x||0)-(a.center.x||0))*t,
-          y:(a.center.y||0)+((b.center.y||0)-(a.center.y||0))*t
-        };
-        if(lotPoly&&lotPoly.length>=3&&!pointInPolygon(c,lotPoly))continue;
-        const tooCloseExisting=existingCenters.some(ec=>Math.hypot((ec.x||0)-c.x,(ec.y||0)-c.y)<=baseStep*0.38);
-        if(tooCloseExisting)continue;
-        const tooCloseSuggested=suggestedCenters.some(ec=>Math.hypot((ec.x||0)-c.x,(ec.y||0)-c.y)<=baseStep*0.4);
-        if(tooCloseSuggested)continue;
-        const blocked=obstructionPolys.some(poly=>pointInPolygon(c,poly)||segmentIntersectsPolygon(a.center,b.center,poly));
-        if(blocked)continue;
-        const template=(Math.hypot((a.center.x||0)-c.x,(a.center.y||0)-c.y)<=Math.hypot((b.center.x||0)-c.x,(b.center.y||0)-c.y))?a:b;
-        const tc=template.center;
-        const dx=c.x-(tc.x||0),dy=c.y-(tc.y||0);
-        suggestions.push({
-          id:`stall-suggest-${Date.now()}-${i}-${j}-${k}`,
-          className:'parking_stall',
-          confidence:0.34,
-          points:template.vector.points.map(pt=>({x:(pt.x||0)+dx,y:(pt.y||0)+dy}))
-        });
-        suggestedCenters.push(c);
+    return {x:Number(center?.x)||0,y:Number(center?.y)||0,vector:v};
+  }).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+
+  const deduped=[];
+  const cellSize=Math.max(6,dedupeRadius);
+  const grid=new Map();
+  const keyOf=(x,y)=>`${Math.floor(x/cellSize)}:${Math.floor(y/cellSize)}`;
+
+  points.forEach(p=>{
+    const key=keyOf(p.x,p.y);
+    if(!grid.has(key))grid.set(key,[]);
+    const bucket=grid.get(key);
+    // Also check neighbor cells lightly for radius.
+    let tooClose=false;
+    for(let dx=-1;dx<=1&&!tooClose;dx++){
+      for(let dy=-1;dy<=1&&!tooClose;dy++){
+        const k=`${Math.floor((p.x)/cellSize)+dx}:${Math.floor((p.y)/cellSize)+dy}`;
+        const b=grid.get(k);
+        if(!b||!b.length)continue;
+        for(const e of b){
+          if(Math.hypot((e.x||0)-p.x,(e.y||0)-p.y)<=dedupeRadius*0.6){tooClose=true;break;}
+        }
       }
     }
+    if(tooClose)return;
+    bucket.push(p);
+    deduped.push(p);
+  });
+
+  if(deduped.length<minClusterPoints)return [];
+
+  // ── Prompt 4/5: cluster into horizontal row groups by Y ──
+  deduped.sort((a,b)=>a.y-b.y);
+  const rows=[];
+  deduped.forEach(p=>{
+    const row=rows.length?rows[rows.length-1]:null;
+    if(!row||Math.abs(p.y-row.yMean)>yTol){
+      rows.push({yMean:p.y,pts:[p]});
+    }else{
+      row.pts.push(p);
+      row.yMean=row.pts.reduce((s,q)=>s+q.y,0)/row.pts.length;
+    }
+  });
+
+  // ── Prompt 6: estimate expected spacing robustly (use lower quartile) ──
+  const gapMedians=[];
+  rows.forEach(r=>{
+    if(r.pts.length<3)return;
+    const xs=r.pts.slice().sort((a,b)=>a.x-b.x).map(p=>p.x);
+    const gaps=[];
+    for(let i=0;i<xs.length-1;i++){
+      const g=Math.abs(xs[i+1]-xs[i]);
+      if(Number.isFinite(g)&&g>1)gaps.push(g);
+    }
+    if(gaps.length>=2){
+      gaps.sort((a,b)=>a-b);
+      gapMedians.push(gaps[Math.floor(gaps.length/2)]);
+    }
+  });
+  if(!gapMedians.length)return [];
+  gapMedians.sort((a,b)=>a-b);
+  const qIdx=Math.floor((gapMedians.length-1)*0.4); // conservative: smaller spacing first
+  const expectedSpacing=gapMedians[qIdx];
+  if(!Number.isFinite(expectedSpacing)||expectedSpacing<=1)return [];
+
+  const existingCenters=deduped.map(p=>({x:p.x,y:p.y}));
+  const candidates=[];
+  const candidateCenters=[];
+
+  const distToNearestExisting=(x,y)=>{
+    let best=Infinity;
+    for(let i=0;i<existingCenters.length;i++){
+      const ec=existingCenters[i];
+      best=Math.min(best,Math.hypot((ec.x||0)-x,(ec.y||0)-y));
+    }
+    return best;
+  };
+
+  const pointTooClose=(x,y,thr)=>{
+    for(let i=0;i<candidateCenters.length;i++){
+      const c=candidateCenters[i];
+      if(Math.hypot((c.x||0)-x,(c.y||0)-y)<=thr)return true;
+    }
+    return false;
+  };
+
+  // ── Prompt 8/9: generate inside valid segments (only between consecutive points) ──
+  rows.forEach(row=>{
+    if(row.pts.length<minClusterPoints)return;
+    const sorted=row.pts.slice().sort((a,b)=>a.x-b.x);
+    const xs=sorted.map(p=>p.x);
+    for(let i=0;i<xs.length-1;i++){
+      const x1=xs[i],x2=xs[i+1];
+      const gap=Math.abs(x2-x1);
+      if(!Number.isFinite(gap)||gap<expectedSpacing*0.7)continue;
+      // Conservative: only fill when the gap strongly looks like ~2x expected spacing.
+      if(gap<gapLow*expectedSpacing||gap>gapHigh*expectedSpacing)continue;
+
+      const xCand=x1+expectedSpacing;
+      const yCand=row.yMean;
+      const center={x:xCand,y:yCand};
+
+      // Duplicate prevention vs existing detections.
+      const nearExistingDist=distToNearestExisting(center.x,center.y);
+      const dupThr=Math.max(6,expectedSpacing*0.25);
+      if(nearExistingDist<=dupThr)continue;
+      if(pointTooClose(center.x,center.y,expectedSpacing*0.28))continue;
+
+      // Obstruction checks: don't fill if candidate is inside obstruction or the segment crosses obstruction.
+      const blocked=obstructionPolys.length&&obstructionPolys.some(poly=>{
+        if(pointInPolygon(center,poly))return true;
+        const a={x:x1,y:row.yMean},b={x:x2,y:row.yMean};
+        return segmentIntersectsPolygon(a,b,poly);
+      });
+      if(blocked)return;
+
+      // Optional: lot boundary trimming (if we have a lot polygon from vectors).
+      if(lotPoly&&lotPoly.length>=3&&!pointInPolygon(center,lotPoly))continue;
+
+      // Template selection: nearest stall vector around the same row.
+      let bestTpl=null,bestD=Infinity;
+      for(let ti=0;ti<sorted.length;ti++){
+        const cand=sorted[ti];
+        const d=Math.hypot((cand.x||0)-center.x,(cand.y||0)-center.y);
+        if(d<bestD){bestD=d;bestTpl=cand.vector;}
+      }
+      if(!bestTpl)continue;
+      const tplCenter=detectionCenterPoint({points:bestTpl.points});
+      candidates.push({
+        x:center.x,
+        y:center.y,
+        templateVector:bestTpl,
+        templateCenter:{x:tplCenter?.x||0,y:tplCenter?.y||0},
+        confidence:0.34
+      });
+      candidateCenters.push(center);
+    }
+  });
+  if(debug){
+    candidates.debugInfo={
+      expectedSpacing,
+      yTol,
+      dedupeRadius,
+      rowSummaries:rows.map(r=>({yMean:r.yMean,count:r.pts.length})).filter(r=>r.count>=3)
+    };
   }
-  return suggestions;
+
+  return candidates;
 }
 function zoneGeometryLikelyDuplicate(a,b){
   if(!a||!b||!Array.isArray(a.pts)||!Array.isArray(b.pts)||a.pts.length<3||b.pts.length<3)return false;
@@ -3487,6 +3666,7 @@ function setPageModalView(view){
     void ensureWaybackYears(false);
     syncMapZoomSliderToViewState();
   }
+  syncStallSuggestionButtons();
 }
 
 function openImportSourceChooser(){
@@ -4041,6 +4221,11 @@ async function captureMapImageryIntoPlan(){
 async function runRoboflowDetection(){
   try{
     setImportStatus('Running Roboflow detection…');
+    mapStallSuggestionsReady=false;
+    mapStallSuggestionPreviewActive=false;
+    mapStallSuggestionPoints=[];
+    mapStallSuggestionCandidates=[];
+    mapStallSuggestionGroups=null;
     mapReviewState.active=false;
     mapInteraction.dragging=false;
     // PASS 1: Keep Roboflow tied to raw capture as the primary model input.
@@ -4173,9 +4358,7 @@ async function runRoboflowDetection(){
     }));
 
     const seedVectors=draftVectors.concat(assistVectors);
-    const suggestedStalls=suggestMissingStallVectors(seedVectors);
-    const allVectors=seedVectors.concat(suggestedStalls);
-    mapVectorDetections=keepStallLikeVectorsInsideLot(allVectors);
+    mapVectorDetections=keepStallLikeVectorsInsideLot(seedVectors);
     mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
     mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
     mapDetectionRenderSize={w:data?.image?.width||mapPreviewCanvas.width,h:data?.image?.height||mapPreviewCanvas.height};
@@ -4186,16 +4369,126 @@ async function runRoboflowDetection(){
     const classSummary=Object.entries(clsCounts).map(([k,v])=>`${k}:${v}`).join(', ');
     mapReviewState.active=false;
     drawMapOverlay();
+    mapStallSuggestionsReady=true;
+    mapStallSuggestionPreviewActive=false;
+    mapStallSuggestionPoints=[];
+    mapStallSuggestionCandidates=[];
+    mapStallSuggestionGroups=null;
+    syncStallSuggestionButtons();
     const snapPct=snapTotal?Math.round((snapMoved/snapTotal)*100):0;
     const zoomLabel=tileStats.tilesPlanned
       ? ` Zoom scan ${tileStats.tilesRan}/${tileStats.tilesPlanned} tiles, +${tileStats.added} merged stalls.`
       : '';
-    const suggestLabel=suggestedStalls.length?` Suggestions +${suggestedStalls.length} inferred stalls.`:'';
-    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%).${zoomLabel}${suggestLabel} ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
+    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%).${zoomLabel} ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
   }catch(e){
     console.error(e);
     setImportStatus(`Detection failed: ${e.message}`,true);
   }
+}
+
+function clearStallSuggestionPreview(){
+  mapStallSuggestionPreviewActive=false;
+  mapStallSuggestionPoints=[];
+  mapStallSuggestionCandidates=[];
+  mapStallSuggestionGroups=null;
+  syncStallSuggestionButtons();
+  drawMapOverlay();
+}
+
+function previewStallSuggestions(){
+  // Only compute on-demand (never during AI detect).
+  if(!mapVectorDetections||!mapVectorDetections.length){
+    setImportStatus('Run AI Detect first.',true);
+    return;
+  }
+  if(!mapStallSuggestionsReady){
+    setImportStatus('Suggestions not ready yet.',true);
+    return;
+  }
+
+  const candidates=suggestMissingStallVectors(mapVectorDetections,{
+    yTol:10,
+    dedupeRadius:10,
+    debug:STALL_SUGGESTION_DEBUG
+  });
+  mapStallSuggestionCandidates=Array.isArray(candidates)?candidates:[];
+  mapStallSuggestionGroups=(Array.isArray(candidates)&&candidates.debugInfo)?candidates.debugInfo:null;
+  mapStallSuggestionPoints=mapStallSuggestionCandidates.map(c=>({x:c.x,y:c.y}));
+  mapStallSuggestionPreviewActive=true;
+  mapStallSuggestionsReady=true;
+  syncStallSuggestionButtons();
+  setImportStatus(`Suggestion preview: ${mapStallSuggestionPoints.length} inferred stall(s). Accept or Decline.`);
+  drawMapOverlay();
+}
+
+function acceptStallSuggestions(){
+  if(!mapStallSuggestionPreviewActive||!Array.isArray(mapStallSuggestionCandidates)||!mapStallSuggestionCandidates.length){
+    return;
+  }
+  const candidates=mapStallSuggestionCandidates;
+  const obstructionPolys=mapVectorDetections
+    .filter(v=>classIsObstruction(v?.className)&&Array.isArray(v?.points)&&v.points.length>=3)
+    .map(v=>v.points);
+  const lotPoly=primaryLotPolygonFromVectors(mapVectorDetections);
+
+  const existingCenters=mapVectorDetections.map(v=>{
+    const pts=Array.isArray(v?.points)?v.points:[];
+    const c=detectionCenterPoint({points:pts});
+    return {x:c.x,y:c.y};
+  });
+  const dupThr=10; // conservative center-distance threshold
+
+  const newVectors=[];
+  candidates.forEach((cand,idx)=>{
+    const tpl=cand?.templateVector;
+    if(!tpl||!Array.isArray(tpl.points)||tpl.points.length<3)return;
+    const tc=cand?.templateCenter||detectionCenterPoint({points:tpl.points});
+    const dx=(cand.x||0)-(tc?.x||0);
+    const dy=(cand.y||0)-(tc?.y||0);
+    const translatedPts=tpl.points.map(pt=>({x:(pt.x||0)+dx,y:(pt.y||0)+dy}));
+    if(translatedPts.length<3)return;
+
+    const center=detectionCenterPoint({points:translatedPts});
+    // Trim to lot boundary if we have one.
+    if(lotPoly&&lotPoly.length>=3&&!pointInPolygon({x:center.x,y:center.y},lotPoly))return;
+
+    // Obstruction safety: reject if candidate center or any vertex lands inside an obstruction polygon.
+    const blocked=obstructionPolys.some(poly=>{
+      if(pointInPolygon({x:center.x,y:center.y},poly))return true;
+      return translatedPts.some(pt=>pointInPolygon({x:pt.x,y:pt.y},poly));
+    });
+    if(blocked)return;
+
+    const nearExisting=existingCenters.some(ec=>Math.hypot((ec.x||0)-(center.x||0),(ec.y||0)-(center.y||0))<=dupThr);
+    if(nearExisting)return;
+
+    newVectors.push({
+      id:'stall-suggest-accept-'+Date.now()+'-'+idx,
+      className:tpl.className||'parking_stall',
+      confidence:cand.confidence||0.34,
+      points:translatedPts
+    });
+  });
+
+  if(!newVectors.length){
+    setImportStatus('No suggestions accepted (possibly blocked by obstructions or duplicates).',true);
+    clearStallSuggestionPreview();
+    return;
+  }
+
+  mapVectorDetections=mapVectorDetections.concat(newVectors);
+  mapSelectedVectorIdx=mapVectorDetections.length-1;
+  syncMapVectorDetectionsToRaw();
+
+  mapStallSuggestionPreviewActive=false;
+  mapStallSuggestionPoints=[];
+  mapStallSuggestionCandidates=[];
+  mapStallSuggestionGroups=null;
+  mapStallSuggestionsReady=false; // require new AI Detect for another suggestion pass
+  syncStallSuggestionButtons();
+
+  setImportStatus(`Accepted ${newVectors.length} inferred stall(s).`);
+  drawMapOverlay();
 }
 
 function startImportFromFile(f){
@@ -4436,6 +4729,9 @@ if(mapHistoricalYearEl){
 btnMapCapture.addEventListener('click',captureMapImageryIntoPlan);
 if(btnMapDetect)btnMapDetect.addEventListener('click',runRoboflowDetection);
 if(btnMapAiDetect)btnMapAiDetect.addEventListener('click',runRoboflowDetection);
+if(btnMapSuggestions)btnMapSuggestions.addEventListener('click',previewStallSuggestions);
+if(btnMapSuggestionsAccept)btnMapSuggestionsAccept.addEventListener('click',acceptStallSuggestions);
+if(btnMapSuggestionsDecline)btnMapSuggestionsDecline.addEventListener('click',clearStallSuggestionPreview);
 
 mapPreviewCanvas.addEventListener('wheel',e=>{
   if(pageModalView!=='map')return;
