@@ -4212,11 +4212,14 @@ async function runRoboflowDetection(){
 async function runAutoDetectFromCurrentPlan(){
   try{
     if(!Array.isArray(plans)||!plans.length||!imgW||!imgH){
-      setImportStatus('Load an image or plan before running Auto Detect.',true);
+      alert('Load an image or plan before running Auto Detect.');
       return;
     }
-    setPageModalView('map');
-    openModal('page-modal');
+    const hasLotBoundary=Array.isArray(zones)&&zones.some(z=>z&&z.closed&&!z.obstruct&&Array.isArray(z.pts)&&z.pts.length>=3);
+    if(!hasLotBoundary){
+      alert('Measure lot boundary first.');
+      return;
+    }
     const srcCanvas=document.createElement('canvas');
     srcCanvas.width=imgW;
     srcCanvas.height=imgH;
@@ -4239,9 +4242,6 @@ async function runAutoDetectFromCurrentPlan(){
   }catch(e){
     console.error(e);
     setImportStatus(`Auto Detect failed: ${e.message}`,true);
-  }finally{
-    closeModal('page-modal');
-    setPageModalView('source');
   }
 }
 
