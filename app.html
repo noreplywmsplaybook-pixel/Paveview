@@ -3308,10 +3308,11 @@ function suggestMissingStallVectorsHorizontal(vectors, opts={}){
 
   const yTol=Number.isFinite(opts.yTol)?opts.yTol:10;
   const dedupeRadius=Number.isFinite(opts.dedupeRadius)?opts.dedupeRadius:10;
-  const minRowPts=Number.isFinite(opts.minRowPts)?opts.minRowPts:4; // only rows with 4+ detections can yield suggestions
-  const expectedQuantile=Number.isFinite(opts.expectedQuantile)?opts.expectedQuantile:0.25; // conservative: small spacing
-  const fillLow=Number.isFinite(opts.fillLow)?opts.fillLow:1.4;   // gap ~1.4×..2.6× expected spacing
-  const fillHigh=Number.isFinite(opts.fillHigh)?opts.fillHigh:2.6;
+  const minRowPts=Number.isFinite(opts.minRowPts)?opts.minRowPts:4; // conservative: 4+ points in a row
+  const expectedQuantile=Number.isFinite(opts.expectedQuantile)?opts.expectedQuantile:0.3; // conservative but not too small
+  const fillLow=Number.isFinite(opts.fillLow)?opts.fillLow:1.2;
+  const fillHigh=Number.isFinite(opts.fillHigh)?opts.fillHigh:3.2;
+  const report=!!opts.report;
 
   const lotPoly=primaryLotPolygonFromVectors(vectors);
   const obstructionPolys=vectors
@@ -3400,7 +3401,13 @@ function suggestMissingStallVectorsHorizontal(vectors, opts={}){
       // Only fill gaps that look like ~2× expected spacing (missing every other stall).
       if(gap<fillLow*expectedSpacing||gap>fillHigh*expectedSpacing)continue;
 
-      const xCand=(a.x||0)+expectedSpacing;
+      // Conservative: only suggest when we predict exactly one missing stall.
+      const missingCount=Math.round(gap/expectedSpacing)-1;
+      if(missingCount!==1)continue;
+
+      // For one missing stall, the best local estimate is half the gap.
+      const localSpacing=gap/2;
+      const xCand=(a.x||0)+localSpacing;
       const yCand=row.yMean;
       const center={x:xCand,y:yCand};
 
@@ -3438,6 +3445,16 @@ function suggestMissingStallVectorsHorizontal(vectors, opts={}){
       candidateCenters.push(center);
     }
   });
+
+  if(report){
+    candidates.debugInfo={
+      dedupedCount:deduped.length,
+      rowCount:rows.length,
+      expectedSpacing,
+      candidateCount:candidates.length,
+      minRowPts
+    };
+  }
 
   return candidates;
 }
@@ -4551,12 +4568,13 @@ function previewStallSuggestions(){
   }
 
   const candidates=suggestMissingStallVectorsHorizontal(mapVectorDetections,{
-    yTol:10,
-    dedupeRadius:10,
-    minRowPts:3,
+    yTol:16,
+    dedupeRadius:14,
+    minRowPts:4,
     expectedQuantile:0.3,
-    fillLow:1.3,
-    fillHigh:2.9,
+    fillLow:1.2,
+    fillHigh:3.2,
+    report:true,
     debug:STALL_SUGGESTION_DEBUG
   });
   mapStallSuggestionCandidates=Array.isArray(candidates)?candidates:[];
@@ -4565,7 +4583,14 @@ function previewStallSuggestions(){
   mapStallSuggestionPreviewActive=true;
   mapStallSuggestionsReady=true;
   syncStallSuggestionButtons();
-  setImportStatus(`Suggestion preview: ${mapStallSuggestionPoints.length} inferred stall(s). Accept or Decline.`);
+  const info=mapStallSuggestionGroups||{};
+  const infoBits=[
+    `Suggestion preview: ${mapStallSuggestionPoints.length} inferred stall(s).`,
+    Number.isFinite(info.expectedSpacing)?`expectedSpacing ~${Number(info.expectedSpacing).toFixed(1)}px`:'',
+    Number.isFinite(info.rowCount)?`rows ${info.rowCount}`:'',
+    Number.isFinite(info.dedupedCount)?`stalls ${info.dedupedCount}`:''
+  ].filter(Boolean).join(' ');
+  setImportStatus(infoBits+' Accept or Decline.');
   drawMapOverlay();
 }
 
