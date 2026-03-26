@@ -132,7 +132,6 @@ select.sc-inp{cursor:pointer;width:40px}
 .tsep{width:1px;height:12px;background:var(--border2);margin:0 5px}
 .tlbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase}
 #active-mode-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--accent);white-space:nowrap}
-#app-inline-status{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);white-space:nowrap;max-width:360px;overflow:hidden;text-overflow:ellipsis}
 .zbtn{
   background:var(--surface);border:1px solid var(--border);color:var(--text3);
   width:22px;height:22px;font-size:13px;cursor:pointer;
@@ -778,7 +777,6 @@ select.sc-inp{cursor:pointer;width:40px}
   <div class="tsep"></div>
   <span class="tlbl">Mode</span>
   <span id="active-mode-lbl">Zone</span>
-  <span id="app-inline-status"></span>
   <div class="tsep"></div>
   <div class="tsep"></div>
   <input type="text" id="search-inp" placeholder="Search labels…" style="background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 8px;outline:none;width:130px;transition:border-color .15s" oninput="searchCanvas(this.value)" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
@@ -1536,7 +1534,6 @@ const btnAiDetectMain=document.getElementById('btn-ai-detect-main');
 const mapPreviewCanvas=document.getElementById('map-preview');
 const mapPreviewCtx=mapPreviewCanvas.getContext('2d');
 const mapImportStatus=document.getElementById('map-import-status');
-const appInlineStatus=document.getElementById('app-inline-status');
 const mapImageryModeSel=document.getElementById('map-imagery-mode');
 const btnMapDebugBw=document.getElementById('btn-map-debug-bw');
 const btnMapDebugSnap=document.getElementById('btn-map-debug-snap');
@@ -2809,11 +2806,6 @@ function setImportStatus(msg,isError=false){
   mapImportStatus.style.color=isError?'var(--red)':'var(--text3)';
   mapImportStatus.textContent=msg;
 }
-function setAppInlineStatus(msg,isError=false){
-  if(!appInlineStatus)return;
-  appInlineStatus.style.color=isError?'var(--red)':'var(--text3)';
-  appInlineStatus.textContent=String(msg||'').trim();
-}
 function syncMapDebugBwButton(){
   if(!btnMapDebugBw)return;
   btnMapDebugBw.classList.toggle('y',mapDebugBwPreview);
@@ -4061,8 +4053,6 @@ async function captureMapImageryIntoPlan(){
 async function runRoboflowDetection(){
   try{
     setImportStatus('Running Roboflow detection…');
-    const manualLotZone=(Array.isArray(zones)?zones:[]).find(z=>z&&z.closed&&!z.obstruct&&Array.isArray(z.pts)&&z.pts.length>=3) || null;
-    const manualLotPoly=manualLotZone?manualLotZone.pts.map(pt=>({x:Number(pt?.x)||0,y:Number(pt?.y)||0})):null;
     mapReviewState.active=false;
     mapInteraction.dragging=false;
     // PASS 1: Keep Roboflow tied to raw capture as the primary model input.
@@ -4087,14 +4077,13 @@ async function runRoboflowDetection(){
     if(!res.ok)throw new Error(data?.error||'Detection failed');
 
     const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
-    const modelPredictions=(manualLotPoly&&manualLotPoly.length>=3)
-      ? rawPredictions.filter(p=>!classIsLot(p?.class))
-      : rawPredictions;
     // Production baseline: use RF + current filtering as source-of-truth.
     let draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
-      keepStallLikeDetectionsInsideLot(filterDetectionsByClassConfidence(modelPredictions),manualLotPoly)
+      keepStallLikeDetectionsInsideLot(
+        filterDetectionsByClassConfidence(rawPredictions)
+      )
     )));
-    const baseLotPoly=(manualLotPoly&&manualLotPoly.length>=3)?manualLotPoly:primaryLotPolygonFromDetections(draftDetections);
+    const baseLotPoly=primaryLotPolygonFromDetections(draftDetections);
     const scanRoi=mapCurrentScanRoi(baseLotPoly);
     const stallScanPoly=(scanRoi&&scanRoi.w>20&&scanRoi.h>20)?roiRectToPolygon(scanRoi):baseLotPoly;
     let tileStats={tilesPlanned:0,tilesRan:0,added:0};
@@ -4223,21 +4212,12 @@ async function runRoboflowDetection(){
 async function runAutoDetectFromCurrentPlan(){
   try{
     if(!Array.isArray(plans)||!plans.length||!imgW||!imgH){
-      setAppInlineStatus('Load an image or plan before running Auto Detect.',true);
+      alert('Load an image or plan before running Auto Detect.');
       return;
     }
     const hasLotBoundary=Array.isArray(zones)&&zones.some(z=>z&&z.closed&&!z.obstruct&&Array.isArray(z.pts)&&z.pts.length>=3);
     if(!hasLotBoundary){
-      setMode('draw');
-      if(!activeZone||activeZone.closed||activeZone.obstruct){
-        addZone(false);
-      }
-      if(activeZone&&!activeZone.obstruct){
-        activeZone.name='Lot Perimeter';
-      }
-      renderZoneList();
-      renderAll();
-      setAppInlineStatus('Measure lot boundary first, then run Auto Detect.',true);
+      alert('Measure lot boundary first.');
       return;
     }
     const srcCanvas=document.createElement('canvas');
@@ -4255,15 +4235,12 @@ async function runAutoDetectFromCurrentPlan(){
     await runRoboflowDetection();
     const moved=transferDetectionsToEditableObjects();
     if((moved.zonesAdded||0)+(moved.markersAdded||0)>0){
-      setAppInlineStatus('Auto Detect complete.');
       setImportStatus(`Auto Detect added ${moved.zonesAdded} zones and ${moved.markersAdded} markers.`);
     }else{
-      setAppInlineStatus('Auto Detect complete, no new items.',true);
       setImportStatus('Auto Detect completed, but no new zones or markers were added.',true);
     }
   }catch(e){
     console.error(e);
-    setAppInlineStatus(`Auto Detect failed: ${e.message}`,true);
     setImportStatus(`Auto Detect failed: ${e.message}`,true);
   }
 }
@@ -5267,7 +5244,7 @@ function addZone(isObs=false){
   const id='z'+Date.now();
   const nz=zones.filter(z=>!z.obstruct).length;
   const color=isObs?'#ef4444':COLORS[nz%COLORS.length];
-  const name=isObs?`Obstruction ${zones.filter(z=>z.obstruct).length+1}`:(nz===0?'Lot Perimeter':`Zone ${nz+1}`);
+  const name=isObs?`Obstruction ${zones.filter(z=>z.obstruct).length+1}`:`Zone ${nz+1}`;
   zones.push({id,name,color,pts:[],closed:false,locked:false,showFill:true,obstruct:isObs,labelSize:12,opacity:15,lineWidth:2,lineDashed:false});
   activeZone=zones[zones.length-1];
   setFocusedZone(activeZone.id);
