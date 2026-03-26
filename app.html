@@ -106,13 +106,6 @@ body {
 .btn:hover{border-color:var(--text2);color:var(--text2)}
 .btn.y{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600}
 .btn.y:hover{opacity:.9}
-#btn-ai-detect-main{
-  background:#ffd84a;
-  border-color:#ffd84a;
-  color:#000;
-  font-weight:700;
-}
-#btn-ai-detect-main:hover{opacity:.92}
 .hd{width:1px;height:16px;background:var(--border);margin:0 5px}
 
 /* ── TOOLBAR ── */
@@ -747,7 +740,6 @@ select.sc-inp{cursor:pointer;width:40px}
   <input type="text" id="proj-name" placeholder="Project / address…">
   <span id="calib-badge">Uncalibrated</span>
   <div class="hright">
-    <button class="btn y" id="btn-ai-detect-main" style="display:none">Auto Detect</button>
     <button class="btn" id="btn-undo">Undo</button>
     <button class="btn" id="btn-clear">Clear</button>
     <div class="hd"></div>
@@ -1066,8 +1058,13 @@ select.sc-inp{cursor:pointer;width:40px}
           </select>
           <label>Year</label>
           <select id="map-historical-year"></select>
+          <button class="btn" id="btn-map-roi-draw" title="Draw a scan box over the lot">Draw Scan Box</button>
+          <button class="btn" id="btn-map-roi-clear" title="Clear scan box">Clear Box</button>
+          <button class="btn" id="btn-map-debug-bw" title="Debug only: preview pass-2 snap layer">Preview B&W</button>
+          <button class="btn" id="btn-map-debug-snap" title="Debug only: show before/after vertex snap deltas">Show Snap Changes</button>
+          <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
         </div>
-        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Drag the map to pan. The <strong>Zoom</strong> slider is centered on the zoom when imagery loads (middle = that view): drag left/right to zoom out/in with small steps. When the image looks right, click <strong>Use Imagery</strong>.</div>
+        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Drag the map to pan. The <strong>Zoom</strong> slider is centered on the zoom when imagery loads (middle = that view): drag left/right to zoom out/in with small steps. Use <strong>Draw Scan Box</strong> to focus AI on a lot area.</div>
         <div class="map-row">
           <label>Zoom</label>
           <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);flex:0 0 auto">out</span>
@@ -1075,7 +1072,7 @@ select.sc-inp{cursor:pointer;width:40px}
           <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);flex:0 0 auto">in</span>
           <span id="map-zoom-slider-lbl">—</span>
         </div>
-        <div id="map-import-status">Search an address, position the map, then click Use Imagery.</div>
+        <div id="map-import-status">Pick a location and click Refresh.</div>
         <canvas id="map-preview" width="1024" height="1024"></canvas>
       </div>
       <div id="page-thumbs"></div>
@@ -1084,6 +1081,7 @@ select.sc-inp{cursor:pointer;width:40px}
       <span id="page-footer-text" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)"><strong id="page-sel-count" style="color:var(--stripe)">0</strong> selected</span>
       <span id="map-footer-text" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);display:none">Capture current map imagery into takeoff</span>
       <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn" id="btn-map-detect" style="display:none">Run AI Detect</button>
         <button class="btn y" id="btn-map-capture" style="display:none">Use Imagery →</button>
         <button class="btn y" id="btn-page-load">Load Selected →</button>
       </div>
@@ -1449,7 +1447,6 @@ function switchPlan(idx){
   currentPlanIdx=idx;
   loadPlanData(idx);
   renderPlanTabs();
-  syncMainAiDetectButton();
 }
 
 function addPlan(dataURL,imgW2,imgH2,label){
@@ -1460,7 +1457,6 @@ function addPlan(dataURL,imgW2,imgH2,label){
   currentPlanIdx=plans.length-1;
   loadPlanData(currentPlanIdx);
   renderPlanTabs();
-  syncMainAiDetectButton();
   document.getElementById('plan-tabs').classList.add('visible');
 }
 
@@ -1474,7 +1470,6 @@ function removePlan(idx){
     document.getElementById('drop-overlay').classList.remove('hidden');
     document.getElementById('plan-tabs').classList.remove('visible');
     renderZoneList();updateStats();renderAll();
-    syncMainAiDetectButton();
     return;
   }
   if(!confirm('Remove "'+plans[idx].label+'" and its drawings?'))return;
@@ -1483,7 +1478,6 @@ function removePlan(idx){
   currentPlanIdx=Math.min(currentPlanIdx,plans.length-1);
   loadPlanData(currentPlanIdx);
   renderPlanTabs();
-  syncMainAiDetectButton();
 }
 
 function renderPlanTabs(){
@@ -1530,7 +1524,7 @@ const btnPageNone=document.getElementById('btn-page-none');
 const btnPageLoad=document.getElementById('btn-page-load');
 const btnMapCapture=document.getElementById('btn-map-capture');
 const btnMapDetect=document.getElementById('btn-map-detect');
-const btnAiDetectMain=document.getElementById('btn-ai-detect-main');
+const btnMapAiDetect=document.getElementById('btn-map-ai-detect');
 const mapPreviewCanvas=document.getElementById('map-preview');
 const mapPreviewCtx=mapPreviewCanvas.getContext('2d');
 const mapImportStatus=document.getElementById('map-import-status');
@@ -2826,10 +2820,6 @@ function syncMapRoiButtons(){
     btnMapRoiClear.style.opacity=mapScanRoi?'1':'0.6';
   }
 }
-function syncMainAiDetectButton(){
-  if(!btnAiDetectMain)return;
-  btnAiDetectMain.style.display=(Array.isArray(plans)&&plans.length>0)?'inline-block':'none';
-}
 function clearMapDetections(){
   mapDetections=[];
   mapDetectionRenderSize={w:0,h:0};
@@ -3128,109 +3118,6 @@ function dedupeImportedMarkers(markersIn){
     if(!dup)kept.push(m);
   });
   return kept;
-}
-function medianValue(values){
-  const nums=(Array.isArray(values)?values:[])
-    .map(v=>Number(v))
-    .filter(v=>Number.isFinite(v))
-    .sort((a,b)=>a-b);
-  if(!nums.length)return 0;
-  const mid=Math.floor(nums.length/2);
-  return nums.length%2?nums[mid]:(nums[mid-1]+nums[mid])/2;
-}
-function segmentIntersection(a,b,c,d){
-  if(!a||!b||!c||!d)return false;
-  const orient=(p,q,r)=>((q.x-p.x)*(r.y-p.y))-((q.y-p.y)*(r.x-p.x));
-  const onSeg=(p,q,r)=>{
-    return q.x<=Math.max(p.x,r.x)+1e-6&&q.x>=Math.min(p.x,r.x)-1e-6
-      && q.y<=Math.max(p.y,r.y)+1e-6&&q.y>=Math.min(p.y,r.y)-1e-6;
-  };
-  const o1=orient(a,b,c),o2=orient(a,b,d),o3=orient(c,d,a),o4=orient(c,d,b);
-  if((o1>0)!==(o2>0)&&(o3>0)!==(o4>0))return true;
-  if(Math.abs(o1)<1e-6&&onSeg(a,c,b))return true;
-  if(Math.abs(o2)<1e-6&&onSeg(a,d,b))return true;
-  if(Math.abs(o3)<1e-6&&onSeg(c,a,d))return true;
-  if(Math.abs(o4)<1e-6&&onSeg(c,b,d))return true;
-  return false;
-}
-function segmentIntersectsPolygon(a,b,poly){
-  if(!a||!b||!Array.isArray(poly)||poly.length<3)return false;
-  if(pointInPolygon(a,poly)||pointInPolygon(b,poly))return true;
-  for(let i=0;i<poly.length;i++){
-    const p1=poly[i],p2=poly[(i+1)%poly.length];
-    if(segmentIntersection(a,b,p1,p2))return true;
-  }
-  return false;
-}
-function suggestMissingStallVectors(vectors){
-  if(!Array.isArray(vectors)||vectors.length<3)return [];
-  const isCoreStall=(cls)=>{
-    const c=String(cls||'').toLowerCase();
-    return c.includes('stall')||c.includes('ada')||c.includes('handicap')||c.includes('accessible');
-  };
-  const stalls=vectors.filter(v=>isCoreStall(v?.className)&&Array.isArray(v?.points)&&v.points.length>=3);
-  if(stalls.length<3)return [];
-  const lotPoly=primaryLotPolygonFromVectors(vectors);
-  const obstructionPolys=vectors
-    .filter(v=>classIsObstruction(v?.className)&&Array.isArray(v?.points)&&v.points.length>=3)
-    .map(v=>v.points);
-  const nodes=stalls.map((v,idx)=>{
-    const center=detectionCenterPoint({points:v.points});
-    const b=polygonBounds(v.points)||{w:0,h:0};
-    const span=Math.max(8,Math.max(b.w||0,b.h||0));
-    return {idx,vector:v,center,span};
-  });
-  const nearestSteps=[];
-  nodes.forEach((n,i)=>{
-    let best=Infinity;
-    nodes.forEach((m,j)=>{
-      if(i===j)return;
-      const d=Math.hypot((m.center.x||0)-(n.center.x||0),(m.center.y||0)-(n.center.y||0));
-      if(d<n.span*0.75||d>n.span*3.3)return;
-      if(d<best)best=d;
-    });
-    if(Number.isFinite(best))nearestSteps.push(best);
-  });
-  const baseStep=medianValue(nearestSteps);
-  if(!Number.isFinite(baseStep)||baseStep<=1)return [];
-  const existingCenters=nodes.map(n=>n.center);
-  const suggestions=[];
-  const suggestedCenters=[];
-  for(let i=0;i<nodes.length;i++){
-    for(let j=i+1;j<nodes.length;j++){
-      const a=nodes[i],b=nodes[j];
-      const d=Math.hypot((b.center.x||0)-(a.center.x||0),(b.center.y||0)-(a.center.y||0));
-      if(d<baseStep*1.75||d>baseStep*4.2)continue;
-      const missing=Math.round(d/baseStep)-1;
-      if(missing<1||missing>3)continue;
-      for(let k=1;k<=missing;k++){
-        const t=k/(missing+1);
-        const c={
-          x:(a.center.x||0)+((b.center.x||0)-(a.center.x||0))*t,
-          y:(a.center.y||0)+((b.center.y||0)-(a.center.y||0))*t
-        };
-        if(lotPoly&&lotPoly.length>=3&&!pointInPolygon(c,lotPoly))continue;
-        const tooCloseExisting=existingCenters.some(ec=>Math.hypot((ec.x||0)-c.x,(ec.y||0)-c.y)<=baseStep*0.38);
-        if(tooCloseExisting)continue;
-        const tooCloseSuggested=suggestedCenters.some(ec=>Math.hypot((ec.x||0)-c.x,(ec.y||0)-c.y)<=baseStep*0.42);
-        if(tooCloseSuggested)continue;
-        const blocked=obstructionPolys.some(poly=>pointInPolygon(c,poly)||segmentIntersectsPolygon(a.center,b.center,poly));
-        if(blocked)continue;
-        const template=(Math.hypot((a.center.x||0)-c.x,(a.center.y||0)-c.y)<=Math.hypot((b.center.x||0)-c.x,(b.center.y||0)-c.y))?a:b;
-        const tc=template.center;
-        const dx=c.x-(tc.x||0),dy=c.y-(tc.y||0);
-        const points=template.vector.points.map(pt=>({x:(pt.x||0)+dx,y:(pt.y||0)+dy}));
-        suggestions.push({
-          id:`stall-suggest-${Date.now()}-${i}-${j}-${k}`,
-          className:'parking_stall_suggestion',
-          confidence:0.33,
-          points
-        });
-        suggestedCenters.push(c);
-      }
-    }
-  }
-  return suggestions;
 }
 function polygonArea(pts){
   if(!Array.isArray(pts)||pts.length<3)return 0;
@@ -3537,7 +3424,6 @@ function addCanvasAsPlan(oc,label,isPdf,opts={}){
     onPlanLoaded(isPdf,opts);
     document.getElementById('plan-tabs').classList.add('visible');
     renderPlanTabs();
-    syncMainAiDetectButton();
   }else{
     addPlan(dataURL,oc.width,oc.height,label);
     if(opts.autoScaleFeetPerPx){
@@ -4184,9 +4070,7 @@ async function runRoboflowDetection(){
       points:segmentToThinStallPolygon(seg,2)
     }));
 
-    const seedVectors=draftVectors.concat(assistVectors);
-    const suggestedStalls=suggestMissingStallVectors(seedVectors);
-    const allVectors=seedVectors.concat(suggestedStalls);
+    const allVectors=draftVectors.concat(assistVectors);
     mapVectorDetections=keepStallLikeVectorsInsideLot(allVectors);
     mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
     mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
@@ -4202,8 +4086,7 @@ async function runRoboflowDetection(){
     const zoomLabel=tileStats.tilesPlanned
       ? ` Zoom scan ${tileStats.tilesRan}/${tileStats.tilesPlanned} tiles, +${tileStats.added} merged stalls.`
       : '';
-    const suggestLabel=suggestedStalls.length?` Suggestions +${suggestedStalls.length} inferred stalls.`:'';
-    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%).${zoomLabel}${suggestLabel} ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
+    setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%).${zoomLabel} ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
   }catch(e){
     console.error(e);
     setImportStatus(`Detection failed: ${e.message}`,true);
@@ -4447,8 +4330,7 @@ if(mapHistoricalYearEl){
 }
 btnMapCapture.addEventListener('click',captureMapImageryIntoPlan);
 if(btnMapDetect)btnMapDetect.addEventListener('click',runRoboflowDetection);
-if(btnAiDetectMain)btnAiDetectMain.addEventListener('click',runRoboflowDetection);
-syncMainAiDetectButton();
+if(btnMapAiDetect)btnMapAiDetect.addEventListener('click',runRoboflowDetection);
 
 mapPreviewCanvas.addEventListener('wheel',e=>{
   if(pageModalView!=='map')return;
