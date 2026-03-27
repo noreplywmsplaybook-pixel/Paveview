@@ -1067,6 +1067,9 @@ select.sc-inp{cursor:pointer;width:40px}
         </div>
         <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Drag the map to pan. The <strong>Zoom</strong> slider is centered on the zoom when imagery loads (middle = that view): drag left/right to zoom out/in with small steps. Use <strong>Create Lot Polygon</strong> and click around the lot boundary to focus AI on only that area.</div>
         <div class="map-row">
+          <label class="ir"><input type="checkbox" id="map-roi-use-lot"> <span class="il">Use polygon as lot perimeter</span></label>
+        </div>
+        <div class="map-row">
           <label>Zoom</label>
           <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);flex:0 0 auto">out</span>
           <input type="range" id="map-zoom-slider" min="0" max="1000" value="500" step="1" aria-label="Map zoom relative to loaded view (50 percent = load zoom)">
@@ -1514,6 +1517,7 @@ const mapImageryModeSel=document.getElementById('map-imagery-mode');
 const btnMapDebugBw=document.getElementById('btn-map-debug-bw');
 const btnMapRoiDraw=document.getElementById('btn-map-roi-draw');
 const btnMapRoiClear=document.getElementById('btn-map-roi-clear');
+const mapRoiUseLotChk=document.getElementById('map-roi-use-lot');
 const mapRenderStyleSel=document.getElementById('map-render-style');
 const mapDrawClassSel=document.getElementById('map-draw-class');
 const btnMapDrawStart=document.getElementById('btn-map-draw-start');
@@ -3771,7 +3775,7 @@ function drawMapRoiOverlay(){
   });
   const isClosed=poly.length>=3&&!mapRoiDrawMode;
   if(isClosed)mapPreviewCtx.closePath();
-  if(poly.length>=3){
+  if(isClosed){
     mapPreviewCtx.fillStyle='rgba(56,189,248,0.12)';
     mapPreviewCtx.fill();
   }
@@ -4021,13 +4025,26 @@ async function runRoboflowDetection(){
       mapDetectionRenderSize.w||mapPreviewCanvas.width,
       mapDetectionRenderSize.h||mapPreviewCanvas.height
     );
+    const usePolygonAsLot=!!(mapRoiUseLotChk&&mapRoiUseLotChk.checked);
+    if(usePolygonAsLot&&(!Array.isArray(manualScanPoly)||manualScanPoly.length<3)){
+      throw new Error('Draw and close a lot polygon first, or turn off "Use polygon as lot perimeter".');
+    }
+    let filteredPredictions=keepDetectionsInsideScanPolygon(
+      filterDetectionsByClassConfidence(rawPredictions),
+      manualScanPoly
+    );
+    if(usePolygonAsLot&&Array.isArray(manualScanPoly)&&manualScanPoly.length>=3){
+      filteredPredictions=filteredPredictions.filter(det=>!classIsLot(det?.class));
+      filteredPredictions.unshift({
+        class:'lot_boundary',
+        confidence:1,
+        points:manualScanPoly.map(p=>({x:p.x,y:p.y}))
+      });
+    }
     // Production baseline: use RF + current filtering as source-of-truth.
     let draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
       keepStallLikeDetectionsInsideLot(
-        keepDetectionsInsideScanPolygon(
-          filterDetectionsByClassConfidence(rawPredictions),
-          manualScanPoly
-        )
+        filteredPredictions
       )
     )));
     const baseLotPoly=primaryLotPolygonFromDetections(draftDetections);
@@ -4357,6 +4374,15 @@ if(btnMapRoiClear){
     syncMapRoiButtons();
     setImportStatus('Scan polygon cleared.');
     drawMapOverlay();
+  });
+}
+if(mapRoiUseLotChk){
+  mapRoiUseLotChk.addEventListener('change',()=>{
+    if(mapRoiUseLotChk.checked){
+      setImportStatus('Use polygon as lot perimeter is ON. Lot boundary detection will be skipped.');
+    }else{
+      setImportStatus('Use polygon as lot perimeter is OFF. Lot boundary auto-detect will run normally.');
+    }
   });
 }
 mapImageryModeSel.addEventListener('change',async()=>{
