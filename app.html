@@ -750,6 +750,7 @@ select.sc-inp{cursor:pointer;width:40px}
     <div class="hd"></div>
     <button class="btn" id="btn-calib-open">Calibrate</button>
     <button class="btn" id="btn-settings-open">Settings</button>
+    <button class="btn" id="btn-local-import" style="display:none">Local Import</button>
     <button class="btn" id="btn-save-only">Save</button><button class="btn y" id="btn-finish-estimation">Finish Estimation →</button>
     <div class="hd"></div>
     <button class="btn" onclick="window.location.href='/dashboard.html'">Dashboard</button>
@@ -1100,6 +1101,31 @@ select.sc-inp{cursor:pointer;width:40px}
   </div>
 </div>
 
+<!-- LOCAL IMPORT MODAL (localhost-only tooling) -->
+<div class="modal" id="local-import-modal">
+  <div class="mbox" style="width:700px;max-width:98vw">
+    <div class="mhdr no-print">
+      <div class="mtitle">Local Import (Dry Run)</div>
+      <button class="btn" id="btn-local-import-close">✕</button>
+    </div>
+    <div class="mbody" style="padding:12px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn" id="btn-local-import-pick">Choose Claude File</button>
+        <input type="file" id="local-import-file" accept=".json,application/json,text/plain" style="display:none">
+        <span id="local-import-file-name" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">No file selected</span>
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);margin-bottom:8px">
+        Parses locally in your browser, shows a dry-run summary, and only applies when you click Apply.
+      </div>
+      <pre id="local-import-preview" style="margin:0;background:var(--surface2);border:1px solid var(--border);padding:10px;max-height:320px;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.5;color:var(--text2)">Select a file to preview.</pre>
+    </div>
+    <div class="mfooter no-print">
+      <button class="btn" id="btn-local-import-cancel">Close</button>
+      <button class="btn y" id="btn-local-import-apply" disabled>Apply to Current Plan</button>
+    </div>
+  </div>
+</div>
+
 <!-- SETTINGS MODAL -->
 <div class="modal" id="settings-modal">
   <div class="mbox" style="width:700px;max-width:98vw">
@@ -1337,6 +1363,7 @@ let rectStart=null;
 let circleStart=null;
 let measurements=[]; // {id, label, type, pts, sqft}
 let currentProjectId=null; // set when project loaded from URL, used to update vs insert
+let localImportPreview=null;
 
 // ── MULTI-PLAN STATE ──
 let plans=[]; // [{id,label,dataURL,imgW,imgH}]
@@ -6461,6 +6488,392 @@ function spawnRuler(ft){
 function openModal(id){document.getElementById(id).classList.add('open')}
 function closeModal(id){document.getElementById(id).classList.remove('open')}
 
+function isFiniteNum(v){
+  const n=Number(v);
+  return Number.isFinite(n);
+}
+function toNum(v,fallback){
+  const n=Number(v);
+  return Number.isFinite(n)?n:fallback;
+}
+function clampNum(v,min,max,fallback){
+  const n=toNum(v,fallback);
+  return Math.max(min,Math.min(max,n));
+}
+function clampPct(v,fallback){
+  return Math.round(clampNum(v,0,100,fallback));
+}
+function makeImportId(prefix,idx){
+  return prefix+'-'+Date.now().toString(36)+'-'+idx+'-'+Math.random().toString(36).slice(2,7);
+}
+function normalizePoint(raw){
+  if(Array.isArray(raw)&&raw.length>=2){
+    const x=Number(raw[0]),y=Number(raw[1]);
+    if(Number.isFinite(x)&&Number.isFinite(y))return{x,y};
+    return null;
+  }
+  if(!raw||typeof raw!=='object')return null;
+  const x=Number(raw.x??raw.X??raw.left??raw.lng??raw.lon);
+  const y=Number(raw.y??raw.Y??raw.top??raw.lat);
+  if(Number.isFinite(x)&&Number.isFinite(y))return{x,y};
+  return null;
+}
+function normalizePts(arr){
+  if(!Array.isArray(arr))return[];
+  const out=[];
+  arr.forEach(p=>{
+    const np=normalizePoint(p);
+    if(np)out.push(np);
+  });
+  return out;
+}
+function rectToPts(raw){
+  const x=toNum(raw?.x??raw?.left,NaN);
+  const y=toNum(raw?.y??raw?.top,NaN);
+  const w=toNum(raw?.width??raw?.w,NaN);
+  const h=toNum(raw?.height??raw?.h,NaN);
+  if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(w)||!Number.isFinite(h)||w<=0||h<=0)return[];
+  return[{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}];
+}
+function circleToPts(raw,steps){
+  const cx=toNum(raw?.cx??raw?.centerX??raw?.x,NaN);
+  const cy=toNum(raw?.cy??raw?.centerY??raw?.y,NaN);
+  const r=toNum(raw?.r??raw?.radius,NaN);
+  if(!Number.isFinite(cx)||!Number.isFinite(cy)||!Number.isFinite(r)||r<=0)return[];
+  const n=Math.max(8,steps||20);
+  const pts=[];
+  for(let i=0;i<n;i++){
+    const t=(i/n)*Math.PI*2;
+    pts.push({x:cx+Math.cos(t)*r,y:cy+Math.sin(t)*r});
+  }
+  return pts;
+}
+function pickFirstArray(primary,fallback,keys){
+  for(const k of keys){
+    if(primary&&Array.isArray(primary[k]))return primary[k];
+  }
+  for(const k of keys){
+    if(fallback&&Array.isArray(fallback[k]))return fallback[k];
+  }
+  return [];
+}
+function unwrapImportPayload(raw){
+  if(!raw||typeof raw!=='object')return{};
+  const keys=['zones','markers','measurements','linearSegs','hatchZones','plans','planData','scalePx','scaleFt','scale','manualCounts'];
+  if(keys.some(k=>Object.prototype.hasOwnProperty.call(raw,k)))return raw;
+  const candidates=['data','projectData','project','takeoff','result','payload','output'];
+  for(const k of candidates){
+    const v=raw[k];
+    if(v&&typeof v==='object'){
+      if(keys.some(key=>Object.prototype.hasOwnProperty.call(v,key)))return v;
+    }
+  }
+  for(const k of candidates){
+    const v=raw[k];
+    if(v&&typeof v==='object'){
+      const nested=unwrapImportPayload(v);
+      if(nested&&nested!==v&&Object.keys(nested).length)return nested;
+    }
+  }
+  return raw;
+}
+function extractPlanPayload(payload){
+  let src=payload&&typeof payload==='object'?payload:{};
+  if(Array.isArray(src.plans)&&src.plans.length){
+    const idx=Math.max(0,Math.min(src.plans.length-1,parseInt(src.currentPlanIdx||0,10)||0));
+    src=src.plans[idx]||src.plans[0];
+  }
+  if(src&&typeof src==='object'&&!Array.isArray(src)&&src.planData&&typeof src.planData==='object'&&!Array.isArray(src.planData)){
+    const keys=Object.keys(src.planData);
+    if(keys.length){
+      const pref=src.currentPlanId&&src.planData[src.currentPlanId]?src.currentPlanId:keys[0];
+      src=src.planData[pref];
+    }
+  }else if(payload&&typeof payload==='object'&&payload.planData&&typeof payload.planData==='object'&&!Array.isArray(payload.planData)){
+    const keys=Object.keys(payload.planData);
+    if(keys.length){
+      const pref=payload.currentPlanId&&payload.planData[payload.currentPlanId]?payload.currentPlanId:keys[0];
+      src=payload.planData[pref];
+    }
+  }
+  if(src&&typeof src==='object'&&src.data&&typeof src.data==='object')src=src.data;
+  return src&&typeof src==='object'?src:{};
+}
+function normalizeImportedState(fileName,text){
+  let raw;
+  try{raw=JSON.parse(text);}catch(e){throw new Error('Invalid JSON: '+(e&&e.message?e.message:'parse failed'));}
+  const payload=unwrapImportPayload(raw);
+  const source=extractPlanPayload(payload);
+  const warnings=[];
+  const sourceScalePx=source.scalePx??payload.scalePx??payload.scale?.px??payload.scale?.pixels;
+  const sourceScaleFt=source.scaleFt??payload.scaleFt??payload.scale?.ft??payload.scale?.feet;
+  const sourceScaleUnit=String(source.scaleUnit??payload.scaleUnit??payload.scale?.unit??'ft').toLowerCase();
+  const scaleUnit=['ft','m','yd'].includes(sourceScaleUnit)?sourceScaleUnit:'ft';
+  const scalePx=isFiniteNum(sourceScalePx)&&Number(sourceScalePx)>0?Number(sourceScalePx):null;
+  const scaleFt=isFiniteNum(sourceScaleFt)&&Number(sourceScaleFt)>0?Number(sourceScaleFt):null;
+  const effectiveScale=scalePx&&scaleFt?(scaleFt/scalePx):getScale();
+
+  const rawZones=pickFirstArray(source,payload,['zones','zonePolygons','polygons']);
+  const rawMarkers=pickFirstArray(source,payload,['markers','points','symbols']);
+  const rawMeasurements=pickFirstArray(source,payload,['measurements','measurementShapes','autoMeasurements']);
+  const rawLinear=pickFirstArray(source,payload,['linearSegs','linearSegments','linears']);
+  const rawHatches=pickFirstArray(source,payload,['hatchZones','hatches']);
+
+  const zones=[];
+  rawZones.forEach((z,idx)=>{
+    let pts=normalizePts(z?.pts||z?.points||z?.vertices||z?.polygon||z?.path);
+    if(pts.length<3&&z&&typeof z==='object'){
+      pts=rectToPts(z);
+    }
+    if(pts.length<3){
+      warnings.push('Skipped zone '+(idx+1)+': missing polygon points.');
+      return;
+    }
+    const obstruct=!!(z?.obstruct||String(z?.type||z?.kind||'').toLowerCase()==='obstruction');
+    zones.push({
+      id:String(z?.id||makeImportId('z',idx)),
+      name:String(z?.name||z?.label||(obstruct?'Obstruction ':'Zone ')+(idx+1)),
+      color:String(z?.color||z?.stroke||COLORS[idx%COLORS.length]),
+      pts,
+      closed:z?.closed!==false,
+      locked:!!z?.locked,
+      showFill:z?.showFill!==false,
+      obstruct,
+      labelSize:clampNum(z?.labelSize,8,36,12),
+      opacity:clampPct(z?.opacity,15),
+      lineWidth:clampNum(z?.lineWidth,0.5,12,2),
+      lineDashed:!!z?.lineDashed,
+      labelX:toNum(z?.labelX,0),
+      labelY:toNum(z?.labelY,0)
+    });
+  });
+
+  const markerTypes={
+    stall:'stall',parking:'stall','parking-stall':'stall',parking_stall:'stall',
+    ada:'ada',
+    bollard:'bollard',
+    stopblock:'stopblock','stop-block':'stopblock',stop_block:'stopblock',
+    stencil:'stencil',
+    sign:'bollard-sign',bollardsign:'bollard-sign','bollard-sign':'bollard-sign',bollard_sign:'bollard-sign'
+  };
+  const markers=[];
+  rawMarkers.forEach((m,idx)=>{
+    const pt=normalizePoint(m?.pt||m?.point||m);
+    if(!pt){
+      warnings.push('Skipped marker '+(idx+1)+': missing x/y.');
+      return;
+    }
+    const tRaw=String(m?.type||'stall').toLowerCase();
+    const type=markerTypes[tRaw]||'stall';
+    markers.push({
+      x:pt.x,
+      y:pt.y,
+      type,
+      label:String(m?.label||m?.text||m?.name||'')
+    });
+  });
+
+  const measurements=[];
+  rawMeasurements.forEach((m,idx)=>{
+    let pts=normalizePts(m?.pts||m?.points||m?.vertices||m?.polygon||m?.path);
+    const mType=String(m?.type||'polygon').toLowerCase();
+    if(pts.length<3&&m&&typeof m==='object'){
+      if(mType.includes('rect'))pts=rectToPts(m);
+      else if(mType.includes('circle'))pts=circleToPts(m,24);
+    }
+    if(pts.length<3){
+      warnings.push('Skipped measurement '+(idx+1)+': missing polygon points.');
+      return;
+    }
+    const sqftRaw=m?.sqft??m?.areaSqft??m?.area;
+    const sqft=isFiniteNum(sqftRaw)?Math.max(0,Math.round(Number(sqftRaw))):Math.max(0,Math.round(polyArea(pts)*effectiveScale*effectiveScale));
+    measurements.push({
+      id:String(m?.id||makeImportId('m',idx)),
+      label:String(m?.label||m?.name||('Measurement '+(idx+1))),
+      type:mType.includes('circle')?'circle':(mType.includes('rect')?'rect':'poly'),
+      pts,
+      sqft,
+      labelSize:clampNum(m?.labelSize,8,32,12),
+      color:String(m?.color||'#f5c842'),
+      opacity:clampPct(m?.opacity,20),
+      lineWidth:clampNum(m?.lineWidth,0.5,12,2),
+      labelX:toNum(m?.labelX,0),
+      labelY:toNum(m?.labelY,0)
+    });
+  });
+
+  const linearSegs=[];
+  rawLinear.forEach((s,idx)=>{
+    const pts=normalizePts(s?.pts||s?.points||s?.path);
+    if(pts.length<2){
+      warnings.push('Skipped linear segment '+(idx+1)+': requires 2+ points.');
+      return;
+    }
+    linearSegs.push({
+      id:String(s?.id||makeImportId('lin',idx)),
+      label:String(s?.label||s?.name||''),
+      pts,
+      color:String(s?.color||'#06b6d4'),
+      lineWidth:clampNum(s?.lineWidth,0.5,12,2),
+      labelSize:clampNum(s?.labelSize,8,32,11)
+    });
+  });
+
+  const hatchZones=[];
+  rawHatches.forEach((h,idx)=>{
+    const pts=normalizePts(h?.pts||h?.points||h?.vertices||h?.polygon||h?.path);
+    if(pts.length<3){
+      warnings.push('Skipped hatch '+(idx+1)+': missing polygon points.');
+      return;
+    }
+    const typeRaw=String(h?.type||'crosswalk').toLowerCase();
+    const type=(typeRaw==='ada'||typeRaw==='ada_hatch'||typeRaw==='ada-hatch')?'ada-hatch':'crosswalk';
+    hatchZones.push({
+      id:String(h?.id||makeImportId('h',idx)),
+      type,
+      pts,
+      opacity:clampPct(h?.opacity,20),
+      lineWidth:clampNum(h?.lineWidth,0.5,12,1.5)
+    });
+  });
+
+  const manualRaw=source.manualCounts||payload.manualCounts||{};
+  const importedManualCounts={
+    stall:Math.max(0,parseInt(manualRaw.stall||0,10)||0),
+    ada:Math.max(0,parseInt(manualRaw.ada||0,10)||0),
+    bollard:Math.max(0,parseInt(manualRaw.bollard||0,10)||0),
+    stopblock:Math.max(0,parseInt(manualRaw.stopblock||0,10)||0),
+    stencil:Math.max(0,parseInt(manualRaw.stencil||0,10)||0)
+  };
+
+  return{
+    fileName,
+    hasScale:!!(scalePx&&scaleFt),
+    scalePx,
+    scaleFt,
+    scaleUnit,
+    zones,
+    markers,
+    measurements,
+    linearSegs,
+    hatchZones,
+    manualCounts:importedManualCounts,
+    warnings
+  };
+}
+function localImportSummary(preview){
+  if(!preview)return'Select a file to preview.';
+  const lines=[
+    '[Local Import Dry Run]',
+    '',
+    'File: '+preview.fileName,
+    'Zones: '+preview.zones.length,
+    'Markers: '+preview.markers.length,
+    'Measurements: '+preview.measurements.length,
+    'Linear segments: '+preview.linearSegs.length,
+    'Hatch zones: '+preview.hatchZones.length,
+    'Manual counts: '+JSON.stringify(preview.manualCounts),
+    'Scale detected: '+(preview.hasScale?('yes ('+preview.scalePx+' px = '+preview.scaleFt+' '+preview.scaleUnit+')'):'no (keeps existing scale)')
+  ];
+  if(preview.warnings.length){
+    lines.push('','Warnings:');
+    preview.warnings.slice(0,20).forEach(w=>lines.push(' - '+w));
+    if(preview.warnings.length>20)lines.push(' - ... '+(preview.warnings.length-20)+' more');
+  }else{
+    lines.push('','Warnings: none');
+  }
+  lines.push('',"Click 'Apply to Current Plan' to replace current drawings.");
+  return lines.join('\n');
+}
+function applyLocalImportToCurrentPlan(){
+  if(!localImportPreview)return;
+  zones=JSON.parse(JSON.stringify(localImportPreview.zones));
+  markers=JSON.parse(JSON.stringify(localImportPreview.markers));
+  measurements=JSON.parse(JSON.stringify(localImportPreview.measurements));
+  linearSegs=JSON.parse(JSON.stringify(localImportPreview.linearSegs));
+  hatchZones=JSON.parse(JSON.stringify(localImportPreview.hatchZones));
+  activeZone=zones.filter(z=>z.closed).slice(-1)[0]||zones[zones.length-1]||null;
+  inProg=[];inHatch=[];inLinear=[];dragging=null;hovering=null;
+
+  if(localImportPreview.hasScale){
+    document.getElementById('scale-px').value=Math.round(localImportPreview.scalePx);
+    document.getElementById('scale-ft').value=localImportPreview.scaleFt;
+    document.getElementById('scale-unit').value=localImportPreview.scaleUnit;
+    calibrated=true;
+  }
+  if(typeof manualCounts!=='undefined'&&manualCounts){
+    manualCounts.stall=localImportPreview.manualCounts.stall;
+    manualCounts.ada=localImportPreview.manualCounts.ada;
+    manualCounts.bollard=localImportPreview.manualCounts.bollard;
+    manualCounts.stopblock=localImportPreview.manualCounts.stopblock;
+    manualCounts.stencil=localImportPreview.manualCounts.stencil;
+    ['stall','ada','bollard','stopblock','stencil'].forEach(k=>{
+      const el=document.getElementById('manual-'+k);
+      if(el)el.value=String(localImportPreview.manualCounts[k]||0);
+    });
+  }
+
+  updateScaleReadout();
+  updateCalibBadge();
+  renderZoneList();
+  renderZoneCollapsed();
+  renderMeasurements();
+  renderHatchList();
+  renderLinearList();
+  updateStats();
+  renderAll();
+  savePlanData();
+}
+function initLocalImportUi(){
+  const btn=document.getElementById('btn-local-import');
+  const modal=document.getElementById('local-import-modal');
+  if(!btn||!modal)return;
+  let enabled=false;
+  try{
+    const host=window.location.hostname||'';
+    const p=new URLSearchParams(window.location.search);
+    enabled=host==='localhost'||host==='127.0.0.1'||host==='0.0.0.0'||p.get('localImport')==='1';
+  }catch(e){}
+  if(!enabled)return;
+
+  const pickBtn=document.getElementById('btn-local-import-pick');
+  const fileInput=document.getElementById('local-import-file');
+  const fileLbl=document.getElementById('local-import-file-name');
+  const previewEl=document.getElementById('local-import-preview');
+  const applyBtn=document.getElementById('btn-local-import-apply');
+
+  btn.style.display='inline-flex';
+  btn.onclick=()=>openModal('local-import-modal');
+  document.getElementById('btn-local-import-close').onclick=()=>closeModal('local-import-modal');
+  document.getElementById('btn-local-import-cancel').onclick=()=>closeModal('local-import-modal');
+  pickBtn.onclick=()=>fileInput.click();
+  applyBtn.onclick=()=>{
+    if(!localImportPreview)return;
+    applyLocalImportToCurrentPlan();
+    closeModal('local-import-modal');
+    alert('Local import applied to current plan.');
+  };
+  fileInput.addEventListener('change',async()=>{
+    const f=fileInput.files&&fileInput.files[0];
+    if(!f)return;
+    fileLbl.textContent=f.name;
+    applyBtn.disabled=true;
+    localImportPreview=null;
+    previewEl.textContent='Parsing file...';
+    try{
+      const text=await f.text();
+      const parsed=normalizeImportedState(f.name,text);
+      localImportPreview=parsed;
+      previewEl.textContent=localImportSummary(parsed);
+      applyBtn.disabled=false;
+    }catch(e){
+      previewEl.textContent='Import parse error:\n'+(e&&e.message?e.message:String(e));
+      localImportPreview=null;
+      applyBtn.disabled=true;
+    }
+  });
+}
+
 // ── BUTTONS ──
 document.getElementById('btn-undo').onclick=()=>{
   // Undo in-progress points first
@@ -7014,6 +7427,7 @@ async function loadProjectFromUrl(){
 
 // ── INIT ──
 setMode('draw');
+initLocalImportUi();
 
 // ── Sign Out ──
 document.getElementById('btn-signout').onclick=async()=>{
