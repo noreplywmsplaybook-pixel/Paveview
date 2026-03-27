@@ -1296,7 +1296,6 @@ function setFocusedZone(zoneId){
   focusedZoneId=has?zoneId:null;
 }
 
-
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 // ── STATE ──
@@ -5131,43 +5130,47 @@ ${z.closed ? `<div style="display:flex;align-items:center;gap:4px;padding:2px 8p
   <div class="style-row"><span class="style-lbl">Line</span><button class="z-solid btn" data-id="${z.id}" style="padding:1px 6px;font-size:8px;${!z.lineDashed?'border-color:var(--stripe);color:var(--stripe)':''}">Solid</button><button class="z-dashed btn" data-id="${z.id}" style="padding:1px 6px;font-size:8px;${z.lineDashed?'border-color:var(--stripe);color:var(--stripe)':''}">Dashed</button></div>
 </div>` : ''}`;
     el.addEventListener('click',ev=>{
-      const act=ev.target.dataset.act, id=ev.target.dataset.id;
-      if(act==='del'){
-        zones=zones.filter(x=>x.id!==id);
-        if(activeZone?.id===id){activeZone=zones[zones.length-1]||null}
-        if(focusedZoneId===id)setFocusedZone(null);
-        // Clear in-progress overlay geometry on ic (was only cleared when deleted zone was active).
-        inProg=[];
-        inHatch=[];
-        rectStart=null;
-        circleStart=null;
-        if(dragging&&dragging.id===id)dragging=null;
-        if(hovering&&'id' in hovering&&hovering.id===id)hovering=null;
-        if(draggingLabel&&draggingLabel.type==='zone'&&draggingLabel.id===id)draggingLabel=null;
-        renderZoneList();updateStats();renderAll();savePlanData();return
-      }
-      if(act==='lock'){const z2=getZone(id);if(z2)z2.locked=!z2.locked;renderZoneList();renderAll();return}
-      if(act==='fill'){const z2=getZone(id);if(z2)z2.showFill=z2.showFill===false?true:false;renderZoneList();renderAll();return}
-      // Only enter edit mode when EDIT badge is clicked
-      if(act==='edit'){
-        const z2=getZone(id);
-        if(!z2)return;
-        // Already in edit mode — click again to confirm and exit
-        if(z2.closed&&z2.pts.length>=3&&!z2.locked&&z2.id===activeZone?.id){
-          z2.locked=true;inProg=[];
-          renderZoneList();updateStats();renderAll();
+      const actionEl=ev.target.closest('[data-act]');
+      if(actionEl){
+        const act=actionEl.dataset.act;
+        const id=actionEl.dataset.id;
+        if(act==='del'){
+          if(!id)return;
+          zones=zones.filter(x=>x.id!==id);
+          if(activeZone?.id===id){activeZone=zones[zones.length-1]||null}
+          if(focusedZoneId===id)setFocusedZone(null);
+          inProg=[];
+          inHatch=[];
+          inLinear=[];
+          rectStart=null;
+          circleStart=null;
+          if(dragging&&dragging.id===id)dragging=null;
+          if(hovering&&'id' in hovering&&hovering.id===id)hovering=null;
+          if(draggingLabel&&draggingLabel.type==='zone'&&draggingLabel.id===id)draggingLabel=null;
+          renderZoneList();updateStats();renderAll();savePlanData();
+          requestAnimationFrame(()=>{renderAll();});
+          return
+        }
+        if(act==='lock'){const z2=getZone(id);if(z2)z2.locked=!z2.locked;renderZoneList();renderAll();return}
+        if(act==='fill'){const z2=getZone(id);if(z2)z2.showFill=z2.showFill===false?true:false;renderZoneList();renderAll();return}
+        if(act==='edit'){
+          const z2=getZone(id);
+          if(!z2)return;
+          if(z2.closed&&z2.pts.length>=3&&!z2.locked&&z2.id===activeZone?.id){
+            z2.locked=true;inProg=[];
+            renderZoneList();updateStats();renderAll();
+            return;
+          }
+          activeZone=z2;
+          setFocusedZone(z2.id);
+          z2.locked=false;
+          inProg=[];
+          setMode(z2.obstruct?'obstruct':'draw');
+          renderZoneList();renderAll();
           return;
         }
-        // Enter edit mode
-        activeZone=z2;
-        setFocusedZone(z2.id);
-        z2.locked=false;
-        inProg=[];
-        setMode(z2.obstruct?'obstruct':'draw');
-        renderZoneList();renderAll();
-        return;
+        return
       }
-      // Clicking zone row just selects it as active (no edit)
       activeZone=z;
       setFocusedZone(z.id);
       renderZoneList();renderAll();
@@ -5615,9 +5618,12 @@ function renderAll(){renderZones();render()}
 
 function renderZones(){
   dCtx.clearRect(0,0,dc.width,dc.height);
-  dCtx.globalCompositeOperation='source-over';
-  dCtx.globalAlpha=1;
-  dCtx.setLineDash([]);
+  if(typeof dCtx.reset==='function')dCtx.reset();
+  else{
+    dCtx.globalCompositeOperation='source-over';
+    dCtx.globalAlpha=1;
+    dCtx.setLineDash([]);
+  }
   const sc=getScale();
   const isEditingLineDrag=!!(dragging&&dragging.type==='zone-edge-move');
   const focusedZone=focusedZoneId?zones.find(z=>z.id===focusedZoneId):null;
@@ -5816,6 +5822,12 @@ function renderZones(){
 
 function render(){
   iCtx.clearRect(0,0,ic.width,ic.height);
+  if(typeof iCtx.reset==='function')iCtx.reset();
+  else{
+    iCtx.globalCompositeOperation='source-over';
+    iCtx.globalAlpha=1;
+    iCtx.setLineDash([]);
+  }
   // Highlight hovered edge for insertion
   if(hovering&&hovering.type==='zone-edge'){
     const zo=zones.find(z=>z.id===hovering.id);
