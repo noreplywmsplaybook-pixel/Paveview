@@ -3755,8 +3755,12 @@ function drawMapOverlay(){
 function drawMapRoiOverlay(){
   const dw=mapDetectionRenderSize.w||mapPreviewCanvas.width;
   const dh=mapDetectionRenderSize.h||mapPreviewCanvas.height;
-  const poly=normalizeScanPolygon(mapScanPoly,dw,dh);
-  if(!Array.isArray(poly)||!poly.length)return;
+  const rawPoly=(Array.isArray(mapScanPoly)?mapScanPoly:[]).map(p=>({
+    x:clampNum(Number(p?.x)||0,0,dw),
+    y:clampNum(Number(p?.y)||0,0,dh)
+  }));
+  if(!rawPoly.length)return;
+  const poly=rawPoly.length>=3?(normalizeScanPolygon(rawPoly,dw,dh)||rawPoly):rawPoly;
   const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
   const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
   mapPreviewCtx.save();
@@ -3765,9 +3769,12 @@ function drawMapRoiOverlay(){
     const x=p.x*sx,y=p.y*sy;
     if(i===0)mapPreviewCtx.moveTo(x,y); else mapPreviewCtx.lineTo(x,y);
   });
-  if(poly.length>=3)mapPreviewCtx.closePath();
-  mapPreviewCtx.fillStyle='rgba(56,189,248,0.12)';
-  mapPreviewCtx.fill();
+  const isClosed=poly.length>=3&&!mapRoiDrawMode;
+  if(isClosed)mapPreviewCtx.closePath();
+  if(poly.length>=3){
+    mapPreviewCtx.fillStyle='rgba(56,189,248,0.12)';
+    mapPreviewCtx.fill();
+  }
   mapPreviewCtx.setLineDash([7,4]);
   mapPreviewCtx.lineWidth=2.2;
   mapPreviewCtx.strokeStyle='rgba(56,189,248,0.95)';
@@ -3782,7 +3789,7 @@ function drawMapRoiOverlay(){
   });
   const first=poly[0];
   mapPreviewCtx.fillStyle='rgba(0,0,0,0.62)';
-  const lbl='Scan Polygon';
+  const lbl=(mapRoiDrawMode&&poly.length>=1)?`Scan Polygon (${poly.length} pts)`:'Scan Polygon';
   const tw=mapPreviewCtx.measureText(lbl).width+12;
   mapPreviewCtx.fillRect(first.x*sx+4,Math.max(0,first.y*sy-20),tw,16);
   mapPreviewCtx.fillStyle='#38bdf8';
@@ -4418,8 +4425,17 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
   const toDet=(x,y)=>({x:x/sx,y:y/sy});
   const local=toDet(mx,my);
   if(!mapReviewState.active&&mapRoiDrawMode&&e.button===0){
+    e.preventDefault();
     const pt=toDet(mxCanvas,myCanvas);
     if(!Array.isArray(mapScanPoly))mapScanPoly=[];
+    if(mapScanPoly.length>=3&&e.detail>=2){
+      mapScanPoly=normalizeScanPolygon(mapScanPoly,mapDetectionRenderSize.w||mapPreviewCanvas.width,mapDetectionRenderSize.h||mapPreviewCanvas.height)||[];
+      mapRoiDrawMode=false;
+      syncMapRoiButtons();
+      setImportStatus('Scan polygon set. AI detect will run inside this lot area.');
+      drawMapOverlay();
+      return;
+    }
     if(mapScanPoly.length>=3){
       const first=mapScanPoly[0];
       const firstCanvas=mapDetectionToCanvasPt(first.x,first.y);
