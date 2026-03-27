@@ -1061,7 +1061,6 @@ select.sc-inp{cursor:pointer;width:40px}
           <button class="btn" id="btn-map-roi-draw" title="Draw a scan box over the lot">Draw Scan Box</button>
           <button class="btn" id="btn-map-roi-clear" title="Clear scan box">Clear Box</button>
           <button class="btn" id="btn-map-debug-bw" title="Debug only: preview pass-2 snap layer">Preview B&W</button>
-          <button class="btn" id="btn-map-debug-snap" title="Debug only: show before/after vertex snap deltas">Show Snap Changes</button>
           <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
         </div>
         <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Drag the map to pan. The <strong>Zoom</strong> slider is centered on the zoom when imagery loads (middle = that view): drag left/right to zoom out/in with small steps. Use <strong>Draw Scan Box</strong> to focus AI on a lot area.</div>
@@ -1511,7 +1510,6 @@ const mapPreviewCtx=mapPreviewCanvas.getContext('2d');
 const mapImportStatus=document.getElementById('map-import-status');
 const mapImageryModeSel=document.getElementById('map-imagery-mode');
 const btnMapDebugBw=document.getElementById('btn-map-debug-bw');
-const btnMapDebugSnap=document.getElementById('btn-map-debug-snap');
 const btnMapRoiDraw=document.getElementById('btn-map-roi-draw');
 const btnMapRoiClear=document.getElementById('btn-map-roi-clear');
 const mapRenderStyleSel=document.getElementById('map-render-style');
@@ -1539,7 +1537,6 @@ let mapBaseRawImage=null;
 let mapBaseProcessedImage=null;
 let mapSnapBwImage=null; // strict B/W preprocessing layer used for pass-2 snapping
 let mapDebugBwPreview=false; // debug-only B/W preview toggle for validation
-let mapDebugSnapOverlay=false; // debug-only overlay of vertex snap deltas
 let mapSnapDebugMoves=[]; // [{from:{x,y},to:{x,y},className,dist}]
 let mapLearningDraftDetections=[]; // raw draft detections captured at AI detect time
 let mapLastDetectContext=null; // context for active-learning feedback capture
@@ -2602,47 +2599,6 @@ function drawMapVectorOverlay(){
     mapPreviewCtx.stroke();
     mapPreviewCtx.setLineDash([]);
   }
-  drawSnapDebugOverlay();
-  mapPreviewCtx.restore();
-}
-function drawSnapDebugOverlay(){
-  if(!mapDebugSnapOverlay||!Array.isArray(mapSnapDebugMoves)||!mapSnapDebugMoves.length)return;
-  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
-  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
-  mapPreviewCtx.save();
-  mapPreviewCtx.setLineDash([4,3]);
-  mapPreviewCtx.lineWidth=1.4;
-  mapSnapDebugMoves.forEach(m=>{
-    if(!m||!m.from||!m.to)return;
-    const fx=(m.from.x||0)*sx,fy=(m.from.y||0)*sy;
-    const tx=(m.to.x||0)*sx,ty=(m.to.y||0)*sy;
-    mapPreviewCtx.strokeStyle='rgba(56,189,248,0.95)';
-    mapPreviewCtx.beginPath();
-    mapPreviewCtx.moveTo(fx,fy);
-    mapPreviewCtx.lineTo(tx,ty);
-    mapPreviewCtx.stroke();
-    mapPreviewCtx.setLineDash([]);
-    mapPreviewCtx.beginPath();
-    mapPreviewCtx.arc(fx,fy,2.2,0,Math.PI*2);
-    mapPreviewCtx.fillStyle='rgba(239,68,68,0.95)';
-    mapPreviewCtx.fill();
-    mapPreviewCtx.beginPath();
-    mapPreviewCtx.arc(tx,ty,2.2,0,Math.PI*2);
-    mapPreviewCtx.fillStyle='rgba(34,197,94,0.95)';
-    mapPreviewCtx.fill();
-    mapPreviewCtx.setLineDash([4,3]);
-  });
-  mapPreviewCtx.setLineDash([]);
-  const shown=Math.min(mapSnapDebugMoves.length,9999);
-  mapPreviewCtx.fillStyle='rgba(0,0,0,0.72)';
-  mapPreviewCtx.fillRect(10,mapPreviewCanvas.height-52,280,32);
-  mapPreviewCtx.fillStyle='#e5e7eb';
-  mapPreviewCtx.font='11px JetBrains Mono,monospace';
-  mapPreviewCtx.fillText(`Snap debug: ${shown} moved vertices`,16,mapPreviewCanvas.height-32);
-  mapPreviewCtx.fillStyle='#ef4444';
-  mapPreviewCtx.fillText('red=before',170,mapPreviewCanvas.height-16);
-  mapPreviewCtx.fillStyle='#22c55e';
-  mapPreviewCtx.fillText('green=after',232,mapPreviewCanvas.height-16);
   mapPreviewCtx.restore();
 }
 function syncMapVectorDetectionsToRaw(){
@@ -2784,11 +2740,6 @@ function syncMapDebugBwButton(){
   if(!btnMapDebugBw)return;
   btnMapDebugBw.classList.toggle('y',mapDebugBwPreview);
   btnMapDebugBw.textContent=mapDebugBwPreview?'B&W Preview: ON':'Preview B&W';
-}
-function syncMapDebugSnapButton(){
-  if(!btnMapDebugSnap)return;
-  btnMapDebugSnap.classList.toggle('y',mapDebugSnapOverlay);
-  btnMapDebugSnap.textContent=mapDebugSnapOverlay?'Snap Changes: ON':'Show Snap Changes';
 }
 function syncMapRoiButtons(){
   if(btnMapRoiDraw){
@@ -3935,12 +3886,9 @@ function getMapImageryCanvasForPlanCapture(){
 async function captureMapImageryIntoPlan(){
   // Never capture debug overlays into plan imagery.
   const prevDebugBw=mapDebugBwPreview;
-  const prevDebugSnap=mapDebugSnapOverlay;
-  if(prevDebugBw||prevDebugSnap){
+  if(prevDebugBw){
     mapDebugBwPreview=false;
-    mapDebugSnapOverlay=false;
     syncMapDebugBwButton();
-    syncMapDebugSnapButton();
     drawMapOverlay();
   }
   const lat=(Number.isFinite(mapViewState.lat)?mapViewState.lat:0).toFixed(5);
@@ -3960,9 +3908,7 @@ async function captureMapImageryIntoPlan(){
   if(!baseImg){
     setImportStatus('Imagery not ready to capture. Please wait a moment and try again.',true);
     mapDebugBwPreview=prevDebugBw;
-    mapDebugSnapOverlay=prevDebugSnap;
     syncMapDebugBwButton();
-    syncMapDebugSnapButton();
     drawMapOverlay();
     return;
   }
@@ -3983,9 +3929,7 @@ async function captureMapImageryIntoPlan(){
   addCanvasAsPlan(oc,label,false,{autoScaleFeetPerPx:feetPerPx,skipCalibration:true});
   if(pendingDetectionTransfer)transferDetectionsWhenPlanReady();
   mapDebugBwPreview=prevDebugBw;
-  mapDebugSnapOverlay=prevDebugSnap;
   syncMapDebugBwButton();
-  syncMapDebugSnapButton();
 }
 
 async function runRoboflowDetection(){
@@ -4248,9 +4192,7 @@ document.getElementById('btn-import-source-map').addEventListener('click',async(
   setPageModalView('map');
   mapRenderStyle='satellite';
   mapDebugBwPreview=false;
-  mapDebugSnapOverlay=false;
   syncMapDebugBwButton();
-  syncMapDebugSnapButton();
   if(mapRenderStyleSel)mapRenderStyleSel.value='satellite';
   updateHistoricalControls();
   readMapInputsIntoState();
@@ -4268,18 +4210,6 @@ if(btnMapDebugBw){
     syncMapDebugBwButton();
     drawMapOverlay();
     setImportStatus(mapDebugBwPreview?'Debug B&W preview ON (for validation only).':'Debug B&W preview OFF.');
-  });
-}
-if(btnMapDebugSnap){
-  btnMapDebugSnap.addEventListener('click',()=>{
-    mapDebugSnapOverlay=!mapDebugSnapOverlay;
-    syncMapDebugSnapButton();
-    drawMapOverlay();
-    if(mapDebugSnapOverlay&&!mapSnapDebugMoves.length){
-      setImportStatus('Snap change overlay ON. Run AI Detect to populate moved-vertex lines.');
-    }else{
-      setImportStatus(mapDebugSnapOverlay?'Snap change overlay ON.':'Snap change overlay OFF.');
-    }
   });
 }
 if(mapRenderStyleSel){
@@ -4408,10 +4338,6 @@ if(mapZoomSliderEl){
 }
 mapPreviewCanvas.addEventListener('mousedown',e=>{
   if(pageModalView!=='map')return;
-  if(mapDebugSnapOverlay){
-    mapDebugSnapOverlay=false;
-    syncMapDebugSnapButton();
-  }
   const rect=mapPreviewCanvas.getBoundingClientRect();
   const mx=e.clientX-rect.left,my=e.clientY-rect.top;
   // Convert CSS pixels -> canvas pixels so ROI starts exactly at cursor.
@@ -4649,7 +4575,6 @@ mapPreviewCanvas.style.cursor='grab';
 if(mapRenderStyleSel)mapRenderStyleSel.value=mapRenderStyle;
 if(mapDrawClassSel)mapVectorDrawState.cls=mapDrawClassSel.value||mapVectorDrawState.cls;
 syncMapDebugBwButton();
-syncMapDebugSnapButton();
 populateWaybackYearsDropdown();
 updateHistoricalControls();
 
