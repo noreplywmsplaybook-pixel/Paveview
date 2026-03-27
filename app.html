@@ -235,6 +235,9 @@ select.sc-inp{cursor:pointer;width:40px}
 }
 .sidebar.expanded .add-zone-btn{display:block}
 .add-zone-btn:hover{border-color:var(--accent);color:var(--accent)}
+#zone-quick-toggle-wrap{display:none;gap:6px;align-items:center;padding:2px 8px 4px}
+.sidebar.expanded #zone-quick-toggle-wrap{display:flex}
+#zone-quick-poly-toggle{width:100%;font-size:8px;letter-spacing:.08em}
 
 /* stats in right sidebar */
 .rs-stat{
@@ -859,6 +862,9 @@ select.sc-inp{cursor:pointer;width:40px}
     <!-- Zones -->
     <div class="sb-sec" style="flex:1;overflow-y:auto;border-bottom:none;min-height:0;max-height:none">
       <div class="sb-sec-lbl">Zones</div>
+      <div id="zone-quick-toggle-wrap">
+        <button class="btn" id="zone-quick-poly-toggle" title="Show polygons/dots only, hide labels">Polygon View: OFF</button>
+      </div>
       <div id="zone-list-collapsed" style="display:flex;flex-direction:column;gap:2px;align-items:center;padding:2px 0"></div>
       <div id="zone-list" style="display:none;flex-direction:column;gap:2px"></div>
       <button class="add-zone-btn" id="btn-add-zone">+ Add Zone</button>
@@ -1318,6 +1324,7 @@ let inHatch=[], inLinear=[];
 let dragging=null, hovering=null;
 let focusedZoneId=null; // when set, stats panel shows only this zone
 let selectedHatchId=null;
+let quickPolygonView=false; // hide labels and show polygon-first visuals
 let mx=0, my=0; // mouse in image coords
 let isPanning=false;
 let lastClick=0; // for dblclick detection
@@ -1501,6 +1508,7 @@ const pageModalTitle=document.getElementById('page-modal-title');
 const pageFilename=document.getElementById('page-filename');
 const importSourcePanel=document.getElementById('import-source-panel');
 const importMapPanel=document.getElementById('import-map-panel');
+const zoneQuickPolyToggle=document.getElementById('zone-quick-poly-toggle');
 const pageThumbs=document.getElementById('page-thumbs');
 const pageFooterText=document.getElementById('page-footer-text');
 const mapFooterText=document.getElementById('map-footer-text');
@@ -2769,6 +2777,11 @@ function setImportStatus(msg,isError=false){
   if(!mapImportStatus)return;
   mapImportStatus.style.color=isError?'var(--red)':'var(--text3)';
   mapImportStatus.textContent=msg;
+}
+function syncZoneQuickPolyToggle(){
+  if(!zoneQuickPolyToggle)return;
+  zoneQuickPolyToggle.classList.toggle('y',quickPolygonView);
+  zoneQuickPolyToggle.textContent=quickPolygonView?'Polygon View: ON':'Polygon View: OFF';
 }
 function syncMapDebugBwButton(){
   if(!btnMapDebugBw)return;
@@ -4434,6 +4447,14 @@ if(btnMapExportSvg){
 if(btnMapExportPdf){
   btnMapExportPdf.addEventListener('click',exportMapVectorsAsPdf);
 }
+if(zoneQuickPolyToggle){
+  zoneQuickPolyToggle.addEventListener('click',()=>{
+    quickPolygonView=!quickPolygonView;
+    syncZoneQuickPolyToggle();
+    renderAll();
+  });
+  syncZoneQuickPolyToggle();
+}
 if(btnMapRoiDraw){
   btnMapRoiDraw.addEventListener('click',()=>{
     mapRoiDrawMode=!mapRoiDrawMode;
@@ -5648,17 +5669,19 @@ function renderMeasurementShapes(ctx) {
       ctx.beginPath();ctx.arc(p.x,p.y,isH?5:3,0,Math.PI*2);
       ctx.fillStyle=isH?'#fff':(m.color||'#f5c842');ctx.fill();
     });
-    // Label
-    const _mcx=m.pts.reduce((s,p)=>s+p.x,0)/m.pts.length;
-    const _mcy=m.pts.reduce((s,p)=>s+p.y,0)/m.pts.length;
-    const cx2=_mcx+(m.labelX||0);
-    const cy2=_mcy+(m.labelY||0);
-    const mSz=m.labelSize||12;
-    ctx.font=`500 ${mSz}px JetBrains Mono,monospace`;ctx.textAlign='center';ctx.textBaseline='middle';
-    const lbl=m.label+' · '+m.sqft.toLocaleString()+' sf';
-    const tw=ctx.measureText(lbl).width;
-    ctx.fillStyle='rgba(0,0,0,.75)';ctx.fillRect(cx2-tw/2-5,cy2-mSz/2-2,tw+10,mSz+4);
-    ctx.fillStyle='#aaa';ctx.fillText(lbl,cx2,cy2);
+    if(!quickPolygonView){
+      // Label
+      const _mcx=m.pts.reduce((s,p)=>s+p.x,0)/m.pts.length;
+      const _mcy=m.pts.reduce((s,p)=>s+p.y,0)/m.pts.length;
+      const cx2=_mcx+(m.labelX||0);
+      const cy2=_mcy+(m.labelY||0);
+      const mSz=m.labelSize||12;
+      ctx.font=`500 ${mSz}px JetBrains Mono,monospace`;ctx.textAlign='center';ctx.textBaseline='middle';
+      const lbl=m.label+' · '+m.sqft.toLocaleString()+' sf';
+      const tw=ctx.measureText(lbl).width;
+      ctx.fillStyle='rgba(0,0,0,.75)';ctx.fillRect(cx2-tw/2-5,cy2-mSz/2-2,tw+10,mSz+4);
+      ctx.fillStyle='#aaa';ctx.fillText(lbl,cx2,cy2);
+    }
   });
 }
 
@@ -5859,14 +5882,16 @@ function renderZones(){
     dCtx.beginPath();s.pts.forEach((p,i)=>i===0?dCtx.moveTo(p.x,p.y):dCtx.lineTo(p.x,p.y));
     dCtx.strokeStyle=lCol;dCtx.lineWidth=lw;dCtx.setLineDash([6,3]);dCtx.stroke();dCtx.setLineDash([]);
     s.pts.forEach(p=>{dCtx.beginPath();dCtx.arc(p.x,p.y,3,0,Math.PI*2);dCtx.fillStyle=lCol;dCtx.fill()});
-    let total=0;for(let i=0;i<s.pts.length-1;i++)total+=dist(s.pts[i],s.pts[i+1]);
-    const ft=(total*sc).toFixed(1);
-    const mid=s.pts[Math.floor(s.pts.length/2)];
-    const lbl=(s.label?s.label+' · ':'')+ft+' ft';
-    dCtx.font=`600 ${lSz}px JetBrains Mono,monospace`;dCtx.textAlign='center';dCtx.textBaseline='bottom';
-    const tw=dCtx.measureText(lbl).width;
-    dCtx.fillStyle='rgba(0,0,0,.75)';dCtx.fillRect(mid.x-tw/2-4,mid.y-16,tw+8,14);
-    dCtx.fillStyle=lCol;dCtx.fillText(lbl,mid.x,mid.y-3);
+    if(!quickPolygonView){
+      let total=0;for(let i=0;i<s.pts.length-1;i++)total+=dist(s.pts[i],s.pts[i+1]);
+      const ft=(total*sc).toFixed(1);
+      const mid=s.pts[Math.floor(s.pts.length/2)];
+      const lbl=(s.label?s.label+' · ':'')+ft+' ft';
+      dCtx.font=`600 ${lSz}px JetBrains Mono,monospace`;dCtx.textAlign='center';dCtx.textBaseline='bottom';
+      const tw=dCtx.measureText(lbl).width;
+      dCtx.fillStyle='rgba(0,0,0,.75)';dCtx.fillRect(mid.x-tw/2-4,mid.y-16,tw+8,14);
+      dCtx.fillStyle=lCol;dCtx.fillText(lbl,mid.x,mid.y-3);
+    }
   });
   // Ruler removed — use linear tool to verify scale
   // Check legend toggle state
@@ -5926,7 +5951,7 @@ function renderZones(){
       dCtx.setLineDash(z.lineDashed?[10,5]:[]);
       dCtx.stroke();dCtx.setLineDash([]);
     }else{
-      if(z.showFill!==false&&!isEditingLineDrag){
+      if(!quickPolygonView&&z.showFill!==false&&!isEditingLineDrag){
         const alpha=Math.round((z.opacity!=null?z.opacity:15)/100*255).toString(16).padStart(2,'0');
         dCtx.save();
         drawZonePath(dCtx,z.pts);
@@ -5957,7 +5982,7 @@ function renderZones(){
       dCtx.fillStyle=isH?'#fff':(z.obstruct?'#ef4444':z.color);dCtx.fill();
     });
     // Label
-    const showZoneLabel=!z.obstruct||focusedZoneId===z.id;
+    const showZoneLabel=!quickPolygonView&&(!z.obstruct||focusedZoneId===z.id);
     if(showZoneLabel){
       const area=polyArea(z.pts)*sc*sc;
       const _zcx=z.pts.reduce((s,p)=>s+p.x,0)/z.pts.length;
@@ -6008,7 +6033,7 @@ function renderZones(){
       dCtx.beginPath();dCtx.arc(m.x,m.y,r,0,Math.PI*2);dCtx.fillStyle=col;dCtx.fill();
       dCtx.font=`600 ${Math.max(7,r-1)}px JetBrains Mono,monospace`;dCtx.textAlign='center';dCtx.textBaseline='middle';
       dCtx.fillStyle='#fff';dCtx.fillText((m.label||'').substring(0,2),m.x,m.y);
-      if(m.label){dCtx.font=`500 9px JetBrains Mono,monospace`;dCtx.fillStyle=col;dCtx.fillText(m.label,m.x,m.y+r+8)}
+      if(!quickPolygonView&&m.label){dCtx.font=`500 9px JetBrains Mono,monospace`;dCtx.fillStyle=col;dCtx.fillText(m.label,m.x,m.y+r+8)}
     }else if(m.type==='bollard-sign'){
       // Diamond sign shape
       const sr=r*1.2;
@@ -6021,7 +6046,7 @@ function renderZones(){
       dCtx.font=`700 ${Math.max(6,r-2)}px JetBrains Mono,monospace`;
       dCtx.textAlign='center';dCtx.textBaseline='middle';
       dCtx.fillStyle='#f97316';dCtx.fillText(signLbl,m.x,m.y);
-      if(m.label&&m.label.length>3){dCtx.font=`500 8px JetBrains Mono,monospace`;dCtx.fillStyle='#f97316';dCtx.fillText(m.label,m.x,m.y+r+8)}
+      if(!quickPolygonView&&m.label&&m.label.length>3){dCtx.font=`500 8px JetBrains Mono,monospace`;dCtx.fillStyle='#f97316';dCtx.fillText(m.label,m.x,m.y+r+8)}
     }else{
       dCtx.beginPath();dCtx.arc(m.x,m.y,r,0,Math.PI*2);dCtx.fillStyle=col;dCtx.fill();
       dCtx.strokeStyle='rgba(0,0,0,.4)';dCtx.lineWidth=1;dCtx.stroke();
