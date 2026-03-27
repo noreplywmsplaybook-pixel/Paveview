@@ -2917,6 +2917,15 @@ function detectionFullyInsidePolygon(det,poly){
   }
   return pts.every(p=>pointInPolygonOrOnEdge(p,poly));
 }
+function keepVectorsInsideScanPolygon(vectors,scanPoly){
+  if(!Array.isArray(vectors)||!vectors.length)return [];
+  if(!Array.isArray(scanPoly)||scanPoly.length<3)return vectors.slice();
+  return vectors.filter(v=>{
+    const pts=Array.isArray(v?.points)?v.points:[];
+    if(!pts.length)return false;
+    return pts.every(p=>pointInPolygonOrOnEdge(p,scanPoly));
+  });
+}
 function primaryLotPolygonFromVectors(vectors){
   if(!Array.isArray(vectors)||!vectors.length)return null;
   let best=null;
@@ -4174,7 +4183,8 @@ async function runRoboflowDetection(){
     }));
 
     const allVectors=draftVectors.concat(assistVectors);
-    mapVectorDetections=keepStallLikeVectorsInsideLot(allVectors);
+    const lotFilteredVectors=keepStallLikeVectorsInsideLot(allVectors);
+    mapVectorDetections=keepVectorsInsideScanPolygon(lotFilteredVectors,manualScanPoly);
     mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
     mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
     mapDetectionRenderSize={w:data?.image?.width||mapPreviewCanvas.width,h:data?.image?.height||mapPreviewCanvas.height};
