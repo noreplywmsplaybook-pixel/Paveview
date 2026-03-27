@@ -4379,37 +4379,7 @@ async function runRoboflowDetection(){
         filteredPredictions
       )
     )));
-    const baseLotPoly=primaryLotPolygonFromDetections(draftDetections);
-    const scanRoi=mapCurrentScanRoi(baseLotPoly);
-    const stallScanPoly=(Array.isArray(manualScanPoly)&&manualScanPoly.length>=3)
-      ? manualScanPoly
-      : ((scanRoi&&scanRoi.w>20&&scanRoi.h>20)?roiRectToPolygon(scanRoi):baseLotPoly);
     let tileStats={tilesPlanned:0,tilesRan:0,added:0};
-    // Add only stall zoom phases on top of production baseline.
-    if(stallScanPoly){
-      const zoomScan=await runLotStallZoomScan(inferCanvas,stallScanPoly,{
-        lat:mapViewState?.lat,
-        lng:mapViewState?.lng,
-        zoom:mapViewState?.zoom,
-        mode:mapViewState?.mode,
-        year:mapViewState?.year,
-        roi:scanRoi
-      });
-      const zoomStalls=Array.isArray(zoomScan?.detections)?zoomScan.detections:[];
-      tileStats.tilesPlanned=Number(zoomScan?.tilesPlanned)||0;
-      tileStats.tilesRan=Number(zoomScan?.tilesRan)||0;
-      if(zoomStalls.length){
-        const beforeCount=draftDetections.length;
-        const merged=draftDetections.concat(zoomStalls);
-        draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
-          keepStallLikeDetectionsInsideLot(
-            filterDetectionsByClassConfidence(merged),
-            stallScanPoly
-          )
-        )));
-        tileStats.added=Math.max(0,draftDetections.length-beforeCount);
-      }
-    }
     mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
     mapLastDetectContext={
       capturedAt:new Date().toISOString(),
@@ -4470,21 +4440,8 @@ async function runRoboflowDetection(){
       };
     }).filter(z=>Array.isArray(z.points)&&z.points.length>=3);
 
-    // Secondary stall line assist (lightweight Hough-like extraction on B/W layer).
-    const existingStallPolys=draftVectors
-      .filter(v=>String(v.className||'').toLowerCase().includes('stall'))
-      .map(v=>v.points);
-    const assistSegs=detectStallAssistSegmentsFromBw(bwAligned,existingStallPolys);
-    const assistVectors=assistSegs.map((seg,i)=>({
-      id:'assist-stall-'+Date.now()+'-'+i,
-      className:'parking_stall',
-      confidence:0.35,
-      points:segmentToThinStallPolygon(seg,2)
-    }));
-    const rowFillVectors=generateRowGapFillStallVectors(draftVectors.concat(assistVectors));
-
     const obsPolys=collectObstructionPolygonsFromVectors(draftVectors);
-    const allVectors=draftVectors.concat(assistVectors,rowFillVectors).filter(v=>{
+    const allVectors=draftVectors.filter(v=>{
       if(!isParkingStallLikeVectorClass(v?.className))return true;
       const pts=Array.isArray(v?.points)?v.points:[];
       return vectorStallClearOfObstructions(pts,obsPolys);
