@@ -3301,9 +3301,8 @@ function markerLikelyDuplicate(a,b,pxTol=12){
 }
 function confidenceThresholdForClass(cls,opts={}){
   const c=String(cls||'').toLowerCase();
-  const relaxStalls=!!opts.allowZoomRelaxedStalls;
   // Keep stall-like detections visible while filtering low-confidence noise.
-  if(c.includes('stall'))return relaxStalls?0.2:0.22;
+  if(c.includes('stall'))return 0.22;
   if(c.includes('ada')||c.includes('handicap'))return 0.2;
   if(c.includes('arrow')||c.includes('stencil'))return 0.18;
   return 0.25;
@@ -3312,8 +3311,7 @@ function filterDetectionsByClassConfidence(detections,opts={}){
   if(!Array.isArray(detections)||!detections.length)return [];
   return detections.filter(det=>{
     const conf=Number(det?.confidence||0);
-    const isZoomRelaxed=!!(opts.allowZoomRelaxedStalls&&det?._zoomPass&&classIsStallLike(det?.class));
-    return conf>=confidenceThresholdForClass(det?.class,{allowZoomRelaxedStalls:isZoomRelaxed});
+    return conf>=confidenceThresholdForClass(det?.class,opts);
   });
 }
 function detectionCenterPoint(det){
@@ -4405,7 +4403,7 @@ async function runRoboflowDetection(){
         const merged=draftDetections.concat(zoomStalls);
         draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
           keepStallLikeDetectionsInsideLot(
-            filterDetectionsByClassConfidence(merged,{allowZoomRelaxedStalls:true}),
+            filterDetectionsByClassConfidence(merged),
             stallScanPoly
           )
         )));
