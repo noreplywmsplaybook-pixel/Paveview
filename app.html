@@ -2228,37 +2228,37 @@ function buildAutoZoomPhases(baseZoom){
   const z=Math.max(0,Math.floor(Number(baseZoom)||0));
   if(z<=16){
     return[
-      {name:'crop',useRaw:true,maxTiles:12,overlap:0.5,spanScale:1},
-      {name:'z+3',dz:3,maxTiles:10,overlap:0.52,spanScale:0.92},
-      {name:'z+4',dz:4,maxTiles:10,overlap:0.55,spanScale:0.78},
-      {name:'z+5',dz:5,maxTiles:10,overlap:0.58,spanScale:0.66}
+      {name:'crop',useRaw:true,maxTiles:14,overlap:0.54,spanScale:1},
+      {name:'z+3',dz:3,maxTiles:12,overlap:0.56,spanScale:0.92},
+      {name:'z+4',dz:4,maxTiles:12,overlap:0.58,spanScale:0.78},
+      {name:'z+5',dz:5,maxTiles:12,overlap:0.6,spanScale:0.66}
     ];
   }
   if(z===17){
     return[
-      {name:'crop',useRaw:true,maxTiles:12,overlap:0.5,spanScale:1},
-      {name:'z+2',dz:2,maxTiles:10,overlap:0.5,spanScale:0.95},
-      {name:'z+3',dz:3,maxTiles:10,overlap:0.54,spanScale:0.82},
-      {name:'z+4',dz:4,maxTiles:10,overlap:0.56,spanScale:0.7}
+      {name:'crop',useRaw:true,maxTiles:14,overlap:0.54,spanScale:1},
+      {name:'z+2',dz:2,maxTiles:12,overlap:0.54,spanScale:0.95},
+      {name:'z+3',dz:3,maxTiles:12,overlap:0.58,spanScale:0.82},
+      {name:'z+4',dz:4,maxTiles:12,overlap:0.6,spanScale:0.7}
     ];
   }
   if(z===18){
     return[
-      {name:'crop',useRaw:true,maxTiles:12,overlap:0.5,spanScale:1},
-      {name:'z+2',dz:2,maxTiles:10,overlap:0.5,spanScale:0.9},
-      {name:'z+3',dz:3,maxTiles:10,overlap:0.55,spanScale:0.72}
+      {name:'crop',useRaw:true,maxTiles:14,overlap:0.54,spanScale:1},
+      {name:'z+2',dz:2,maxTiles:12,overlap:0.56,spanScale:0.9},
+      {name:'z+3',dz:3,maxTiles:12,overlap:0.6,spanScale:0.72}
     ];
   }
   if(z===19){
     return[
-      {name:'crop',useRaw:true,maxTiles:11,overlap:0.48,spanScale:1},
-      {name:'z+1',dz:1,maxTiles:10,overlap:0.5,spanScale:0.9},
-      {name:'z+2',dz:2,maxTiles:10,overlap:0.54,spanScale:0.78}
+      {name:'crop',useRaw:true,maxTiles:13,overlap:0.52,spanScale:1},
+      {name:'z+1',dz:1,maxTiles:12,overlap:0.54,spanScale:0.9},
+      {name:'z+2',dz:2,maxTiles:12,overlap:0.58,spanScale:0.78}
     ];
   }
   return[
-    {name:'crop',useRaw:true,maxTiles:10,overlap:0.46,spanScale:1},
-    {name:'z+1',dz:1,maxTiles:9,overlap:0.5,spanScale:0.86}
+    {name:'crop',useRaw:true,maxTiles:12,overlap:0.5,spanScale:1},
+    {name:'z+1',dz:1,maxTiles:11,overlap:0.54,spanScale:0.86}
   ];
 }
 function mapTileUrlForMode(mode,year,zoomLv,ty,wrappedTx){
@@ -2414,15 +2414,15 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
   const lotAreaFrac=Math.max(0,Math.min(1,lotAreaPx/Math.max(1,rawCanvas.width*rawCanvas.height)));
   const maxDetectCalls=(()=>{
     if(roi){
-      if(baseZoom<=17)return 72;
-      if(baseZoom===18)return 64;
-      if(baseZoom===19)return 56;
-      return 48;
+      if(baseZoom<=17)return 92;
+      if(baseZoom===18)return 84;
+      if(baseZoom===19)return 72;
+      return 62;
     }
-    if(baseZoom<=17)return 44;
-    if(baseZoom===18)return 38;
-    if(baseZoom===19)return 32;
-    return (lotAreaFrac>0.45)?30:26;
+    if(baseZoom<=17)return 58;
+    if(baseZoom===18)return 50;
+    if(baseZoom===19)return 42;
+    return (lotAreaFrac>0.45)?38:34;
   })();
   for(let p=0;p<phases.length;p++){
     const phase=phases[p];
@@ -2462,28 +2462,36 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
           remapFn=(pred,pIdx)=>remapDetectionFromHighZoomPatchToBase(pred,patch,scanCtx,`${p}-${i}-${pIdx}`);
         }
         if(!inferCanvas||typeof remapFn!=='function')continue;
-        const payload={
-          imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),
-          mode:'detect',
-          confidence:18,
-          overlap:30
-        };
-        const res=await fetch('/api/roboflow-detect',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify(payload)
-        });
-        const data=await res.json().catch(()=>({}));
-        if(!res.ok)continue;
-        ran++;
-        const preds=Array.isArray(data?.predictions)?data.predictions:[];
-        preds.forEach((pred,pIdx)=>{
-          if(!classIsStallLike(pred?.class))return;
-          const mapped=remapFn(pred,pIdx);
-          if(!mapped)return;
-          mapped._zoomPass=true;
-          if(detectionFullyInsidePolygon(mapped,scanPoly))all.push(mapped);
-        });
+        const passes=[
+          {confidence:18,overlap:30},
+          {confidence:14,overlap:25}
+        ];
+        for(let passIdx=0;passIdx<passes.length;passIdx++){
+          if(ran>=maxDetectCalls)break;
+          const pass=passes[passIdx];
+          const payload={
+            imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),
+            mode:'detect',
+            confidence:pass.confidence,
+            overlap:pass.overlap
+          };
+          const res=await fetch('/api/roboflow-detect',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(payload)
+          });
+          const data=await res.json().catch(()=>({}));
+          if(!res.ok)continue;
+          ran++;
+          const preds=Array.isArray(data?.predictions)?data.predictions:[];
+          preds.forEach((pred,pIdx)=>{
+            if(!classIsStallLike(pred?.class))return;
+            const mapped=remapFn(pred,pIdx);
+            if(!mapped)return;
+            mapped._zoomPass=true;
+            if(detectionFullyInsidePolygon(mapped,scanPoly))all.push(mapped);
+          });
+        }
       }catch(e){
         console.warn('Tile stall scan failed:',e);
       }
