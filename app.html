@@ -3604,10 +3604,12 @@ function transferDetectionsToEditableObjects(){
       )
     )
   );
-  // #region agent log
-  fetch('http://127.0.0.1:7439/ingest/0fe9cc7b-577c-4e0d-be07-f2b2ffedd110',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6cc359'},body:JSON.stringify({sessionId:'6cc359',runId:'pre-fix',hypothesisId:'H3',location:'app.html:transferDetectionsToEditableObjects',message:'transfer source counts',data:{srcRawCount:Array.isArray(srcRaw)?srcRaw.length:0,srcRawObstructions:(Array.isArray(srcRaw)?srcRaw:[]).filter(d=>classIsObstruction(d?.class)).length,srcCount:Array.isArray(src)?src.length:0,srcObstructions:(Array.isArray(src)?src:[]).filter(d=>classIsObstruction(d?.class)).length},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-  if(!Array.isArray(src)||!src.length)return {zonesAdded:0,markersAdded:0,hatchAdded:0};
+  let transferSrc=(Array.isArray(src)?src:[]);
+  if((!transferSrc.length)&&Array.isArray(srcRaw)&&srcRaw.length){
+    // Fallback: preserve AI detections if confirm-time re-filtering over-prunes.
+    transferSrc=srcRaw.slice();
+  }
+  if(!transferSrc.length)return {zonesAdded:0,markersAdded:0,hatchAdded:0};
   const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
   const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
   const rs=mapReviewState;
@@ -3615,7 +3617,7 @@ function transferDetectionsToEditableObjects(){
   const rsTx=(rs&&rs.active&&Number.isFinite(rs.tx))?rs.tx:0;
   const rsTy=(rs&&rs.active&&Number.isFinite(rs.ty))?rs.ty:0;
   const toCapturedPoint=(x,y)=>({x:(x*rsScale+rsTx),y:(y*rsScale+rsTy)});
-  const mapped=src.map(det=>{
+  const mapped=transferSrc.map(det=>{
     const cp={...det};
     cp.x=(det.x||0)*sx;
     cp.y=(det.y||0)*sy;
@@ -3629,7 +3631,7 @@ function transferDetectionsToEditableObjects(){
     if(Array.isArray(cp.points))cp.points=cp.points.map(pt=>toCapturedPoint(pt.x,pt.y));
     return cp;
   });
-  let zonesAdded=0,markersAdded=0,hatchAdded=0,obstructionZonesAdded=0;
+  let zonesAdded=0,markersAdded=0,hatchAdded=0;
   mapped.forEach(det=>{
     if(classIsLot(det.class)||classIsObstruction(det.class)){
       const z=detectionToZone(det);
@@ -3638,7 +3640,6 @@ function transferDetectionsToEditableObjects(){
         if(!isDup){
           zones.push(z);
           zonesAdded++;
-          if(z.obstruct)obstructionZonesAdded++;
         }
       }
       return;
@@ -3670,9 +3671,6 @@ function transferDetectionsToEditableObjects(){
     undoHistory.push({type:'ai-import',zonesAdded,markersAdded,hatchAdded});
     renderZoneList();renderHatchList();updateStats();renderAll();savePlanData();
   }
-  // #region agent log
-  fetch('http://127.0.0.1:7439/ingest/0fe9cc7b-577c-4e0d-be07-f2b2ffedd110',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6cc359'},body:JSON.stringify({sessionId:'6cc359',runId:'pre-fix',hypothesisId:'H4',location:'app.html:transferDetectionsToEditableObjects',message:'transfer result counts',data:{zonesAdded,obstructionZonesAdded,markersAdded,hatchAdded,postClosedObstructions:zones.filter(z=>z.closed&&z.obstruct).length},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   aiDetectionsForTransfer=[];
   pendingDetectionTransfer=false;
   return {zonesAdded,markersAdded,hatchAdded};
@@ -4294,9 +4292,6 @@ async function captureMapImageryIntoPlan(){
   const usePolygonAsLot=!!(mapRoiUseLotChk&&mapRoiUseLotChk.checked);
   const rawForTransfer=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
   let seededForTransfer=filterDetectionsByClassConfidence(rawForTransfer);
-  // #region agent log
-  fetch('http://127.0.0.1:7439/ingest/0fe9cc7b-577c-4e0d-be07-f2b2ffedd110',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6cc359'},body:JSON.stringify({sessionId:'6cc359',runId:'pre-fix',hypothesisId:'H1',location:'app.html:captureMapImageryIntoPlan',message:'pre-seed counts',data:{rawCount:Array.isArray(rawForTransfer)?rawForTransfer.length:0,rawObstructions:(Array.isArray(rawForTransfer)?rawForTransfer:[]).filter(d=>classIsObstruction(d?.class)).length},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if(Array.isArray(transferScanPoly)&&transferScanPoly.length>=3){
     seededForTransfer=keepDetectionsInsideScanPolygon(seededForTransfer,transferScanPoly,usePolygonAsLot);
     const hasLot=seededForTransfer.some(det=>classIsLot(det?.class));
@@ -4314,15 +4309,16 @@ async function captureMapImageryIntoPlan(){
       }].concat(seededForTransfer);
     }
   }
-  const activeDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
+  let activeDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
     keepStallLikeDetectionsInsideLot(
       seededForTransfer,
       transferScanPoly
     )
   )));
-  // #region agent log
-  fetch('http://127.0.0.1:7439/ingest/0fe9cc7b-577c-4e0d-be07-f2b2ffedd110',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6cc359'},body:JSON.stringify({sessionId:'6cc359',runId:'pre-fix',hypothesisId:'H2',location:'app.html:captureMapImageryIntoPlan',message:'post-seed counts',data:{seededCount:Array.isArray(seededForTransfer)?seededForTransfer.length:0,seededObstructions:(Array.isArray(seededForTransfer)?seededForTransfer:[]).filter(d=>classIsObstruction(d?.class)).length,activeCount:Array.isArray(activeDetections)?activeDetections.length:0,activeObstructions:(Array.isArray(activeDetections)?activeDetections:[]).filter(d=>classIsObstruction(d?.class)).length},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
+  if((!Array.isArray(activeDetections)||!activeDetections.length)&&Array.isArray(rawForTransfer)&&rawForTransfer.length){
+    // Fallback: ensure transfer never goes empty when detect output exists.
+    activeDetections=rawForTransfer.slice();
+  }
   aiDetectionsForTransfer=JSON.parse(JSON.stringify(activeDetections||[]));
   if(Array.isArray(aiDetectionsForTransfer)&&aiDetectionsForTransfer.length){
     mapLearningDraftDetections=JSON.parse(JSON.stringify(aiDetectionsForTransfer));
@@ -4357,9 +4353,6 @@ async function runRoboflowDetection(){
     if(!res.ok)throw new Error(data?.error||'Detection failed');
 
     const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
-    // #region agent log
-    fetch('http://127.0.0.1:7439/ingest/0fe9cc7b-577c-4e0d-be07-f2b2ffedd110',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6cc359'},body:JSON.stringify({sessionId:'6cc359',runId:'pre-fix',hypothesisId:'H5',location:'app.html:runRoboflowDetection',message:'raw detect counts',data:{rawCount:rawPredictions.length,rawObstructions:rawPredictions.filter(d=>classIsObstruction(d?.class)).length},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     const manualScanPoly=normalizeScanPolygon(
       mapScanPoly,
       mapDetectionRenderSize.w||mapPreviewCanvas.width,
