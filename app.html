@@ -1060,12 +1060,12 @@ select.sc-inp{cursor:pointer;width:40px}
           </select>
           <label>Year</label>
           <select id="map-historical-year"></select>
-          <button class="btn" id="btn-map-roi-draw" title="Draw a scan box over the lot">Draw Scan Box</button>
-          <button class="btn" id="btn-map-roi-clear" title="Clear scan box">Clear Box</button>
+          <button class="btn" id="btn-map-roi-draw" title="Create a scan polygon around the lot">Create Lot Polygon</button>
+          <button class="btn" id="btn-map-roi-clear" title="Clear scan polygon">Clear Polygon</button>
           <button class="btn" id="btn-map-debug-bw" title="Debug only: preview pass-2 snap layer">Preview B&W</button>
           <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
         </div>
-        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Drag the map to pan. The <strong>Zoom</strong> slider is centered on the zoom when imagery loads (middle = that view): drag left/right to zoom out/in with small steps. Use <strong>Draw Scan Box</strong> to focus AI on a lot area.</div>
+        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Drag the map to pan. The <strong>Zoom</strong> slider is centered on the zoom when imagery loads (middle = that view): drag left/right to zoom out/in with small steps. Use <strong>Create Lot Polygon</strong> and click around the lot boundary to focus AI on only that area.</div>
         <div class="map-row">
           <label>Zoom</label>
           <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);flex:0 0 auto">out</span>
@@ -1566,11 +1566,8 @@ let mapSelectedVectorIdx=-1;
 let mapVectorDrag=null; // {idx,ptIdx}
 let mapVectorDragEdge=null; // {idx,chainIdxs,lastX,lastY}
 let mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
-let mapScanRoi=null; // detection ROI in detection-coordinate space: {x,y,w,h}
-let mapRoiDragState=null; // {mode:'new'|'move'|'resize',edge?,startX,startY,orig}
-let mapRoiBox=null; // optional scan ROI in detection coords {x,y,w,h}
-let mapRoiDrawState=null; // {startX,startY}
-let mapRoiDrawMode=false; // explicit ROI draw mode toggle
+let mapScanPoly=[]; // scan polygon in detection-coordinate space: [{x,y}...]
+let mapRoiDrawMode=false; // explicit scan-polygon draw mode toggle
 let waybackManifestFetched=false;
 let mapZoomBaselineZ=20;
 let mapThrottleTimer=null;
@@ -1694,8 +1691,11 @@ function roiRectToPolygon(roi){
 function mapCurrentScanRoi(lotPoly=null){
   const w=mapDetectionRenderSize.w||mapPreviewCanvas.width||0;
   const h=mapDetectionRenderSize.h||mapPreviewCanvas.height||0;
-  const manual=normalizeRoiBox(mapScanRoi,w,h);
-  if(manual)return manual;
+  const manualPoly=normalizeScanPolygon(mapScanPoly,w,h);
+  if(manualPoly){
+    const bb=polygonBounds(manualPoly);
+    if(bb)return normalizeRoiBox({x:bb.minX,y:bb.minY,w:bb.w,h:bb.h},w,h);
+  }
   if(Array.isArray(lotPoly)&&lotPoly.length>=3){
     const bb=polygonBounds(lotPoly);
     if(bb){
@@ -1704,6 +1704,15 @@ function mapCurrentScanRoi(lotPoly=null){
     }
   }
   return null;
+}
+function normalizeScanPolygon(poly,w,h){
+  if(!Array.isArray(poly)||poly.length<3||w<=0||h<=0)return null;
+  const out=poly.map(p=>({
+    x:clampNum(Number(p?.x)||0,0,w),
+    y:clampNum(Number(p?.y)||0,0,h)
+  }));
+  const simp=simplifyClosedPolygon(out,42);
+  return Array.isArray(simp)&&simp.length>=3?simp:out;
 }
 function smoothBoundaryPolygon(points,cls){
   if(!Array.isArray(points)||points.length<3)return Array.isArray(points)?points.slice():[];
@@ -2764,11 +2773,12 @@ function syncMapDebugBwButton(){
 function syncMapRoiButtons(){
   if(btnMapRoiDraw){
     btnMapRoiDraw.classList.toggle('y',!!mapRoiDrawMode);
-    btnMapRoiDraw.textContent=mapRoiDrawMode?'Drawing Box: ON':'Draw Scan Box';
+    btnMapRoiDraw.textContent=mapRoiDrawMode?'Drawing Polygon: ON':'Create Lot Polygon';
   }
   if(btnMapRoiClear){
-    btnMapRoiClear.disabled=!mapScanRoi;
-    btnMapRoiClear.style.opacity=mapScanRoi?'1':'0.6';
+    const hasPoly=Array.isArray(mapScanPoly)&&mapScanPoly.length>0;
+    btnMapRoiClear.disabled=!hasPoly;
+    btnMapRoiClear.style.opacity=hasPoly?'1':'0.6';
   }
 }
 function clearMapDetections(){
@@ -2783,7 +2793,7 @@ function clearMapDetections(){
   mapVectorDragEdge=null;
   mapVectorDrawState={active:false,cls:'lot_boundary',pts:[]};
   mapSnapDebugMoves=[];
-  mapRoiDragState=null;
+  mapScanPoly=[];
   syncMapRoiButtons();
 }
 function detKind(p){
@@ -2870,6 +2880,14 @@ function keepStallLikeDetectionsInsideLot(detections,lotPoly=null){
     if(!classIsStallLike(det?.class))return true;
     const ctr=detectionCenterPoint(det);
     return pointInPolygon(ctr,lot);
+  });
+}
+function keepDetectionsInsideScanPolygon(detections,scanPoly){
+  if(!Array.isArray(detections)||!detections.length)return [];
+  if(!Array.isArray(scanPoly)||scanPoly.length<3)return detections.slice();
+  return detections.filter(det=>{
+    const ctr=detectionCenterPoint(det);
+    return pointInPolygon(ctr,scanPoly);
   });
 }
 function primaryLotPolygonFromVectors(vectors){
@@ -3735,24 +3753,41 @@ function drawMapOverlay(){
   drawMapRoiOverlay();
 }
 function drawMapRoiOverlay(){
-  const roi=normalizeRoiBox(mapScanRoi,mapDetectionRenderSize.w||mapPreviewCanvas.width,mapDetectionRenderSize.h||mapPreviewCanvas.height);
-  if(!roi)return;
+  const dw=mapDetectionRenderSize.w||mapPreviewCanvas.width;
+  const dh=mapDetectionRenderSize.h||mapPreviewCanvas.height;
+  const poly=normalizeScanPolygon(mapScanPoly,dw,dh);
+  if(!Array.isArray(poly)||!poly.length)return;
   const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
   const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
-  const x=roi.x*sx,y=roi.y*sy,w=roi.w*sx,h=roi.h*sy;
   mapPreviewCtx.save();
+  mapPreviewCtx.beginPath();
+  poly.forEach((p,i)=>{
+    const x=p.x*sx,y=p.y*sy;
+    if(i===0)mapPreviewCtx.moveTo(x,y); else mapPreviewCtx.lineTo(x,y);
+  });
+  if(poly.length>=3)mapPreviewCtx.closePath();
+  mapPreviewCtx.fillStyle='rgba(56,189,248,0.12)';
+  mapPreviewCtx.fill();
   mapPreviewCtx.setLineDash([7,4]);
-  mapPreviewCtx.lineWidth=2;
+  mapPreviewCtx.lineWidth=2.2;
   mapPreviewCtx.strokeStyle='rgba(56,189,248,0.95)';
-  mapPreviewCtx.strokeRect(x,y,w,h);
+  mapPreviewCtx.stroke();
   mapPreviewCtx.setLineDash([]);
+  poly.forEach(p=>{
+    const x=p.x*sx,y=p.y*sy;
+    mapPreviewCtx.fillStyle='rgba(56,189,248,0.95)';
+    mapPreviewCtx.beginPath();
+    mapPreviewCtx.arc(x,y,3.2,0,Math.PI*2);
+    mapPreviewCtx.fill();
+  });
+  const first=poly[0];
   mapPreviewCtx.fillStyle='rgba(0,0,0,0.62)';
-  const lbl='Scan ROI';
+  const lbl='Scan Polygon';
   const tw=mapPreviewCtx.measureText(lbl).width+12;
-  mapPreviewCtx.fillRect(x+4,Math.max(0,y-20),tw,16);
+  mapPreviewCtx.fillRect(first.x*sx+4,Math.max(0,first.y*sy-20),tw,16);
   mapPreviewCtx.fillStyle='#38bdf8';
   mapPreviewCtx.font='11px JetBrains Mono,monospace';
-  mapPreviewCtx.fillText(lbl,x+10,Math.max(11,y-8));
+  mapPreviewCtx.fillText(lbl,first.x*sx+10,Math.max(11,first.y*sy-8));
   mapPreviewCtx.restore();
 }
 
@@ -3974,15 +4009,25 @@ async function runRoboflowDetection(){
     if(!res.ok)throw new Error(data?.error||'Detection failed');
 
     const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
+    const manualScanPoly=normalizeScanPolygon(
+      mapScanPoly,
+      mapDetectionRenderSize.w||mapPreviewCanvas.width,
+      mapDetectionRenderSize.h||mapPreviewCanvas.height
+    );
     // Production baseline: use RF + current filtering as source-of-truth.
     let draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
       keepStallLikeDetectionsInsideLot(
-        filterDetectionsByClassConfidence(rawPredictions)
+        keepDetectionsInsideScanPolygon(
+          filterDetectionsByClassConfidence(rawPredictions),
+          manualScanPoly
+        )
       )
     )));
     const baseLotPoly=primaryLotPolygonFromDetections(draftDetections);
     const scanRoi=mapCurrentScanRoi(baseLotPoly);
-    const stallScanPoly=(scanRoi&&scanRoi.w>20&&scanRoi.h>20)?roiRectToPolygon(scanRoi):baseLotPoly;
+    const stallScanPoly=(Array.isArray(manualScanPoly)&&manualScanPoly.length>=3)
+      ? manualScanPoly
+      : ((scanRoi&&scanRoi.w>20&&scanRoi.h>20)?roiRectToPolygon(scanRoi):baseLotPoly);
     let tileStats={tilesPlanned:0,tilesRan:0,added:0};
     // Add only stall zoom phases on top of production baseline.
     if(stallScanPoly){
@@ -4289,9 +4334,10 @@ if(btnMapRoiDraw){
   btnMapRoiDraw.addEventListener('click',()=>{
     mapRoiDrawMode=!mapRoiDrawMode;
     if(mapRoiDrawMode){
-      setImportStatus('Scan box mode ON. Click-drag on the map to draw the lot box.');
+      if(!Array.isArray(mapScanPoly))mapScanPoly=[];
+      setImportStatus('Lot polygon mode ON. Click around the lot boundary; click near the first point to close.');
     }else{
-      setImportStatus('Scan box mode OFF.');
+      setImportStatus('Lot polygon mode OFF.');
     }
     syncMapRoiButtons();
     drawMapOverlay();
@@ -4299,11 +4345,10 @@ if(btnMapRoiDraw){
 }
 if(btnMapRoiClear){
   btnMapRoiClear.addEventListener('click',()=>{
-    mapScanRoi=null;
+    mapScanPoly=[];
     mapRoiDrawMode=false;
-    mapRoiDragState=null;
     syncMapRoiButtons();
-    setImportStatus('Scan ROI box cleared.');
+    setImportStatus('Scan polygon cleared.');
     drawMapOverlay();
   });
 }
@@ -4372,11 +4417,25 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
   const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
   const toDet=(x,y)=>({x:x/sx,y:y/sy});
   const local=toDet(mx,my);
-  if(!mapReviewState.active&&(mapRoiDrawMode||(e.shiftKey&&e.button===0))){
-    const roiStart=toDet(mxCanvas,myCanvas);
-    mapRoiDragState={mode:'new',startX:roiStart.x,startY:roiStart.y};
-    mapScanRoi={x:roiStart.x,y:roiStart.y,w:0,h:0};
-    setImportStatus('Drawing scan ROI… drag to draw. Click Draw Scan Box again to exit.');
+  if(!mapReviewState.active&&mapRoiDrawMode&&e.button===0){
+    const pt=toDet(mxCanvas,myCanvas);
+    if(!Array.isArray(mapScanPoly))mapScanPoly=[];
+    if(mapScanPoly.length>=3){
+      const first=mapScanPoly[0];
+      const firstCanvas=mapDetectionToCanvasPt(first.x,first.y);
+      const nearFirst=Math.hypot(firstCanvas.x-mxCanvas,firstCanvas.y-myCanvas)<=12;
+      if(nearFirst){
+        mapScanPoly=normalizeScanPolygon(mapScanPoly,mapDetectionRenderSize.w||mapPreviewCanvas.width,mapDetectionRenderSize.h||mapPreviewCanvas.height)||[];
+        mapRoiDrawMode=false;
+        syncMapRoiButtons();
+        setImportStatus('Scan polygon set. AI detect will run inside this lot area.');
+        drawMapOverlay();
+        return;
+      }
+    }
+    mapScanPoly.push({x:pt.x,y:pt.y});
+    setImportStatus('Lot polygon point added. Click near first point to close, or use Clear Polygon.');
+    syncMapRoiButtons();
     drawMapOverlay();
     return;
   }
@@ -4472,8 +4531,10 @@ mapPreviewCanvas.addEventListener('contextmenu',e=>{
   if(pageModalView!=='map')return;
   e.preventDefault();
   if(e.shiftKey){
-    mapScanRoi=null;
-    setImportStatus('Scan ROI cleared.');
+    mapScanPoly=[];
+    mapRoiDrawMode=false;
+    syncMapRoiButtons();
+    setImportStatus('Scan polygon cleared.');
     drawMapOverlay();
     return;
   }
@@ -4490,26 +4551,6 @@ mapPreviewCanvas.addEventListener('contextmenu',e=>{
   drawMapOverlay();
 });
 window.addEventListener('mousemove',e=>{
-  if(mapRoiDragState){
-    const rect=mapPreviewCanvas.getBoundingClientRect();
-    const mx=e.clientX-rect.left,my=e.clientY-rect.top;
-    const scaleX=mapPreviewCanvas.width/Math.max(1,rect.width);
-    const scaleY=mapPreviewCanvas.height/Math.max(1,rect.height);
-    const mxCanvas=mx*scaleX,myCanvas=my*scaleY;
-    const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
-    const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
-    const local={x:mxCanvas/sx,y:myCanvas/sy};
-    if(mapRoiDragState.mode==='new'){
-      mapScanRoi={
-        x:Math.min(mapRoiDragState.startX,local.x),
-        y:Math.min(mapRoiDragState.startY,local.y),
-        w:Math.abs(local.x-mapRoiDragState.startX),
-        h:Math.abs(local.y-mapRoiDragState.startY)
-      };
-      drawMapOverlay();
-    }
-    return;
-  }
   if(mapVectorDrag){
     const rect=mapPreviewCanvas.getBoundingClientRect();
     const mx=e.clientX-rect.left,my=e.clientY-rect.top;
@@ -4576,14 +4617,6 @@ window.addEventListener('mousemove',e=>{
   throttleMapPreview('Panning imagery…');
 });
 window.addEventListener('mouseup',()=>{
-  if(mapRoiDragState){
-    mapScanRoi=normalizeRoiBox(mapScanRoi,mapDetectionRenderSize.w||mapPreviewCanvas.width,mapDetectionRenderSize.h||mapPreviewCanvas.height);
-    mapRoiDragState=null;
-    if(!mapScanRoi)setImportStatus('Scan ROI cleared (too small).');
-    else setImportStatus('Scan ROI set. AI detect will prioritize this box.');
-    drawMapOverlay();
-    return;
-  }
   if(mapVectorDrag){mapVectorDrag=null;return;}
   if(mapVectorDragEdge){mapVectorDragEdge=null;mapPreviewCanvas.style.cursor='grab';return;}
   if(!mapInteraction.dragging)return;
