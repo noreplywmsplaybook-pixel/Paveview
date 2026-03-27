@@ -3012,11 +3012,11 @@ function hatchGeometryLikelyDuplicate(a,b){
   if(!a||!b||!Array.isArray(a.pts)||!Array.isArray(b.pts)||a.pts.length<3||b.pts.length<3)return false;
   const ab=polygonBounds(a.pts),bb=polygonBounds(b.pts);
   const iou=boundsIou(ab,bb);
-  if(iou<0.96)return false;
+  if(iou<0.98)return false;
   const aa=polygonArea(a.pts),ba=polygonArea(b.pts);
-  if(areaSimilarity(aa,ba)<0.96)return false;
+  if(areaSimilarity(aa,ba)<0.98)return false;
   const ca=polyCentroid(a.pts),cb=polyCentroid(b.pts);
-  return Math.hypot((ca.x||0)-(cb.x||0),(ca.y||0)-(cb.y||0))<=10;
+  return Math.hypot((ca.x||0)-(cb.x||0),(ca.y||0)-(cb.y||0))<=6;
 }
 function markerKey(m){
   const t=String(m?.type||'').toLowerCase();
@@ -3288,7 +3288,8 @@ function detectionToHatchZone(det){
         {x:det.x-det.width/2,y:det.y+det.height/2}
       ];
   if(pts.length<3)return null;
-  const simplifiedPts=simplifyClosedPolygon(pts,36);
+  // Hatch polygons should stay easy to edit; keep a lower vertex budget.
+  const simplifiedPts=simplifyClosedPolygon(pts,18);
   if(simplifiedPts.length<3)return null;
   const cls=String(det?.class||'').toLowerCase();
   const isAda=cls.includes('ada')||cls.includes('accessible')||cls.includes('handicap');
@@ -5730,7 +5731,7 @@ function renderZones(){
     dCtx.strokeStyle=col+'66';dCtx.lineWidth=1;
     for(let d=mx2-(My-my2);d<Mx+(My-my2);d+=sp){dCtx.beginPath();dCtx.moveTo(d,my2);dCtx.lineTo(d+(My-my2),My);dCtx.stroke()}
     dCtx.restore();
-    h.pts.forEach((p,i)=>{dCtx.beginPath();dCtx.arc(p.x,p.y,3,0,Math.PI*2);dCtx.fillStyle=col;dCtx.fill()});
+    if(isSel)h.pts.forEach((p,i)=>{dCtx.beginPath();dCtx.arc(p.x,p.y,3,0,Math.PI*2);dCtx.fillStyle=col;dCtx.fill()});
   });
   // Linear segs
   if(!hasZoneFocus)linearSegs.forEach(s=>{
