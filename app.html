@@ -863,7 +863,7 @@ select.sc-inp{cursor:pointer;width:40px}
     <div class="sb-sec" style="flex:1;overflow-y:auto;border-bottom:none;min-height:0;max-height:none">
       <div class="sb-sec-lbl">Zones</div>
       <div id="zone-quick-toggle-wrap">
-        <button class="btn" id="zone-quick-poly-toggle" title="Show polygons/dots only, hide labels">Polygon View: OFF</button>
+        <button class="btn" id="zone-quick-poly-toggle" title="Show all map overlays without labels">Show All: ON</button>
       </div>
       <div id="zone-list-collapsed" style="display:flex;flex-direction:column;gap:2px;align-items:center;padding:2px 0"></div>
       <div id="zone-list" style="display:none;flex-direction:column;gap:2px"></div>
@@ -1324,7 +1324,7 @@ let inHatch=[], inLinear=[];
 let dragging=null, hovering=null;
 let focusedZoneId=null; // when set, stats panel shows only this zone
 let selectedHatchId=null;
-let quickPolygonView=false; // hide labels and show polygon-first visuals
+let quickPolygonView=true; // show all overlays with labels hidden; OFF hides overlays
 let mx=0, my=0; // mouse in image coords
 let isPanning=false;
 let lastClick=0; // for dblclick detection
@@ -2781,7 +2781,7 @@ function setImportStatus(msg,isError=false){
 function syncZoneQuickPolyToggle(){
   if(!zoneQuickPolyToggle)return;
   zoneQuickPolyToggle.classList.toggle('y',quickPolygonView);
-  zoneQuickPolyToggle.textContent=quickPolygonView?'Polygon View: ON':'Polygon View: OFF';
+  zoneQuickPolyToggle.textContent=quickPolygonView?'Show All: ON':'Show All: OFF';
 }
 function syncMapDebugBwButton(){
   if(!btnMapDebugBw)return;
@@ -5845,6 +5845,7 @@ function renderZones(){
     dCtx.globalAlpha=1;
     dCtx.setLineDash([]);
   }
+  if(!quickPolygonView)return;
   const sc=getScale();
   const isEditingLineDrag=!!(dragging&&dragging.type==='zone-edge-move');
   const focusedZone=focusedZoneId?zones.find(z=>z.id===focusedZoneId):null;
@@ -5951,7 +5952,7 @@ function renderZones(){
       dCtx.setLineDash(z.lineDashed?[10,5]:[]);
       dCtx.stroke();dCtx.setLineDash([]);
     }else{
-      if(!quickPolygonView&&z.showFill!==false&&!isEditingLineDrag){
+      if(z.showFill!==false&&!isEditingLineDrag){
         const alpha=Math.round((z.opacity!=null?z.opacity:15)/100*255).toString(16).padStart(2,'0');
         dCtx.save();
         drawZonePath(dCtx,z.pts);
@@ -6064,6 +6065,7 @@ function render(){
     iCtx.globalAlpha=1;
     iCtx.setLineDash([]);
   }
+  if(!quickPolygonView)return;
   // Highlight hovered edge for insertion
   if(hovering&&hovering.type==='zone-edge'){
     const zo=zones.find(z=>z.id===hovering.id);
