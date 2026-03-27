@@ -3876,6 +3876,13 @@ function updateHistoricalControls(){
   }
 }
 
+/** Underlying imagery only (same base as map preview before vectors/ROI/UI). Avoids baking AI outlines into the plan bitmap. */
+function getMapImageryCanvasForPlanCapture(){
+  if(mapRenderStyle==='blueprint'&&mapBaseProcessedImage)return mapBaseProcessedImage;
+  if(mapBaseRawImage)return mapBaseRawImage;
+  return null;
+}
+
 async function captureMapImageryIntoPlan(){
   // Never capture debug overlays into plan imagery.
   const prevDebugBw=mapDebugBwPreview;
@@ -3894,7 +3901,10 @@ async function captureMapImageryIntoPlan(){
   const label=(mode==='historical'?`Map ${year}`:'Map Current')+` ${lat},${lng}`;
   const oc=document.createElement('canvas');
   oc.width=mapPreviewCanvas.width;oc.height=mapPreviewCanvas.height;
-  oc.getContext('2d').drawImage(mapPreviewCanvas,0,0);
+  const capCtx=oc.getContext('2d');
+  const baseImg=getMapImageryCanvasForPlanCapture();
+  if(baseImg) capCtx.drawImage(baseImg,0,0,oc.width,oc.height);
+  else capCtx.drawImage(mapPreviewCanvas,0,0);
   const feetPerPx=metersPerPixel(mapViewState.lat,mapViewState.zoom)*3.28084;
   pendingAutoScaleFeetPerPx=feetPerPx;
   const activeDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
