@@ -2481,6 +2481,7 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
           if(!classIsStallLike(pred?.class))return;
           const mapped=remapFn(pred,pIdx);
           if(!mapped)return;
+          mapped._zoomPass=true;
           if(detectionFullyInsidePolygon(mapped,scanPoly))all.push(mapped);
         });
       }catch(e){
@@ -3087,19 +3088,21 @@ function markerLikelyDuplicate(a,b,pxTol=12){
     : ((ta==='stall'||ta==='ada')?32:(ta==='stencil'?24:14));
   return Math.hypot((a.x||0)-(b.x||0),(a.y||0)-(b.y||0))<=tol;
 }
-function confidenceThresholdForClass(cls){
+function confidenceThresholdForClass(cls,opts={}){
   const c=String(cls||'').toLowerCase();
+  const relaxStalls=!!opts.allowZoomRelaxedStalls;
   // Keep stall-like detections visible while filtering low-confidence noise.
-  if(c.includes('stall'))return 0.22;
+  if(c.includes('stall'))return relaxStalls?0.2:0.22;
   if(c.includes('ada')||c.includes('handicap'))return 0.2;
   if(c.includes('arrow')||c.includes('stencil'))return 0.18;
   return 0.25;
 }
-function filterDetectionsByClassConfidence(detections){
+function filterDetectionsByClassConfidence(detections,opts={}){
   if(!Array.isArray(detections)||!detections.length)return [];
   return detections.filter(det=>{
     const conf=Number(det?.confidence||0);
-    return conf>=confidenceThresholdForClass(det?.class);
+    const isZoomRelaxed=!!(opts.allowZoomRelaxedStalls&&det?._zoomPass&&classIsStallLike(det?.class));
+    return conf>=confidenceThresholdForClass(det?.class,{allowZoomRelaxedStalls:isZoomRelaxed});
   });
 }
 function detectionCenterPoint(det){
@@ -3113,8 +3116,8 @@ function dedupeStallLikeDetections(detections){
   if(!Array.isArray(detections)||!detections.length)return [];
   const dedupeRadiusByType=(type)=>{
     const t=String(type||'').toLowerCase();
-    if(t==='stall'||t==='ada')return 40;
-    if(t==='stencil')return 30;
+    if(t==='stall'||t==='ada')return 34;
+    if(t==='stencil')return 24;
     return 20;
   };
   const stallLike=(c)=>{
@@ -3136,7 +3139,7 @@ function dedupeStallLikeDetections(detections){
       const d=Math.hypot(center.x-pc.x,center.y-pc.y);
       // If two stall-like detections are nearly on top of each other, collapse them
       // even if one is misclassified (e.g. stall vs ada/arrow).
-      if(d<=14)return true;
+      if(d<=10)return true;
       if(prevType!==markerType)return false;
       const tol=Math.max(dedupeRadiusByType(markerType),dedupeRadiusByType(prevType));
       return d<=tol;
@@ -4175,7 +4178,7 @@ async function runRoboflowDetection(){
         const merged=draftDetections.concat(zoomStalls);
         draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
           keepStallLikeDetectionsInsideLot(
-            filterDetectionsByClassConfidence(merged),
+            filterDetectionsByClassConfidence(merged,{allowZoomRelaxedStalls:true}),
             stallScanPoly
           )
         )));
