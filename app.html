@@ -1573,6 +1573,8 @@ let mapDetectionRenderSize={w:0,h:0};
 let mapReviewState={active:false,scale:1,tx:0,ty:0,image:null}; // freeze-and-review state after AI detect
 let aiDetectionsForTransfer=[]; // frozen copy used when "Use Imagery" is clicked
 let pendingDetectionTransfer=false;
+let pendingTransferScanPoly=null; // closed scan polygon at confirm time (detection space)
+let pendingTransferDetectionSize=null; // {w,h} at confirm; avoids cleared map state during async transfer
 let mapBaseRawImage=null;
 let mapBaseProcessedImage=null;
 let mapSnapBwImage=null; // strict B/W preprocessing layer used for pass-2 snapping
@@ -2848,7 +2850,9 @@ function syncMapVectorDetectionsToRaw(){
       points:pts
     };
   });
-  aiDetectionsForTransfer=JSON.parse(JSON.stringify(mapDetections));
+  if(!pendingDetectionTransfer){
+    aiDetectionsForTransfer=JSON.parse(JSON.stringify(mapDetections));
+  }
 }
 function cloneDetectionsForLearning(dets){
   if(!Array.isArray(dets))return [];
@@ -2996,6 +3000,8 @@ function clearMapDetections(){
   mapReviewState={active:false,scale:1,tx:0,ty:0,image:null};
   aiDetectionsForTransfer=[];
   pendingDetectionTransfer=false;
+  pendingTransferScanPoly=null;
+  pendingTransferDetectionSize=null;
   mapVectorDetections=[];
   mapSelectedVectorIdx=-1;
   mapVectorDrag=null;
@@ -3094,8 +3100,16 @@ function vectorStallClearOfObstructions(pts, obstructionPolys){
   return true;
 }
 function classIsLot(cls){
-  const c=String(cls||'').toLowerCase();
-  return c.includes('lot');
+  if(classIsHatchLike(cls))return false;
+  if(classIsObstruction(cls))return false;
+  const c=String(cls||'').toLowerCase().trim();
+  if(!c)return false;
+  if(c.includes('lot_boundary'))return true;
+  if(c.includes('parking_lot'))return true;
+  if(/\b(?:parking\s+)?lot\b/.test(c))return true;
+  if(c.startsWith('lot_'))return true;
+  if(c.endsWith('_lot'))return true;
+  return false;
 }
 function primaryLotPolygonFromDetections(detections){
   if(!Array.isArray(detections)||!detections.length)return null;
@@ -3578,11 +3592,10 @@ function detectionToHatchZone(det){
 function transferDetectionsToEditableObjects(){
   const srcRaw=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
   const usePolygonAsLot=!!(mapRoiUseLotChk&&mapRoiUseLotChk.checked);
-  const transferScanPoly=normalizeScanPolygon(
-    mapScanPoly,
-    mapDetectionRenderSize.w||mapPreviewCanvas.width,
-    mapDetectionRenderSize.h||mapPreviewCanvas.height
-  );
+  const snapW=(pendingTransferDetectionSize&&pendingTransferDetectionSize.w)||mapDetectionRenderSize.w||mapPreviewCanvas.width;
+  const snapH=(pendingTransferDetectionSize&&pendingTransferDetectionSize.h)||mapDetectionRenderSize.h||mapPreviewCanvas.height;
+  const polySource=(Array.isArray(pendingTransferScanPoly)&&pendingTransferScanPoly.length>=3)?pendingTransferScanPoly:mapScanPoly;
+  const transferScanPoly=normalizeScanPolygon(polySource,snapW,snapH);
   const seededRaw=(()=>{
     const base=filterDetectionsByClassConfidence(srcRaw);
     if(!Array.isArray(transferScanPoly)||transferScanPoly.length<3)return base;
@@ -3613,9 +3626,15 @@ function transferDetectionsToEditableObjects(){
     // Fallback: preserve AI detections if confirm-time re-filtering over-prunes.
     transferSrc=srcRaw.slice();
   }
-  if(!transferSrc.length)return {zonesAdded:0,markersAdded:0,hatchAdded:0};
-  const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
-  const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
+  if(!transferSrc.length){
+    aiDetectionsForTransfer=[];
+    pendingDetectionTransfer=false;
+    pendingTransferScanPoly=null;
+    pendingTransferDetectionSize=null;
+    return {zonesAdded:0,markersAdded:0,hatchAdded:0};
+  }
+  const sx=snapW?mapPreviewCanvas.width/snapW:1;
+  const sy=snapH?mapPreviewCanvas.height/snapH:1;
   const rs=mapReviewState;
   const rsScale=(rs&&rs.active&&Number.isFinite(rs.scale)&&rs.scale!==0)?rs.scale:1;
   const rsTx=(rs&&rs.active&&Number.isFinite(rs.tx))?rs.tx:0;
@@ -3677,6 +3696,8 @@ function transferDetectionsToEditableObjects(){
   }
   aiDetectionsForTransfer=[];
   pendingDetectionTransfer=false;
+  pendingTransferScanPoly=null;
+  pendingTransferDetectionSize=null;
   return {zonesAdded,markersAdded,hatchAdded};
 }
 
@@ -4288,11 +4309,13 @@ async function captureMapImageryIntoPlan(){
   capCtx.drawImage(baseImg,0,0,oc.width,oc.height);
   const feetPerPx=metersPerPixel(mapViewState.lat,mapViewState.zoom)*3.28084;
   pendingAutoScaleFeetPerPx=feetPerPx;
-  const transferScanPoly=normalizeScanPolygon(
-    mapScanPoly,
-    mapDetectionRenderSize.w||mapPreviewCanvas.width,
-    mapDetectionRenderSize.h||mapPreviewCanvas.height
-  );
+  const capW=mapDetectionRenderSize.w||mapPreviewCanvas.width;
+  const capH=mapDetectionRenderSize.h||mapPreviewCanvas.height;
+  pendingTransferDetectionSize={w:capW,h:capH};
+  const transferScanPoly=normalizeScanPolygon(mapScanPoly,capW,capH);
+  pendingTransferScanPoly=(Array.isArray(transferScanPoly)&&transferScanPoly.length>=3)
+    ?transferScanPoly.map(p=>({x:p.x,y:p.y}))
+    :(Array.isArray(mapScanPoly)&&mapScanPoly.length>=3?mapScanPoly.map(p=>({x:Number(p?.x)||0,y:Number(p?.y)||0})):null);
   const usePolygonAsLot=!!(mapRoiUseLotChk&&mapRoiUseLotChk.checked);
   const rawForTransfer=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
   let seededForTransfer=filterDetectionsByClassConfidence(rawForTransfer);
@@ -4450,24 +4473,33 @@ async function runRoboflowDetection(){
     mapSnapDebugMoves=[];
     const draftVectors=draftDetections.map((p,idx)=>{
       const cls=String(p.class||'lot_boundary');
-      const rawPts=normalizeRoboflowPredictionToPolygon(p);
-      const snapRes=snapPolygonPointsToBw(rawPts,bwAligned,cls);
-      snapMoved+=snapRes.moved;snapTotal+=snapRes.total;
-      const n=Math.min(rawPts.length,snapRes.points.length);
-      for(let i=0;i<n;i++){
-        const a=rawPts[i],b=snapRes.points[i];
-        if(!a||!b)continue;
-        const d=Math.hypot((b.x||0)-(a.x||0),(b.y||0)-(a.y||0));
-        if(d>0.5){
-          mapSnapDebugMoves.push({
-            from:{x:a.x||0,y:a.y||0},
-            to:{x:b.x||0,y:b.y||0},
-            className:cls,
-            dist:d
-          });
+      const useManualLot=usePolygonAsLot&&classIsLot(cls)&&Array.isArray(manualScanPoly)&&manualScanPoly.length>=3;
+      const rawPts=useManualLot
+        ? manualScanPoly.map(pt=>({x:Number(pt?.x)||0,y:Number(pt?.y)||0}))
+        : normalizeRoboflowPredictionToPolygon(p);
+      let simpPts;
+      if(useManualLot){
+        simpPts=simplifyClosedPolygon(rawPts,mapVectorSimplifyTarget(cls));
+        snapTotal+=rawPts.length;
+      }else{
+        const snapRes=snapPolygonPointsToBw(rawPts,bwAligned,cls);
+        snapMoved+=snapRes.moved;snapTotal+=snapRes.total;
+        const n=Math.min(rawPts.length,snapRes.points.length);
+        for(let i=0;i<n;i++){
+          const a=rawPts[i],b=snapRes.points[i];
+          if(!a||!b)continue;
+          const d=Math.hypot((b.x||0)-(a.x||0),(b.y||0)-(a.y||0));
+          if(d>0.5){
+            mapSnapDebugMoves.push({
+              from:{x:a.x||0,y:a.y||0},
+              to:{x:b.x||0,y:b.y||0},
+              className:cls,
+              dist:d
+            });
+          }
         }
+        simpPts=simplifyClosedPolygon(snapRes.points,mapVectorSimplifyTarget(cls));
       }
-      const simpPts=simplifyClosedPolygon(snapRes.points,mapVectorSimplifyTarget(cls));
       return{
         id:p.id||('rf-'+idx+'-'+Date.now()),
         className:cls,
@@ -4482,7 +4514,8 @@ async function runRoboflowDetection(){
       const pts=Array.isArray(v?.points)?v.points:[];
       return vectorStallClearOfObstructions(pts,obsPolys);
     });
-    const lotFilteredVectors=keepStallLikeVectorsInsideLot(allVectors);
+    const stallLotRef=(usePolygonAsLot&&Array.isArray(manualScanPoly)&&manualScanPoly.length>=3)?manualScanPoly:null;
+    const lotFilteredVectors=keepStallLikeVectorsInsideLot(allVectors,stallLotRef);
     mapVectorDetections=keepVectorsInsideScanPolygon(lotFilteredVectors,manualScanPoly,usePolygonAsLot);
     mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
     mapSelectedVectorIdx=mapVectorDetections.length?0:-1;
