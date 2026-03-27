@@ -1741,8 +1741,19 @@ function smoothBoundaryPolygon(points,cls){
 }
 
 function normalizeRoboflowPredictionToPolygon(p){
-  if(Array.isArray(p?.points)&&p.points.length>=3){
-    return p.points.map(pt=>({x:pt.x||0,y:pt.y||0}));
+  if(Array.isArray(p?.points)&&p.points.length){
+    const nullish=p.points.filter(pt=>pt==null||typeof pt!=='object').length;
+    // #region agent log
+    if(nullish)fetch('http://127.0.0.1:7439/ingest/0fe9cc7b-577c-4e0d-be07-f2b2ffedd110',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6cc359'},body:JSON.stringify({sessionId:'6cc359',location:'app.html:normalizeRoboflowPredictionToPolygon',message:'holey points array',data:{nullish,total:p.points.length,cls:String(p?.class||'')},timestamp:Date.now(),hypothesisId:'A',runId:'pre-fix'})}).catch(()=>{});
+    // #endregion
+    const pts=p.points
+      .map(pt=>{
+        if(pt==null||typeof pt!=='object')return null;
+        if(Array.isArray(pt)&&pt.length>=2)return{x:Number(pt[0]),y:Number(pt[1])};
+        return{x:Number(pt.x),y:Number(pt.y)};
+      })
+      .filter(pt=>pt&&Number.isFinite(pt.x)&&Number.isFinite(pt.y));
+    if(pts.length>=3)return pts;
   }
   const x=p?.x||0,y=p?.y||0,w=p?.width||0,h=p?.height||0;
   if(!w||!h)return [];
@@ -1939,13 +1950,15 @@ function snapPolygonPointsToBw(points,bw,cls){
   const r=classSnapRadius(cls);
   let moved=0;
   const out=points.map(pt=>{
-    const hit=nearestWhiteClusterCenter(bw,pt.x,pt.y,r);
+    const px=Number(pt?.x),py=Number(pt?.y);
+    const sx=Number.isFinite(px)?px:0,sy=Number.isFinite(py)?py:0;
+    const hit=nearestWhiteClusterCenter(bw,sx,sy,r);
     if(hit){
-      const d=Math.hypot(hit.x-pt.x,hit.y-pt.y);
+      const d=Math.hypot(hit.x-sx,hit.y-sy);
       if(d>0.5)moved++;
       return{x:hit.x,y:hit.y};
     }
-    return{x:pt.x,y:pt.y};
+    return{x:sx,y:sy};
   });
   return{points:out,moved,total:points.length};
 }
@@ -3309,8 +3322,15 @@ function filterDetectionsByClassConfidence(detections,opts={}){
 }
 function detectionCenterPoint(det){
   if(Array.isArray(det?.points)&&det.points.length){
-    const s=det.points.reduce((acc,p)=>({x:acc.x+(p.x||0),y:acc.y+(p.y||0)}),{x:0,y:0});
-    return {x:s.x/det.points.length,y:s.y/det.points.length};
+    let nx=0,ny=0,n=0;
+    for(let i=0;i<det.points.length;i++){
+      const p=det.points[i];
+      if(p==null||typeof p!=='object')continue;
+      const x=Number(p.x),y=Number(p.y);
+      if(!Number.isFinite(x)||!Number.isFinite(y))continue;
+      nx+=x;ny+=y;n++;
+    }
+    if(n)return{x:nx/n,y:ny/n};
   }
   return {x:Number(det?.x)||0,y:Number(det?.y)||0};
 }
@@ -4328,6 +4348,9 @@ async function runRoboflowDetection(){
     if(!res.ok)throw new Error(data?.error||'Detection failed');
 
     const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
+    // #region agent log
+    (()=>{let holey=0;rawPredictions.forEach(pr=>{if(!Array.isArray(pr?.points))return;if(pr.points.some(pt=>pt==null||typeof pt!=='object'))holey++;});fetch('http://127.0.0.1:7439/ingest/0fe9cc7b-577c-4e0d-be07-f2b2ffedd110',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6cc359'},body:JSON.stringify({sessionId:'6cc359',location:'app.html:runRoboflowDetection',message:'predictions summary',data:{count:rawPredictions.length,holeyPolygons:holey},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});})();
+    // #endregion
     const manualScanPoly=normalizeScanPolygon(
       mapScanPoly,
       mapDetectionRenderSize.w||mapPreviewCanvas.width,
@@ -4347,7 +4370,7 @@ async function runRoboflowDetection(){
       filteredPredictions.unshift({
         class:'lot_boundary',
         confidence:1,
-        points:manualScanPoly.map(p=>({x:p.x,y:p.y}))
+        points:manualScanPoly.map(p=>({x:Number(p?.x)||0,y:Number(p?.y)||0}))
       });
     }
     // Production baseline: use RF + current filtering as source-of-truth.
@@ -4486,6 +4509,9 @@ async function runRoboflowDetection(){
     setAiDetectButtonState('done');
   }catch(e){
     console.error(e);
+    // #region agent log
+    fetch('http://127.0.0.1:7439/ingest/0fe9cc7b-577c-4e0d-be07-f2b2ffedd110',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6cc359'},body:JSON.stringify({sessionId:'6cc359',location:'app.html:runRoboflowDetection:catch',message:String(e&&e.message||e),data:{stack:String(e&&e.stack||'')},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     setImportStatus(`Detection failed: ${e.message}`,true);
     setAiDetectButtonState('idle');
   }
