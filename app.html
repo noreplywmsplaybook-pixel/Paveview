@@ -5149,7 +5149,15 @@ ${z.closed ? `<div style="display:flex;align-items:center;gap:4px;padding:2px 8p
         const id=actionEl.dataset.id;
         if(act==='del'){
           if(!id)return;
-          zones=zones.filter(x=>x.id!==id);
+          const targetZone=zones.find(x=>x.id===id)||null;
+          zones=zones.filter(x=>{
+            if(x.id===id)return false;
+            if(!targetZone)return true;
+            // Remove near-identical sibling detections too; auto-detect can leave
+            // overlapping lot/obstruction twins that make delete appear ineffective.
+            if(x.obstruct===targetZone.obstruct&&zoneGeometryLikelyDuplicate(x,targetZone))return false;
+            return true;
+          });
           if(activeZone?.id===id){activeZone=zones[zones.length-1]||null}
           if(focusedZoneId===id)setFocusedZone(null);
           inProg=[];
