@@ -3358,7 +3358,8 @@ function transferDetectionsToEditableObjects(){
   });
   if(zonesAdded||markersAdded||hatchAdded){
     activeZone=zones.filter(z=>z.closed).slice(-1)[0]||zones.slice(-1)[0]||activeZone;
-    focusedZoneId=activeZone?.id||focusedZoneId;
+    // Keep all overlays visible after AI transfer; focused mode hides hatch polygons.
+    focusedZoneId=null;
     undoHistory.push({type:'ai-import',zonesAdded,markersAdded,hatchAdded});
     renderZoneList();renderHatchList();updateStats();renderAll();savePlanData();
   }
