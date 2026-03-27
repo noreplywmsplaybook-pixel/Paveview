@@ -3342,6 +3342,7 @@ function detectionToHatchZone(det){
 }
 function transferDetectionsToEditableObjects(){
   const srcRaw=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
+  const usePolygonAsLot=!!(mapRoiUseLotChk&&mapRoiUseLotChk.checked);
   const transferScanPoly=normalizeScanPolygon(
     mapScanPoly,
     mapDetectionRenderSize.w||mapPreviewCanvas.width,
@@ -3351,7 +3352,7 @@ function transferDetectionsToEditableObjects(){
     const base=filterDetectionsByClassConfidence(srcRaw);
     if(!Array.isArray(transferScanPoly)||transferScanPoly.length<3)return base;
     const hasLot=base.some(det=>classIsLot(det?.class));
-    if(hasLot)return base;
+    if(hasLot||!usePolygonAsLot)return base;
     const bb=polygonBounds(transferScanPoly);
     const ctr=detectionCenterPoint({points:transferScanPoly});
     return [{
