@@ -2847,9 +2847,13 @@ async function enableDetectionReviewMode(){
 function classToMarkerType(cls){
   const c=String(cls||'').toLowerCase();
   if(c.includes('handicap')||c==='ada'||c.includes('accessible'))return 'ada';
-  if(c.includes('arrow')||c.includes('crosswalk')||c.includes('hatch'))return 'stencil';
+  if(c.includes('arrow'))return 'stencil';
   if(c.includes('stall'))return 'stall';
   return null;
+}
+function classIsHatchLike(cls){
+  const c=String(cls||'').toLowerCase();
+  return c.includes('crosswalk')||c.includes('hatch');
 }
 function classIsStallLike(cls){
   const c=String(cls||'').toLowerCase();
@@ -3241,7 +3245,7 @@ function detectionToZone(det){
     showFill:true,
     obstruct:isObs,
     labelSize:12,
-    opacity:15,
+    opacity:isObs?65:15,
     lineWidth:2,
     lineDashed:false
   };
@@ -3263,6 +3267,29 @@ function detectionToMarker(det){
   if(cls.includes('accessible')||cls.includes('handicap'))m.label='ADA';
   return m;
 }
+function detectionToHatchZone(det){
+  const pts=Array.isArray(det?.points)&&det.points.length>=3
+    ? det.points.map(pt=>({x:pt.x,y:pt.y}))
+    : [
+        {x:det.x-det.width/2,y:det.y-det.height/2},
+        {x:det.x+det.width/2,y:det.y-det.height/2},
+        {x:det.x+det.width/2,y:det.y+det.height/2},
+        {x:det.x-det.width/2,y:det.y+det.height/2}
+      ];
+  if(pts.length<3)return null;
+  const simplifiedPts=simplifyClosedPolygon(pts,36);
+  if(simplifiedPts.length<3)return null;
+  const cls=String(det?.class||'').toLowerCase();
+  const isAda=cls.includes('ada')||cls.includes('accessible')||cls.includes('handicap');
+  return{
+    id:'h'+Date.now()+Math.floor(Math.random()*10000),
+    type:isAda?'ada-hatch':'crosswalk',
+    pts:simplifiedPts,
+    closed:true,
+    opacity:20,
+    lineWidth:1.5
+  };
+}
 function transferDetectionsToEditableObjects(){
   const srcRaw=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
   const src=dedupeStallLikeDetections(
@@ -3274,7 +3301,7 @@ function transferDetectionsToEditableObjects(){
       )
     )
   );
-  if(!Array.isArray(src)||!src.length)return {zonesAdded:0,markersAdded:0};
+  if(!Array.isArray(src)||!src.length)return {zonesAdded:0,markersAdded:0,hatchAdded:0};
   const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
   const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
   const rs=mapReviewState;
@@ -3296,7 +3323,7 @@ function transferDetectionsToEditableObjects(){
     if(Array.isArray(cp.points))cp.points=cp.points.map(pt=>toCapturedPoint(pt.x,pt.y));
     return cp;
   });
-  let zonesAdded=0,markersAdded=0;
+  let zonesAdded=0,markersAdded=0,hatchAdded=0;
   mapped.forEach(det=>{
     if(classIsLot(det.class)||classIsObstruction(det.class)){
       const z=detectionToZone(det);
@@ -3305,6 +3332,17 @@ function transferDetectionsToEditableObjects(){
         if(!isDup){
           zones.push(z);
           zonesAdded++;
+        }
+      }
+      return;
+    }
+    if(classIsHatchLike(det.class)){
+      const hz=detectionToHatchZone(det);
+      if(hz){
+        const isHatchDup=hatchZones.some(existing=>existing.type===hz.type&&zoneGeometryLikelyDuplicate({pts:existing.pts},{pts:hz.pts}));
+        if(!isHatchDup){
+          hatchZones.push(hz);
+          hatchAdded++;
         }
       }
       return;
@@ -3318,15 +3356,15 @@ function transferDetectionsToEditableObjects(){
       }
     }
   });
-  if(zonesAdded||markersAdded){
+  if(zonesAdded||markersAdded||hatchAdded){
     activeZone=zones.filter(z=>z.closed).slice(-1)[0]||zones.slice(-1)[0]||activeZone;
     focusedZoneId=activeZone?.id||focusedZoneId;
-    undoHistory.push({type:'ai-import',zonesAdded,markersAdded});
-    renderZoneList();updateStats();renderAll();savePlanData();
+    undoHistory.push({type:'ai-import',zonesAdded,markersAdded,hatchAdded});
+    renderZoneList();renderHatchList();updateStats();renderAll();savePlanData();
   }
   aiDetectionsForTransfer=[];
   pendingDetectionTransfer=false;
-  return {zonesAdded,markersAdded};
+  return {zonesAdded,markersAdded,hatchAdded};
 }
 
 function transferDetectionsWhenPlanReady(tries=0){
@@ -3335,8 +3373,8 @@ function transferDetectionsWhenPlanReady(tries=0){
     return;
   }
   const moved=transferDetectionsToEditableObjects();
-  if((moved.zonesAdded||0)+(moved.markersAdded||0)>0){
-    setImportStatus(`Transferred AI detections: ${moved.zonesAdded} zones, ${moved.markersAdded} markers. Edit them, then finish/report.`);
+  if((moved.zonesAdded||0)+(moved.markersAdded||0)+(moved.hatchAdded||0)>0){
+    setImportStatus(`Transferred AI detections: ${moved.zonesAdded} zones, ${moved.hatchAdded||0} hatching, ${moved.markersAdded} markers. Edit them, then finish/report.`);
   }
 }
 
@@ -5087,7 +5125,7 @@ function addZone(isObs=false){
   const nz=zones.filter(z=>!z.obstruct).length;
   const color=isObs?'#ef4444':COLORS[nz%COLORS.length];
   const name=isObs?`Obstruction ${zones.filter(z=>z.obstruct).length+1}`:`Zone ${nz+1}`;
-  zones.push({id,name,color,pts:[],closed:false,locked:false,showFill:true,obstruct:isObs,labelSize:12,opacity:15,lineWidth:2,lineDashed:false});
+  zones.push({id,name,color,pts:[],closed:false,locked:false,showFill:true,obstruct:isObs,labelSize:12,opacity:isObs?65:15,lineWidth:2,lineDashed:false});
   activeZone=zones[zones.length-1];
   setFocusedZone(activeZone.id);
   inProg=[];renderZoneList();
@@ -5723,21 +5761,26 @@ function renderZones(){
     const isFocused=focusedZoneId===z.id;
     drawZonePath(dCtx,z.pts);
     if(z.obstruct){
-      if(!isEditingLineDrag){
-        dCtx.fillStyle='rgba(239,68,68,.1)';dCtx.fill();
+      const obsCol=z.color||'#ef4444';
+      if(z.showFill!==false&&!isEditingLineDrag){
+        const alpha=Math.round((z.opacity!=null?z.opacity:65)/100*255).toString(16).padStart(2,'0');
+        dCtx.fillStyle=obsCol+alpha;
+        dCtx.fill();
+        dCtx.save();dCtx.clip();
+        const xs=z.pts.map(p=>p.x),ys=z.pts.map(p=>p.y);
+        const mx2=Math.min(...xs)-10,Mx=Math.max(...xs)+10,my2=Math.min(...ys)-10,My=Math.max(...ys)+10;
+        const sp=Math.max(6,14/zoom);
+        dCtx.strokeStyle=obsCol+'66';dCtx.lineWidth=1;
+        for(let d=mx2-(My-my2);d<Mx+(My-my2);d+=sp){dCtx.beginPath();dCtx.moveTo(d,my2);dCtx.lineTo(d+(My-my2),My);dCtx.stroke()}
+        dCtx.restore();
       }
-      dCtx.save();dCtx.clip();
-      const xs=z.pts.map(p=>p.x),ys=z.pts.map(p=>p.y);
-      const mx2=Math.min(...xs)-10,Mx=Math.max(...xs)+10,my2=Math.min(...ys)-10,My=Math.max(...ys)+10;
-      const sp=Math.max(6,14/zoom);
-      dCtx.strokeStyle='rgba(239,68,68,.3)';dCtx.lineWidth=1;
-      for(let d=mx2-(My-my2);d<Mx+(My-my2);d+=sp){dCtx.beginPath();dCtx.moveTo(d,my2);dCtx.lineTo(d+(My-my2),My);dCtx.stroke()}
-      dCtx.restore();
       // Re-draw the zone outline cleanly (separate path to avoid clip artifact)
       dCtx.beginPath();z.pts.forEach((p,i)=>i===0?dCtx.moveTo(p.x,p.y):dCtx.lineTo(p.x,p.y));dCtx.closePath();
-      dCtx.strokeStyle='#ef4444';
-      dCtx.lineWidth=isFocused?2.4:(isA?2:1.5);
-      dCtx.setLineDash([6,4]);dCtx.stroke();dCtx.setLineDash([]);
+      const lw=z.lineWidth||2;
+      dCtx.strokeStyle=obsCol;
+      dCtx.lineWidth=isFocused?lw+1.2:(isA?lw+0.5:lw);
+      dCtx.setLineDash(z.lineDashed?[10,5]:[]);
+      dCtx.stroke();dCtx.setLineDash([]);
     }else{
       if(z.showFill!==false&&!isEditingLineDrag){
         const alpha=Math.round((z.opacity!=null?z.opacity:15)/100*255).toString(16).padStart(2,'0');
