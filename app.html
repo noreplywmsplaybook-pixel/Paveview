@@ -4034,9 +4034,35 @@ async function captureMapImageryIntoPlan(){
   capCtx.drawImage(baseImg,0,0,oc.width,oc.height);
   const feetPerPx=metersPerPixel(mapViewState.lat,mapViewState.zoom)*3.28084;
   pendingAutoScaleFeetPerPx=feetPerPx;
+  const transferScanPoly=normalizeScanPolygon(
+    mapScanPoly,
+    mapDetectionRenderSize.w||mapPreviewCanvas.width,
+    mapDetectionRenderSize.h||mapPreviewCanvas.height
+  );
+  const usePolygonAsLot=!!(mapRoiUseLotChk&&mapRoiUseLotChk.checked);
+  const rawForTransfer=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
+  let seededForTransfer=filterDetectionsByClassConfidence(rawForTransfer);
+  if(Array.isArray(transferScanPoly)&&transferScanPoly.length>=3){
+    seededForTransfer=keepDetectionsInsideScanPolygon(seededForTransfer,transferScanPoly);
+    const hasLot=seededForTransfer.some(det=>classIsLot(det?.class));
+    if(usePolygonAsLot&&!hasLot){
+      const bb=polygonBounds(transferScanPoly);
+      const ctr=detectionCenterPoint({points:transferScanPoly});
+      seededForTransfer=[{
+        class:'lot_boundary',
+        confidence:1,
+        x:ctr.x,
+        y:ctr.y,
+        width:bb?.w||0,
+        height:bb?.h||0,
+        points:transferScanPoly.map(p=>({x:p.x,y:p.y}))
+      }].concat(seededForTransfer);
+    }
+  }
   const activeDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
     keepStallLikeDetectionsInsideLot(
-      filterDetectionsByClassConfidence((aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections)
+      seededForTransfer,
+      transferScanPoly
     )
   )));
   aiDetectionsForTransfer=JSON.parse(JSON.stringify(activeDetections||[]));
