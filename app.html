@@ -1305,6 +1305,12 @@ function renderZoneCollapsed(){
 function setFocusedZone(zoneId){
   const has=zones.some(z=>z.id===zoneId);
   focusedZoneId=has?zoneId:null;
+  // Zone selection is its own immediate view input: selecting a zone should
+  // always reveal overlays even if "Show All" was previously OFF.
+  if(focusedZoneId){
+    quickPolygonView=true;
+    syncZoneQuickPolyToggle();
+  }
 }
 
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -4683,6 +4689,11 @@ if(btnMapExportPdf){
 if(zoneQuickPolyToggle){
   zoneQuickPolyToggle.addEventListener('click',()=>{
     quickPolygonView=!quickPolygonView;
+    // "Show All: ON" must always mean truly all overlays (no zone focus filter).
+    if(quickPolygonView){
+      focusedZoneId=null;
+      selectedHatchId=null;
+    }
     syncZoneQuickPolyToggle();
     renderAll();
   });
