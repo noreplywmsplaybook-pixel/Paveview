@@ -3046,6 +3046,38 @@ function classIsObstruction(cls){
   const c=String(cls||'').toLowerCase();
   return c.includes('obstruction')||c.includes('obstruct')||c.includes('island')||c.includes('building')||c.includes('fire_lane')||c.includes('fire');
 }
+function collectObstructionPolygonsFromVectors(vectors){
+  if(!Array.isArray(vectors)||!vectors.length)return [];
+  const out=[];
+  vectors.forEach(v=>{
+    if(!classIsObstruction(v?.className))return;
+    const pts=Array.isArray(v?.points)?v.points:[];
+    if(pts.length<3)return;
+    out.push(pts.map(p=>({x:p.x,y:p.y})));
+  });
+  return out;
+}
+function isParkingStallLikeVectorClass(cls){
+  const c=String(cls||'').toLowerCase();
+  if(c.includes('hatch')||c.includes('crosswalk')||c.includes('stencil')||c.includes('arrow'))return false;
+  return c.includes('stall')||c.includes('ada')||c.includes('handicap')||c.includes('accessible');
+}
+function vectorStallClearOfObstructions(pts, obstructionPolys){
+  if(!Array.isArray(obstructionPolys)||!obstructionPolys.length)return true;
+  if(!Array.isArray(pts)||pts.length<3)return true;
+  const ctr=detectionCenterPoint({points:pts});
+  const samples=[ctr];
+  for(let i=0;i<pts.length;i++)samples.push(pts[i]);
+  for(let oi=0;oi<obstructionPolys.length;oi++){
+    const op=obstructionPolys[oi];
+    if(!Array.isArray(op)||op.length<3)continue;
+    for(let si=0;si<samples.length;si++){
+      const s=samples[si];
+      if(s&&pointInPolygon(s,op))return false;
+    }
+  }
+  return true;
+}
 function classIsLot(cls){
   const c=String(cls||'').toLowerCase();
   return c.includes('lot');
@@ -4428,7 +4460,12 @@ async function runRoboflowDetection(){
     }));
     const rowFillVectors=generateRowGapFillStallVectors(draftVectors.concat(assistVectors));
 
-    const allVectors=draftVectors.concat(assistVectors,rowFillVectors);
+    const obsPolys=collectObstructionPolygonsFromVectors(draftVectors);
+    const allVectors=draftVectors.concat(assistVectors,rowFillVectors).filter(v=>{
+      if(!isParkingStallLikeVectorClass(v?.className))return true;
+      const pts=Array.isArray(v?.points)?v.points:[];
+      return vectorStallClearOfObstructions(pts,obsPolys);
+    });
     const lotFilteredVectors=keepStallLikeVectorsInsideLot(allVectors);
     mapVectorDetections=keepVectorsInsideScanPolygon(lotFilteredVectors,manualScanPoly,usePolygonAsLot);
     mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
