@@ -104,15 +104,32 @@ module.exports = async (req, res) => {
         const segPred = Array.isArray(seg.payload?.predictions) ? seg.payload.predictions : [];
         const detPred = Array.isArray(det.payload?.predictions) ? det.payload.predictions : [];
         const image = seg.payload?.image || det.payload?.image || null;
-        const SEG_CLASSES = new Set(['lot', 'obstruction', 'obstructions']);
-        const DET_CLASSES = new Set(['stall', 'stalls', 'handicap', 'ada', 'arrow', 'arrows']);
         const normalized = (s) => String(s || '').trim().toLowerCase();
-        const keepSeg = segPred.filter((p) => SEG_CLASSES.has(normalized(p.class)));
-        const keepDet = detPred.filter((p) => DET_CLASSES.has(normalized(p.class)));
+        const isAreaClass = (cls) => {
+          const c = normalized(cls);
+          return c.includes('lot')
+            || c.includes('obstruct')
+            || c.includes('island')
+            || c.includes('building')
+            || c.includes('fire');
+        };
+        const isSymbolClass = (cls) => {
+          const c = normalized(cls);
+          return c.includes('stall')
+            || c.includes('ada')
+            || c.includes('handicap')
+            || c.includes('accessible')
+            || c.includes('arrow')
+            || c.includes('stencil')
+            || c.includes('crosswalk')
+            || c.includes('hatch');
+        };
+        const keepSeg = segPred.filter((p) => isAreaClass(p.class));
+        const keepDet = detPred.filter((p) => isSymbolClass(p.class));
         const segKeys = new Set(keepSeg.map((p) => normalized(p.class)));
         const areaFallbackFromDet = detPred.filter((p) => {
           const cls = normalized(p.class);
-          return SEG_CLASSES.has(cls) && !segKeys.has(cls);
+          return isAreaClass(cls) && !segKeys.has(cls);
         });
         const merged = [...keepSeg, ...areaFallbackFromDet, ...keepDet];
         sendJson(res, 200, {
