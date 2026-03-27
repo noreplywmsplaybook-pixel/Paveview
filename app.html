@@ -1068,13 +1068,13 @@ select.sc-inp{cursor:pointer;width:40px}
           <select id="map-historical-year"></select>
           <button class="btn" id="btn-map-roi-draw" title="Create a scan polygon around the lot">Create Lot Polygon</button>
           <button class="btn" id="btn-map-roi-clear" title="Clear scan polygon">Clear Polygon</button>
-          <button class="btn" id="btn-map-roi-use-lot" title="Use drawn polygon as lot perimeter">Use Polygon As Lot: OFF</button>
+          <button class="btn" id="btn-map-roi-use-lot" title="Same as checkbox: ON = polygon is lot; OFF = polygon is ROI only, full Roboflow sync including lot">Use Polygon As Lot: OFF</button>
           <button class="btn" id="btn-map-debug-bw" title="Debug only: preview pass-2 snap layer">Preview B&W</button>
           <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
         </div>
         <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Drag the map to pan. The <strong>Zoom</strong> slider is centered on the zoom when imagery loads (middle = that view): drag left/right to zoom out/in with small steps. Use <strong>Create Lot Polygon</strong> and click around the lot boundary to focus AI on only that area.</div>
         <div class="map-row">
-          <label class="ir"><input type="checkbox" id="map-roi-use-lot"> <span class="il">Use polygon as lot perimeter</span></label>
+          <label class="ir"><input type="checkbox" id="map-roi-use-lot" title="ON: drawn polygon is the lot perimeter; other RF classes still sync. OFF: polygon is scan area only; RF lot + every class sync (including lot from Roboflow)."> <span class="il">Use polygon as lot perimeter</span></label>
         </div>
         <div class="map-row">
           <label>Zoom</label>
@@ -1575,6 +1575,14 @@ let aiDetectionsForTransfer=[]; // frozen copy used when "Use Imagery" is clicke
 let pendingDetectionTransfer=false;
 let pendingTransferScanPoly=null; // closed scan polygon at confirm time (detection space)
 let pendingTransferDetectionSize=null; // {w,h} at confirm; avoids cleared map state during async transfer
+/** Snapshot of map-roi-use-lot at "Use Imagery" confirm — transfer must follow this, not live checkbox. */
+let pendingTransferUsePolygonAsLot=null;
+/*
+ * Map scan polygon + "Use polygon as lot" — fixed contract:
+ * - Drawn polygon (when closed): ROI for Roboflow + clip detections to interior (lot uses center-in-ROI when OFF).
+ * - ON  → polygon IS the lot perimeter; drop RF lot labels; stall/hatch containment uses polygon; sync synthetic lot + other RF classes.
+ * - OFF → all RF classes sync including RF lot; stall/hatch containment uses RF lot only (polygon is not the lot mask).
+ */
 let mapBaseRawImage=null;
 let mapBaseProcessedImage=null;
 let mapSnapBwImage=null; // strict B/W preprocessing layer used for pass-2 snapping
@@ -3024,6 +3032,7 @@ function clearMapDetections(){
   pendingDetectionTransfer=false;
   pendingTransferScanPoly=null;
   pendingTransferDetectionSize=null;
+  pendingTransferUsePolygonAsLot=null;
   mapVectorDetections=[];
   mapSelectedVectorIdx=-1;
   mapVectorDrag=null;
@@ -3610,11 +3619,14 @@ function detectionToHatchZone(det){
 }
 function transferDetectionsToEditableObjects(){
   const srcRaw=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
-  const usePolygonAsLot=!!(mapRoiUseLotChk&&mapRoiUseLotChk.checked);
+  const usePolygonAsLot=(typeof pendingTransferUsePolygonAsLot==='boolean')
+    ?pendingTransferUsePolygonAsLot
+    :!!(mapRoiUseLotChk&&mapRoiUseLotChk.checked);
   const snapW=(pendingTransferDetectionSize&&pendingTransferDetectionSize.w)||mapDetectionRenderSize.w||mapPreviewCanvas.width;
   const snapH=(pendingTransferDetectionSize&&pendingTransferDetectionSize.h)||mapDetectionRenderSize.h||mapPreviewCanvas.height;
   const polySource=(Array.isArray(pendingTransferScanPoly)&&pendingTransferScanPoly.length>=3)?pendingTransferScanPoly:mapScanPoly;
   const transferScanPoly=normalizeScanPolygon(polySource,snapW,snapH);
+  const stallLotForTransfer=(usePolygonAsLot&&Array.isArray(transferScanPoly)&&transferScanPoly.length>=3)?transferScanPoly:null;
   const seededRaw=(()=>{
     const base=filterDetectionsByClassConfidence(srcRaw);
     if(!Array.isArray(transferScanPoly)||transferScanPoly.length<3)return base;
@@ -3636,7 +3648,7 @@ function transferDetectionsToEditableObjects(){
     dedupeZoneDetections(
       keepStallLikeDetectionsInsideLot(
         keepSinglePrimaryLotDetections(seededRaw),
-        transferScanPoly
+        stallLotForTransfer
       )
     )
   );
@@ -3650,6 +3662,7 @@ function transferDetectionsToEditableObjects(){
     pendingDetectionTransfer=false;
     pendingTransferScanPoly=null;
     pendingTransferDetectionSize=null;
+    pendingTransferUsePolygonAsLot=null;
     return {zonesAdded:0,markersAdded:0,hatchAdded:0};
   }
   const sx=snapW?mapPreviewCanvas.width/snapW:1;
@@ -3717,6 +3730,7 @@ function transferDetectionsToEditableObjects(){
   pendingDetectionTransfer=false;
   pendingTransferScanPoly=null;
   pendingTransferDetectionSize=null;
+  pendingTransferUsePolygonAsLot=null;
   return {zonesAdded,markersAdded,hatchAdded};
 }
 
@@ -4361,8 +4375,10 @@ async function captureMapImageryIntoPlan(){
     ?transferScanPoly.map(p=>({x:p.x,y:p.y}))
     :(Array.isArray(mapScanPoly)&&mapScanPoly.length>=3?mapScanPoly.map(p=>({x:Number(p?.x)||0,y:Number(p?.y)||0})):null);
   const usePolygonAsLot=!!(mapRoiUseLotChk&&mapRoiUseLotChk.checked);
+  pendingTransferUsePolygonAsLot=usePolygonAsLot;
   const rawForTransfer=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
   let seededForTransfer=filterDetectionsByClassConfidence(rawForTransfer);
+  const stallLotAtCapture=(usePolygonAsLot&&Array.isArray(transferScanPoly)&&transferScanPoly.length>=3)?transferScanPoly:null;
   if(Array.isArray(transferScanPoly)&&transferScanPoly.length>=3){
     seededForTransfer=keepDetectionsInsideScanPolygon(seededForTransfer,transferScanPoly,usePolygonAsLot);
     const hasLot=seededForTransfer.some(det=>classIsLot(det?.class));
@@ -4383,7 +4399,7 @@ async function captureMapImageryIntoPlan(){
   let activeDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
     keepStallLikeDetectionsInsideLot(
       seededForTransfer,
-      transferScanPoly
+      stallLotAtCapture
     )
   )));
   if((!Array.isArray(activeDetections)||!activeDetections.length)&&Array.isArray(rawForTransfer)&&rawForTransfer.length){
@@ -4446,10 +4462,12 @@ async function runRoboflowDetection(){
         points:manualScanPoly.map(p=>({x:Number(p?.x)||0,y:Number(p?.y)||0}))
       });
     }
+    const stallLotForDraft=(usePolygonAsLot&&Array.isArray(manualScanPoly)&&manualScanPoly.length>=3)?manualScanPoly:null;
     // Production baseline: use RF + current filtering as source-of-truth.
     let draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
       keepStallLikeDetectionsInsideLot(
-        filteredPredictions
+        filteredPredictions,
+        stallLotForDraft
       )
     )));
     const baseLotPoly=primaryLotPolygonFromDetections(draftDetections);
@@ -4474,10 +4492,11 @@ async function runRoboflowDetection(){
       if(zoomStalls.length){
         const beforeCount=draftDetections.length;
         const merged=draftDetections.concat(zoomStalls);
+        const stallLotAfterZoom=usePolygonAsLot?stallScanPoly:null;
         draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
           keepStallLikeDetectionsInsideLot(
             filterDetectionsByClassConfidence(merged),
-            stallScanPoly
+            stallLotAfterZoom
           )
         )));
         tileStats.added=Math.max(0,draftDetections.length-beforeCount);
