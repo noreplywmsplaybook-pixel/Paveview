@@ -5134,9 +5134,17 @@ ${z.closed ? `<div style="display:flex;align-items:center;gap:4px;padding:2px 8p
       const act=ev.target.dataset.act, id=ev.target.dataset.id;
       if(act==='del'){
         zones=zones.filter(x=>x.id!==id);
-        if(activeZone?.id===id){activeZone=zones[zones.length-1]||null;inProg=[]}
+        if(activeZone?.id===id){activeZone=zones[zones.length-1]||null}
         if(focusedZoneId===id)setFocusedZone(null);
-        renderZoneList();updateStats();renderAll();return
+        // Clear in-progress overlay geometry on ic (was only cleared when deleted zone was active).
+        inProg=[];
+        inHatch=[];
+        rectStart=null;
+        circleStart=null;
+        if(dragging&&dragging.id===id)dragging=null;
+        if(hovering&&'id' in hovering&&hovering.id===id)hovering=null;
+        if(draggingLabel&&draggingLabel.type==='zone'&&draggingLabel.id===id)draggingLabel=null;
+        renderZoneList();updateStats();renderAll();savePlanData();return
       }
       if(act==='lock'){const z2=getZone(id);if(z2)z2.locked=!z2.locked;renderZoneList();renderAll();return}
       if(act==='fill'){const z2=getZone(id);if(z2)z2.showFill=z2.showFill===false?true:false;renderZoneList();renderAll();return}
@@ -5607,6 +5615,9 @@ function renderAll(){renderZones();render()}
 
 function renderZones(){
   dCtx.clearRect(0,0,dc.width,dc.height);
+  dCtx.globalCompositeOperation='source-over';
+  dCtx.globalAlpha=1;
+  dCtx.setLineDash([]);
   const sc=getScale();
   const isEditingLineDrag=!!(dragging&&dragging.type==='zone-edge-move');
   const focusedZone=focusedZoneId?zones.find(z=>z.id===focusedZoneId):null;
