@@ -2143,6 +2143,16 @@ function generateRowGapFillStallVectors(stallVectors=[]){
   });
   const out=[];
   const now=Date.now();
+  const existingCenters=enriched.map(e=>({x:e.ctr.x||0,y:e.ctr.y||0}));
+  const hasNearCenter=(cx,cy,spacing)=>{
+    const tol=Math.max(7,Math.min(24,(Number(spacing)||18)*0.45));
+    const nearExisting=existingCenters.some(p=>Math.hypot((p.x||0)-cx,(p.y||0)-cy)<=tol);
+    if(nearExisting)return true;
+    return out.some(v=>{
+      const c=stallVectorCenter(v);
+      return Math.hypot((c.x||0)-cx,(c.y||0)-cy)<=tol;
+    });
+  };
   [['horizontal',0],['vertical',Math.PI/2]].forEach(([bucket,ang])=>{
     const arr=groups[bucket];
     if(!arr||arr.length<4)return;
@@ -2157,6 +2167,7 @@ function generateRowGapFillStallVectors(stallVectors=[]){
       row.perp=((row.perp*(row.pts.length-1))+perp)/row.pts.length;
     });
     rows.forEach((row,rowIdx)=>{
+      // Axis rule: minimum 3 aligned detections before inferring equidistant stalls.
       if(row.pts.length<3)return;
       const ordered=row.pts.slice().sort((a,b)=>(bucket==='horizontal'?a.ctr.x-b.ctr.x:a.ctr.y-b.ctr.y));
       const coords=ordered.map(p=>bucket==='horizontal'?p.ctr.x:p.ctr.y);
@@ -2166,28 +2177,43 @@ function generateRowGapFillStallVectors(stallVectors=[]){
       if(!spacing||spacing<10)return;
       const meanW=medianNum(ordered.map(p=>p.w));
       const meanH=medianNum(ordered.map(p=>p.h));
+      const maxInsertPerGap=4;
       for(let i=0;i<ordered.length-1;i++){
         const a=ordered[i],b=ordered[i+1];
         const gap=Math.abs((bucket==='horizontal'?b.ctr.x-a.ctr.x:b.ctr.y-a.ctr.y));
-        if(gap<spacing*1.9||gap>spacing*4.6)continue;
-        const miss=Math.min(3,Math.max(1,Math.round(gap/spacing)-1));
+        if(gap<spacing*1.35||gap>spacing*6.2)continue;
+        const miss=Math.min(maxInsertPerGap,Math.max(1,Math.round(gap/spacing)-1));
         for(let m=1;m<=miss;m++){
           const t=m/(miss+1);
           const cx=a.ctr.x+((b.ctr.x-a.ctr.x)*t);
           const cy=a.ctr.y+((b.ctr.y-a.ctr.y)*t);
-          const nearExisting=arr.some(p=>Math.hypot((p.ctr.x||0)-cx,(p.ctr.y||0)-cy)<=Math.max(8,spacing*0.42))
-            || out.some(v=>{
-              const c=stallVectorCenter(v);
-              return Math.hypot((c.x||0)-cx,(c.y||0)-cy)<=Math.max(8,spacing*0.42);
-            });
-          if(nearExisting)continue;
+          if(hasNearCenter(cx,cy,spacing))continue;
           out.push({
             id:`rowfill-${now}-${bucket}-${rowIdx}-${i}-${m}`,
             className:'parking_stall',
-            confidence:0.26,
+            confidence:0.3,
             points:buildStallRectAt({x:cx,y:cy},meanW,meanH,ang)
           });
         }
+      }
+      // Controlled row end extension when row cadence is stable.
+      const left=ordered[0],right=ordered[ordered.length-1];
+      const extSteps=Math.min(2,Math.max(1,Math.floor(ordered.length/5)));
+      for(let s=1;s<=extSteps;s++){
+        const d=spacing*s;
+        const cxL=bucket==='horizontal'?(left.ctr.x-d):left.ctr.x;
+        const cyL=bucket==='horizontal'?left.ctr.y:(left.ctr.y-d);
+        const cxR=bucket==='horizontal'?(right.ctr.x+d):right.ctr.x;
+        const cyR=bucket==='horizontal'?right.ctr.y:(right.ctr.y+d);
+        [{x:cxL,y:cyL,tag:'L'},{x:cxR,y:cyR,tag:'R'}].forEach(pt=>{
+          if(hasNearCenter(pt.x,pt.y,spacing))return;
+          out.push({
+            id:`rowfill-${now}-${bucket}-${rowIdx}-ext-${pt.tag}-${s}`,
+            className:'parking_stall',
+            confidence:0.28,
+            points:buildStallRectAt({x:pt.x,y:pt.y},meanW,meanH,ang)
+          });
+        });
       }
     });
   });
