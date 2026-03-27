@@ -2601,6 +2601,12 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
     if(baseZoom===19)return 42;
     return (lotAreaFrac>0.45)?38:34;
   })();
+  const TILE_STALL_SCAN_CONCURRENCY=4;
+  const stallZoomPasses=[
+    {confidence:18,overlap:30},
+    {confidence:14,overlap:25}
+  ];
+  let inferenceBudget=maxDetectCalls;
   for(let p=0;p<phases.length;p++){
     const phase=phases[p];
     const tiles=buildLotZoomScanTiles(
@@ -2618,10 +2624,46 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
     );
     if(!tiles.length)continue;
     phasesRan++;
-    for(let i=0;i<tiles.length;i++){
-      if(ran>=maxDetectCalls)break;
+    const runStallPassesForTile=(inferCanvas,remapFn,i)=>{
+      const imageDataUrl=inferCanvas.toDataURL('image/jpeg',0.92);
+      const runOne=async pass=>{
+        if(inferenceBudget<=0)return;
+        inferenceBudget--;
+        try{
+          const res=await fetch('/api/roboflow-detect',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+              imageDataUrl,
+              mode:'detect',
+              confidence:pass.confidence,
+              overlap:pass.overlap
+            })
+          });
+          const data=await res.json().catch(()=>({}));
+          if(!res.ok){
+            inferenceBudget++;
+            return;
+          }
+          ran++;
+          const preds=Array.isArray(data?.predictions)?data.predictions:[];
+          preds.forEach((pred,pIdx)=>{
+            if(!classIsStallLike(pred?.class))return;
+            const mapped=remapFn(pred,pIdx);
+            if(!mapped)return;
+            mapped._zoomPass=true;
+            if(detectionFullyInsidePolygon(mapped,scanPoly))all.push(mapped);
+          });
+        }catch(e){
+          inferenceBudget++;
+          console.warn('Tile stall scan failed:',e);
+        }
+      };
+      return Promise.all(stallZoomPasses.map(runOne));
+    };
+    const processTile=async (tile,i)=>{
+      if(inferenceBudget<=0)return;
       planned++;
-      const tile=tiles[i];
       setImportStatus(`Auto zoom scan ${p+1}/${phases.length} (${phase.name||'phase'}), tile ${i+1}/${tiles.length}…`);
       try{
         let inferCanvas=null;
@@ -2640,42 +2682,24 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
           inferCanvas=patch?.canvas||null;
           remapFn=(pred,pIdx)=>remapDetectionFromHighZoomPatchToBase(pred,patch,scanCtx,`${p}-${i}-${pIdx}`);
         }
-        if(!inferCanvas||typeof remapFn!=='function')continue;
-        const passes=[
-          {confidence:18,overlap:30},
-          {confidence:14,overlap:25}
-        ];
-        for(let passIdx=0;passIdx<passes.length;passIdx++){
-          if(ran>=maxDetectCalls)break;
-          const pass=passes[passIdx];
-          const payload={
-            imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),
-            mode:'detect',
-            confidence:pass.confidence,
-            overlap:pass.overlap
-          };
-          const res=await fetch('/api/roboflow-detect',{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(payload)
-          });
-          const data=await res.json().catch(()=>({}));
-          if(!res.ok)continue;
-          ran++;
-          const preds=Array.isArray(data?.predictions)?data.predictions:[];
-          preds.forEach((pred,pIdx)=>{
-            if(!classIsStallLike(pred?.class))return;
-            const mapped=remapFn(pred,pIdx);
-            if(!mapped)return;
-            mapped._zoomPass=true;
-            if(detectionFullyInsidePolygon(mapped,scanPoly))all.push(mapped);
-          });
-        }
+        if(!inferCanvas||typeof remapFn!=='function')return;
+        await runStallPassesForTile(inferCanvas,remapFn,i);
       }catch(e){
         console.warn('Tile stall scan failed:',e);
       }
-    }
-    if(ran>=maxDetectCalls)break;
+    };
+    const conc=Math.min(TILE_STALL_SCAN_CONCURRENCY,Math.max(1,tiles.length));
+    let nextTileIdx=0;
+    const pool=Array.from({length:conc},()=>(async()=>{
+      while(true){
+        const i=nextTileIdx++;
+        if(i>=tiles.length)break;
+        if(inferenceBudget<=0)break;
+        await processTile(tiles[i],i);
+      }
+    })());
+    await Promise.all(pool);
+    if(inferenceBudget<=0)break;
   }
   return{
     detections:all,
