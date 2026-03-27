@@ -3104,12 +3104,9 @@ function classIsLot(cls){
   if(classIsObstruction(cls))return false;
   const c=String(cls||'').toLowerCase().trim();
   if(!c)return false;
-  if(c.includes('lot_boundary'))return true;
-  if(c.includes('parking_lot'))return true;
-  if(/\b(?:parking\s+)?lot\b/.test(c))return true;
-  if(c.startsWith('lot_'))return true;
-  if(c.endsWith('_lot'))return true;
-  return false;
+  // "slot" and similar include the letters l-o-t but are not lot perimeters.
+  if(c.includes('slot'))return false;
+  return c.includes('lot');
 }
 function primaryLotPolygonFromDetections(detections){
   if(!Array.isArray(detections)||!detections.length)return null;

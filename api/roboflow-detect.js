@@ -126,12 +126,10 @@ module.exports = async (req, res) => {
         };
         const keepSeg = segPred.filter((p) => isAreaClass(p.class));
         const keepDet = detPred.filter((p) => isSymbolClass(p.class));
-        const segKeys = new Set(keepSeg.map((p) => normalized(p.class)));
-        const areaFallbackFromDet = detPred.filter((p) => {
-          const cls = normalized(p.class);
-          return isAreaClass(cls) && !segKeys.has(cls);
-        });
-        const merged = [...keepSeg, ...areaFallbackFromDet, ...keepDet];
+        // Do not merge detect-model area predictions: they are axis-aligned boxes only.
+        // Lot/obstruction outlines must come from segmentation polygons.
+        const areaFallbackFromDet = [];
+        const merged = [...keepSeg, ...keepDet];
         sendJson(res, 200, {
           predictions: merged,
           image,
