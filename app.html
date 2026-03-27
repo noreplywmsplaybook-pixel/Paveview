@@ -4379,7 +4379,37 @@ async function runRoboflowDetection(){
         filteredPredictions
       )
     )));
+    const baseLotPoly=primaryLotPolygonFromDetections(draftDetections);
+    const scanRoi=mapCurrentScanRoi(baseLotPoly);
+    const stallScanPoly=(Array.isArray(manualScanPoly)&&manualScanPoly.length>=3)
+      ? manualScanPoly
+      : ((scanRoi&&scanRoi.w>20&&scanRoi.h>20)?roiRectToPolygon(scanRoi):baseLotPoly);
     let tileStats={tilesPlanned:0,tilesRan:0,added:0};
+    // Roboflow-only recall boost: keep zoom RF merge, but no non-RF inferred stalls.
+    if(stallScanPoly){
+      const zoomScan=await runLotStallZoomScan(inferCanvas,stallScanPoly,{
+        lat:mapViewState?.lat,
+        lng:mapViewState?.lng,
+        zoom:mapViewState?.zoom,
+        mode:mapViewState?.mode,
+        year:mapViewState?.year,
+        roi:scanRoi
+      });
+      const zoomStalls=Array.isArray(zoomScan?.detections)?zoomScan.detections:[];
+      tileStats.tilesPlanned=Number(zoomScan?.tilesPlanned)||0;
+      tileStats.tilesRan=Number(zoomScan?.tilesRan)||0;
+      if(zoomStalls.length){
+        const beforeCount=draftDetections.length;
+        const merged=draftDetections.concat(zoomStalls);
+        draftDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
+          keepStallLikeDetectionsInsideLot(
+            filterDetectionsByClassConfidence(merged),
+            stallScanPoly
+          )
+        )));
+        tileStats.added=Math.max(0,draftDetections.length-beforeCount);
+      }
+    }
     mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
     mapLastDetectContext={
       capturedAt:new Date().toISOString(),
