@@ -3876,9 +3876,8 @@ function updateHistoricalControls(){
   }
 }
 
-/** Underlying imagery only (same base as map preview before vectors/ROI/UI). Avoids baking AI outlines into the plan bitmap. */
+/** True tile imagery only — never the map preview composite and never post-detect B/W (mapBaseProcessedImage is overwritten by snap pass). */
 function getMapImageryCanvasForPlanCapture(){
-  if(mapRenderStyle==='blueprint'&&mapBaseProcessedImage)return mapBaseProcessedImage;
   if(mapBaseRawImage)return mapBaseRawImage;
   return null;
 }
@@ -5719,8 +5718,9 @@ function renderZones(){
         }
         dCtx.restore();
       }
-      // Lot editable line should remain the visible source of truth.
-      dCtx.strokeStyle=z.obstruct?'#ef4444':'#d4a843';
+      // Hole punch leaves the current path on the last obstruction; rebuild lot path before stroking (same idea as obstruct branch).
+      drawZonePath(dCtx,z.pts);
+      dCtx.strokeStyle='#d4a843';
       const lw=z.lineWidth||2;
       dCtx.lineWidth=isFocused?lw+1.2:(isA?lw+0.5:lw);
       dCtx.setLineDash(z.lineDashed?[10,5]:[]);
