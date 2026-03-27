@@ -106,6 +106,8 @@ body {
 .btn:hover{border-color:var(--text2);color:var(--text2)}
 .btn.y{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600}
 .btn.y:hover{opacity:.9}
+.btn.g{background:#22c55e;border-color:#22c55e;color:#04130a;font-weight:700}
+.btn.g:hover{opacity:.92}
 .hd{width:1px;height:16px;background:var(--border);margin:0 5px}
 
 /* ── TOOLBAR ── */
@@ -1523,6 +1525,24 @@ const btnMapRefresh=document.getElementById('btn-map-refresh');
 const mapLatInp=document.getElementById('map-lat');
 const mapLngInp=document.getElementById('map-lng');
 const mapZoomInp=document.getElementById('map-zoom');
+function setAiDetectButtonState(state){
+  [btnMapAiDetect,btnMapDetect].forEach(btn=>{
+    if(!btn)return;
+    btn.classList.remove('y','g');
+    if(state==='running'){
+      btn.classList.add('y');
+      btn.textContent='AI Detecting…';
+      btn.disabled=true;
+    }else if(state==='done'){
+      btn.classList.add('g');
+      btn.textContent='AI Detect ✓';
+      btn.disabled=false;
+    }else{
+      btn.textContent='Run AI Detect';
+      btn.disabled=false;
+    }
+  });
+}
 let pageModalView='source'; // source | pdf | map
 let waybackByYear={...WAYBACK_FALLBACK_BY_YEAR}; // { [year]: {m, date, label} }
 let mapViewState={lat:37.4219999,lng:-122.0840575,zoom:20,mode:'google',year:''};
@@ -3933,6 +3953,7 @@ async function captureMapImageryIntoPlan(){
 }
 
 async function runRoboflowDetection(){
+  setAiDetectButtonState('running');
   try{
     setImportStatus('Running Roboflow detection…');
     mapReviewState.active=false;
@@ -4077,9 +4098,11 @@ async function runRoboflowDetection(){
       ? ` Zoom scan ${tileStats.tilesRan}/${tileStats.tilesPlanned} tiles, +${tileStats.added} merged stalls.`
       : '';
     setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%).${zoomLabel} ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
+    setAiDetectButtonState('done');
   }catch(e){
     console.error(e);
     setImportStatus(`Detection failed: ${e.message}`,true);
+    setAiDetectButtonState('idle');
   }
 }
 
@@ -4190,6 +4213,7 @@ document.getElementById('drop-overlay').addEventListener('click',openImportSourc
 document.getElementById('btn-import-source-file').addEventListener('click',()=>importFileInput.click());
 document.getElementById('btn-import-source-map').addEventListener('click',async()=>{
   setPageModalView('map');
+  setAiDetectButtonState('idle');
   mapRenderStyle='satellite';
   mapDebugBwPreview=false;
   syncMapDebugBwButton();
@@ -5765,30 +5789,33 @@ function renderZones(){
       dCtx.fillStyle=isH?'#fff':(z.obstruct?'#ef4444':z.color);dCtx.fill();
     });
     // Label
-    const area=polyArea(z.pts)*sc*sc;
-    const _zcx=z.pts.reduce((s,p)=>s+p.x,0)/z.pts.length;
-    const _zcy=z.pts.reduce((s,p)=>s+p.y,0)/z.pts.length;
-    const cx2=_zcx+(z.labelX||0);
-    const cy2=_zcy+(z.labelY||0);
-    dCtx.font='600 12px JetBrains Mono,monospace';dCtx.textAlign='center';dCtx.textBaseline='middle';
-    const lbl=(z.obstruct?'⊖ ':'')+area.toLocaleString('en-US',{maximumFractionDigits:0})+' sq ft';
-    const tw=dCtx.measureText(lbl).width;
-    const _isMatch=searchTerm&&searchMatches.some(m=>m.type==='zone'&&m.id===z.id);
-    dCtx.fillStyle=_isMatch?'rgba(212,168,67,.9)':'rgba(0,0,0,.82)';
-    dCtx.fillRect(cx2-tw/2-8,cy2-10,tw+16,20);
-    if(_isMatch){dCtx.strokeStyle='#d4a843';dCtx.lineWidth=3;dCtx.strokeRect(cx2-tw/2-8,cy2-10,tw+16,20);}
-    dCtx.fillStyle=_isMatch?'#000':(z.obstruct?'#ef4444':z.color);
-    dCtx.fillText(lbl,cx2,cy2);
-    // Drag grip dots
-    dCtx.fillStyle='rgba(255,255,255,.25)';
-    dCtx.fillRect(cx2-tw/2-6,cy2-10,4,20);
-    const lblSz=Math.max(8,(z.labelSize||12)/zoom);
-    dCtx.font=`700 ${lblSz}px Syne,sans-serif`;
-    dCtx.textAlign='center';dCtx.textBaseline='middle';
-    dCtx.fillStyle=z.obstruct?'#ef4444':z.color;
-    dCtx.strokeStyle='rgba(0,0,0,.6)';dCtx.lineWidth=3;
-    dCtx.strokeText(z.name,cx2,cy2-lblSz*1.2);
-    dCtx.fillText(z.name,cx2,cy2-lblSz*1.2);
+    const showZoneLabel=!z.obstruct||focusedZoneId===z.id;
+    if(showZoneLabel){
+      const area=polyArea(z.pts)*sc*sc;
+      const _zcx=z.pts.reduce((s,p)=>s+p.x,0)/z.pts.length;
+      const _zcy=z.pts.reduce((s,p)=>s+p.y,0)/z.pts.length;
+      const cx2=_zcx+(z.labelX||0);
+      const cy2=_zcy+(z.labelY||0);
+      dCtx.font='600 12px JetBrains Mono,monospace';dCtx.textAlign='center';dCtx.textBaseline='middle';
+      const lbl=(z.obstruct?'⊖ ':'')+area.toLocaleString('en-US',{maximumFractionDigits:0})+' sq ft';
+      const tw=dCtx.measureText(lbl).width;
+      const _isMatch=searchTerm&&searchMatches.some(m=>m.type==='zone'&&m.id===z.id);
+      dCtx.fillStyle=_isMatch?'rgba(212,168,67,.9)':'rgba(0,0,0,.82)';
+      dCtx.fillRect(cx2-tw/2-8,cy2-10,tw+16,20);
+      if(_isMatch){dCtx.strokeStyle='#d4a843';dCtx.lineWidth=3;dCtx.strokeRect(cx2-tw/2-8,cy2-10,tw+16,20);}
+      dCtx.fillStyle=_isMatch?'#000':(z.obstruct?'#ef4444':z.color);
+      dCtx.fillText(lbl,cx2,cy2);
+      // Drag grip dots
+      dCtx.fillStyle='rgba(255,255,255,.25)';
+      dCtx.fillRect(cx2-tw/2-6,cy2-10,4,20);
+      const lblSz=Math.max(8,(z.labelSize||12)/zoom);
+      dCtx.font=`700 ${lblSz}px Syne,sans-serif`;
+      dCtx.textAlign='center';dCtx.textBaseline='middle';
+      dCtx.fillStyle=z.obstruct?'#ef4444':z.color;
+      dCtx.strokeStyle='rgba(0,0,0,.6)';dCtx.lineWidth=3;
+      dCtx.strokeText(z.name,cx2,cy2-lblSz*1.2);
+      dCtx.fillText(z.name,cx2,cy2-lblSz*1.2);
+    }
   });
   // Measurements
   if(!hasZoneFocus)renderMeasurementShapes(dCtx);
