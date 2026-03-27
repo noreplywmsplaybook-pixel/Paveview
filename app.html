@@ -2101,6 +2101,98 @@ function segmentToThinStallPolygon(seg,widthPx=2){
     {x:seg.a.x-nx*hw,y:seg.a.y-ny*hw},
   ];
 }
+function medianNum(nums){
+  if(!Array.isArray(nums)||!nums.length)return 0;
+  const s=nums.slice().sort((a,b)=>a-b);
+  const m=Math.floor(s.length/2);
+  return s.length%2?s[m]:(s[m-1]+s[m])/2;
+}
+function stallVectorCenter(v){
+  const pts=Array.isArray(v?.points)?v.points:[];
+  return detectionCenterPoint({points:pts});
+}
+function stallVectorDims(v){
+  const pts=Array.isArray(v?.points)?v.points:[];
+  const bb=polygonBounds(pts);
+  return{w:Math.max(8,Number(bb?.w)||0),h:Math.max(8,Number(bb?.h)||0)};
+}
+function buildStallRectAt(center,w,h,angleRad){
+  const hw=Math.max(4,Number(w)||12)/2;
+  const hh=Math.max(2.5,Number(h)||6)/2;
+  const c=Math.cos(angleRad||0),s=Math.sin(angleRad||0);
+  const ux={x:c,y:s};
+  const uy={x:-s,y:c};
+  return[
+    {x:center.x+ux.x*hw+uy.x*hh,y:center.y+ux.y*hw+uy.y*hh},
+    {x:center.x-ux.x*hw+uy.x*hh,y:center.y-ux.y*hw+uy.y*hh},
+    {x:center.x-ux.x*hw-uy.x*hh,y:center.y-ux.y*hw-uy.y*hh},
+    {x:center.x+ux.x*hw-uy.x*hh,y:center.y+ux.y*hw-uy.y*hh},
+  ];
+}
+function generateRowGapFillStallVectors(stallVectors=[]){
+  const src=(Array.isArray(stallVectors)?stallVectors:[]).filter(v=>String(v?.className||'').toLowerCase().includes('stall')&&Array.isArray(v?.points)&&v.points.length>=3);
+  if(src.length<6)return [];
+  const enriched=src.map(v=>{
+    const ctr=stallVectorCenter(v);
+    const d=stallVectorDims(v);
+    return{ctr,w:d.w,h:d.h};
+  });
+  const groups={horizontal:[],vertical:[]};
+  enriched.forEach(e=>{
+    if(e.w>=e.h)groups.horizontal.push(e); else groups.vertical.push(e);
+  });
+  const out=[];
+  const now=Date.now();
+  [['horizontal',0],['vertical',Math.PI/2]].forEach(([bucket,ang])=>{
+    const arr=groups[bucket];
+    if(!arr||arr.length<4)return;
+    const rowTol=clampNum(medianNum(arr.map(a=>Math.min(a.w,a.h)))*1.35,12,26);
+    const rows=[];
+    const sortedByPerp=arr.slice().sort((a,b)=>(bucket==='horizontal'?a.ctr.y-b.ctr.y:a.ctr.x-b.ctr.x));
+    sortedByPerp.forEach(pt=>{
+      const perp=bucket==='horizontal'?pt.ctr.y:pt.ctr.x;
+      let row=rows.find(r=>Math.abs(r.perp-perp)<=rowTol);
+      if(!row){row={perp,pts:[]};rows.push(row);}
+      row.pts.push(pt);
+      row.perp=((row.perp*(row.pts.length-1))+perp)/row.pts.length;
+    });
+    rows.forEach((row,rowIdx)=>{
+      if(row.pts.length<3)return;
+      const ordered=row.pts.slice().sort((a,b)=>(bucket==='horizontal'?a.ctr.x-b.ctr.x:a.ctr.y-b.ctr.y));
+      const coords=ordered.map(p=>bucket==='horizontal'?p.ctr.x:p.ctr.y);
+      const gaps=[];
+      for(let i=0;i<coords.length-1;i++)gaps.push(Math.abs(coords[i+1]-coords[i]));
+      const spacing=medianNum(gaps.filter(g=>g>=12&&g<=120))||medianNum(gaps)||0;
+      if(!spacing||spacing<10)return;
+      const meanW=medianNum(ordered.map(p=>p.w));
+      const meanH=medianNum(ordered.map(p=>p.h));
+      for(let i=0;i<ordered.length-1;i++){
+        const a=ordered[i],b=ordered[i+1];
+        const gap=Math.abs((bucket==='horizontal'?b.ctr.x-a.ctr.x:b.ctr.y-a.ctr.y));
+        if(gap<spacing*1.9||gap>spacing*4.6)continue;
+        const miss=Math.min(3,Math.max(1,Math.round(gap/spacing)-1));
+        for(let m=1;m<=miss;m++){
+          const t=m/(miss+1);
+          const cx=a.ctr.x+((b.ctr.x-a.ctr.x)*t);
+          const cy=a.ctr.y+((b.ctr.y-a.ctr.y)*t);
+          const nearExisting=arr.some(p=>Math.hypot((p.ctr.x||0)-cx,(p.ctr.y||0)-cy)<=Math.max(8,spacing*0.42))
+            || out.some(v=>{
+              const c=stallVectorCenter(v);
+              return Math.hypot((c.x||0)-cx,(c.y||0)-cy)<=Math.max(8,spacing*0.42);
+            });
+          if(nearExisting)continue;
+          out.push({
+            id:`rowfill-${now}-${bucket}-${rowIdx}-${i}-${m}`,
+            className:'parking_stall',
+            confidence:0.26,
+            points:buildStallRectAt({x:cx,y:cy},meanW,meanH,ang)
+          });
+        }
+      }
+    });
+  });
+  return out.slice(0,220);
+}
 function clampNum(v,min,max){
   return Math.max(min,Math.min(max,v));
 }
@@ -4264,8 +4356,9 @@ async function runRoboflowDetection(){
       confidence:0.35,
       points:segmentToThinStallPolygon(seg,2)
     }));
+    const rowFillVectors=generateRowGapFillStallVectors(draftVectors.concat(assistVectors));
 
-    const allVectors=draftVectors.concat(assistVectors);
+    const allVectors=draftVectors.concat(assistVectors,rowFillVectors);
     const lotFilteredVectors=keepStallLikeVectorsInsideLot(allVectors);
     mapVectorDetections=keepVectorsInsideScanPolygon(lotFilteredVectors,manualScanPoly,usePolygonAsLot);
     mapLearningDraftDetections=JSON.parse(JSON.stringify(draftDetections||[]));
