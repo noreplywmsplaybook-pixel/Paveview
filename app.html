@@ -1312,6 +1312,7 @@ let markers=[], hatchZones=[], linearSegs=[];
 let inHatch=[], inLinear=[];
 let dragging=null, hovering=null;
 let focusedZoneId=null; // when set, stats panel shows only this zone
+let selectedHatchId=null;
 let mx=0, my=0; // mouse in image coords
 let isPanning=false;
 let lastClick=0; // for dblclick detection
@@ -3007,6 +3008,16 @@ function zoneGeometryLikelyDuplicate(a,b){
   const aa=polygonArea(a.pts),ba=polygonArea(b.pts);
   return areaSimilarity(aa,ba)>=0.9;
 }
+function hatchGeometryLikelyDuplicate(a,b){
+  if(!a||!b||!Array.isArray(a.pts)||!Array.isArray(b.pts)||a.pts.length<3||b.pts.length<3)return false;
+  const ab=polygonBounds(a.pts),bb=polygonBounds(b.pts);
+  const iou=boundsIou(ab,bb);
+  if(iou<0.96)return false;
+  const aa=polygonArea(a.pts),ba=polygonArea(b.pts);
+  if(areaSimilarity(aa,ba)<0.96)return false;
+  const ca=polyCentroid(a.pts),cb=polyCentroid(b.pts);
+  return Math.hypot((ca.x||0)-(cb.x||0),(ca.y||0)-(cb.y||0))<=10;
+}
 function markerKey(m){
   const t=String(m?.type||'').toLowerCase();
   const lbl=String(m?.label||'').trim().toUpperCase();
@@ -3339,7 +3350,7 @@ function transferDetectionsToEditableObjects(){
     if(classIsHatchLike(det.class)){
       const hz=detectionToHatchZone(det);
       if(hz){
-        const isHatchDup=hatchZones.some(existing=>existing.type===hz.type&&zoneGeometryLikelyDuplicate({pts:existing.pts},{pts:hz.pts}));
+        const isHatchDup=hatchZones.some(existing=>existing.type===hz.type&&hatchGeometryLikelyDuplicate({pts:existing.pts},{pts:hz.pts}));
         if(!isHatchDup){
           hatchZones.push(hz);
           hatchAdded++;
@@ -5450,11 +5461,13 @@ function renderLinearList(){
 function renderHatchList(){
   const list=document.getElementById('hatch-list');
   if(!list)return;
-  if(!hatchZones.length){list.innerHTML='<div class="meas-empty">Draw a crosswalk or ADA hatch</div>';return;}
+  if(!hatchZones.length){selectedHatchId=null;list.innerHTML='<div class="meas-empty">Draw a crosswalk or ADA hatch</div>';return;}
+  if(selectedHatchId&&!hatchZones.some(h=>h.id===selectedHatchId))selectedHatchId=null;
   list.innerHTML='';
   hatchZones.forEach((h,i)=>{
     const el=document.createElement('div');
-    el.style.cssText='padding:6px 12px;border-bottom:1px solid var(--border);';
+    const isSel=selectedHatchId===h.id;
+    el.style.cssText='padding:6px 12px;border-bottom:1px solid var(--border);'+(isSel?'background:var(--accent-bg);outline:1px solid var(--accent-dim);':'');
     const label=h.type==='ada-hatch'?'ADA Hatch':'Crosswalk';
     const col=h.type==='ada-hatch'?'#3b82f6':'#22c55e';
     el.innerHTML=`<div style="display:flex;align-items:center;gap:6px">
@@ -5486,9 +5499,16 @@ function renderHatchList(){
         renderZones();}
     });
     el.querySelector('.h-del').addEventListener('click',e=>{
+      e.stopPropagation();
       const idx=parseInt(e.target.dataset.idx);
+      if(hatchZones[idx]?.id===selectedHatchId)selectedHatchId=null;
       hatchZones.splice(idx,1);
       renderHatchList();updateStats();renderAll();
+    });
+    el.addEventListener('click',()=>{
+      selectedHatchId=h.id;
+      setFocusedZone(null);
+      renderHatchList();renderAll();
     });
     list.appendChild(el);
   });
@@ -5693,11 +5713,16 @@ function renderZones(){
   if(!hasZoneFocus)hatchZones.forEach(h=>{
     if(h.pts.length<3)return;
     const col=h.type==='ada-hatch'?'#3b82f6':'#22c55e';
+    const isSel=selectedHatchId===h.id;
+    const dimOthers=selectedHatchId&&!isSel;
     dCtx.save();
+    if(dimOthers)dCtx.globalAlpha=0.25;
     dCtx.beginPath();h.pts.forEach((p,i)=>i===0?dCtx.moveTo(p.x,p.y):dCtx.lineTo(p.x,p.y));dCtx.closePath();
     const hAlpha=Math.round((h.opacity!=null?h.opacity:20)/100*255).toString(16).padStart(2,'0');
     dCtx.fillStyle=col+hAlpha;dCtx.fill();
-    dCtx.strokeStyle=col;dCtx.lineWidth=h.lineWidth||1.5;dCtx.stroke();
+    dCtx.strokeStyle=isSel?'#eab308':col;
+    dCtx.lineWidth=(h.lineWidth||1.5)+(isSel?1.2:0);
+    dCtx.stroke();
     dCtx.clip();
     const xs=h.pts.map(p=>p.x),ys=h.pts.map(p=>p.y);
     const mx2=Math.min(...xs)-20,Mx=Math.max(...xs)+20,my2=Math.min(...ys)-20,My=Math.max(...ys)+20;
