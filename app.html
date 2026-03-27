@@ -3900,9 +3900,22 @@ async function captureMapImageryIntoPlan(){
   const oc=document.createElement('canvas');
   oc.width=mapPreviewCanvas.width;oc.height=mapPreviewCanvas.height;
   const capCtx=oc.getContext('2d');
-  const baseImg=getMapImageryCanvasForPlanCapture();
-  if(baseImg) capCtx.drawImage(baseImg,0,0,oc.width,oc.height);
-  else capCtx.drawImage(mapPreviewCanvas,0,0);
+  let baseImg=getMapImageryCanvasForPlanCapture();
+  if(!baseImg){
+    // Ensure we never capture vector/UI overlays from mapPreviewCanvas.
+    await loadMapPreview({fromInputs:false,preserveDetections:true,reason:'Refreshing clean imagery for capture…'});
+    baseImg=getMapImageryCanvasForPlanCapture();
+  }
+  if(!baseImg){
+    setImportStatus('Imagery not ready to capture. Please wait a moment and try again.',true);
+    mapDebugBwPreview=prevDebugBw;
+    mapDebugSnapOverlay=prevDebugSnap;
+    syncMapDebugBwButton();
+    syncMapDebugSnapButton();
+    drawMapOverlay();
+    return;
+  }
+  capCtx.drawImage(baseImg,0,0,oc.width,oc.height);
   const feetPerPx=metersPerPixel(mapViewState.lat,mapViewState.zoom)*3.28084;
   pendingAutoScaleFeetPerPx=feetPerPx;
   const activeDetections=dedupeStallLikeDetections(dedupeZoneDetections(keepSinglePrimaryLotDetections(
