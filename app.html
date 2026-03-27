@@ -3329,12 +3329,33 @@ function detectionToHatchZone(det){
 }
 function transferDetectionsToEditableObjects(){
   const srcRaw=(aiDetectionsForTransfer&&aiDetectionsForTransfer.length)?aiDetectionsForTransfer:mapDetections;
+  const transferScanPoly=normalizeScanPolygon(
+    mapScanPoly,
+    mapDetectionRenderSize.w||mapPreviewCanvas.width,
+    mapDetectionRenderSize.h||mapPreviewCanvas.height
+  );
+  const seededRaw=(()=>{
+    const base=filterDetectionsByClassConfidence(srcRaw);
+    if(!Array.isArray(transferScanPoly)||transferScanPoly.length<3)return base;
+    const hasLot=base.some(det=>classIsLot(det?.class));
+    if(hasLot)return base;
+    const bb=polygonBounds(transferScanPoly);
+    const ctr=detectionCenterPoint({points:transferScanPoly});
+    return [{
+      class:'lot_boundary',
+      confidence:1,
+      x:ctr.x,
+      y:ctr.y,
+      width:bb?.w||0,
+      height:bb?.h||0,
+      points:transferScanPoly.map(p=>({x:p.x,y:p.y}))
+    }].concat(base);
+  })();
   const src=dedupeStallLikeDetections(
     dedupeZoneDetections(
       keepStallLikeDetectionsInsideLot(
-        keepSinglePrimaryLotDetections(
-          filterDetectionsByClassConfidence(srcRaw)
-        )
+        keepSinglePrimaryLotDetections(seededRaw),
+        transferScanPoly
       )
     )
   );
