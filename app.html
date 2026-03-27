@@ -1062,6 +1062,7 @@ select.sc-inp{cursor:pointer;width:40px}
           <select id="map-historical-year"></select>
           <button class="btn" id="btn-map-roi-draw" title="Create a scan polygon around the lot">Create Lot Polygon</button>
           <button class="btn" id="btn-map-roi-clear" title="Clear scan polygon">Clear Polygon</button>
+          <button class="btn" id="btn-map-roi-use-lot" title="Use drawn polygon as lot perimeter">Use Polygon As Lot: OFF</button>
           <button class="btn" id="btn-map-debug-bw" title="Debug only: preview pass-2 snap layer">Preview B&W</button>
           <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
         </div>
@@ -1517,6 +1518,7 @@ const mapImageryModeSel=document.getElementById('map-imagery-mode');
 const btnMapDebugBw=document.getElementById('btn-map-debug-bw');
 const btnMapRoiDraw=document.getElementById('btn-map-roi-draw');
 const btnMapRoiClear=document.getElementById('btn-map-roi-clear');
+const btnMapRoiUseLot=document.getElementById('btn-map-roi-use-lot');
 const mapRoiUseLotChk=document.getElementById('map-roi-use-lot');
 const mapRenderStyleSel=document.getElementById('map-render-style');
 const mapDrawClassSel=document.getElementById('map-draw-class');
@@ -2471,8 +2473,7 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
           if(!classIsStallLike(pred?.class))return;
           const mapped=remapFn(pred,pIdx);
           if(!mapped)return;
-          const ctr=detectionCenterPoint(mapped);
-          if(pointInPolygon(ctr,scanPoly))all.push(mapped);
+          if(detectionFullyInsidePolygon(mapped,scanPoly))all.push(mapped);
         });
       }catch(e){
         console.warn('Tile stall scan failed:',e);
@@ -2784,6 +2785,11 @@ function syncMapRoiButtons(){
     btnMapRoiClear.disabled=!hasPoly;
     btnMapRoiClear.style.opacity=hasPoly?'1':'0.6';
   }
+  if(btnMapRoiUseLot){
+    const on=!!(mapRoiUseLotChk&&mapRoiUseLotChk.checked);
+    btnMapRoiUseLot.classList.toggle('y',on);
+    btnMapRoiUseLot.textContent=on?'Use Polygon As Lot: ON':'Use Polygon As Lot: OFF';
+  }
 }
 function clearMapDetections(){
   mapDetections=[];
@@ -2889,10 +2895,27 @@ function keepStallLikeDetectionsInsideLot(detections,lotPoly=null){
 function keepDetectionsInsideScanPolygon(detections,scanPoly){
   if(!Array.isArray(detections)||!detections.length)return [];
   if(!Array.isArray(scanPoly)||scanPoly.length<3)return detections.slice();
-  return detections.filter(det=>{
+  return detections.filter(det=>detectionFullyInsidePolygon(det,scanPoly));
+}
+function pointInPolygonOrOnEdge(pt,poly,edgeTol=1.5){
+  if(!pt||!Array.isArray(poly)||poly.length<3)return false;
+  if(pointInPolygon(pt,poly))return true;
+  const tol=Math.max(0.1,Number(edgeTol)||1.5);
+  for(let i=0;i<poly.length;i++){
+    const a=poly[i],b=poly[(i+1)%poly.length];
+    const pr=ptOnSeg(pt.x,pt.y,a.x,a.y,b.x,b.y);
+    if(Math.hypot((pr.x||0)-pt.x,(pr.y||0)-pt.y)<=tol)return true;
+  }
+  return false;
+}
+function detectionFullyInsidePolygon(det,poly){
+  if(!Array.isArray(poly)||poly.length<3)return false;
+  const pts=detectionToPolygonPoints(det);
+  if(!Array.isArray(pts)||!pts.length){
     const ctr=detectionCenterPoint(det);
-    return pointInPolygon(ctr,scanPoly);
-  });
+    return pointInPolygonOrOnEdge(ctr,poly);
+  }
+  return pts.every(p=>pointInPolygonOrOnEdge(p,poly));
 }
 function primaryLotPolygonFromVectors(vectors){
   if(!Array.isArray(vectors)||!vectors.length)return null;
@@ -4376,8 +4399,21 @@ if(btnMapRoiClear){
     drawMapOverlay();
   });
 }
+if(btnMapRoiUseLot){
+  btnMapRoiUseLot.addEventListener('click',()=>{
+    if(!mapRoiUseLotChk)return;
+    mapRoiUseLotChk.checked=!mapRoiUseLotChk.checked;
+    syncMapRoiButtons();
+    if(mapRoiUseLotChk.checked){
+      setImportStatus('Use polygon as lot perimeter is ON. Lot boundary detection will be skipped.');
+    }else{
+      setImportStatus('Use polygon as lot perimeter is OFF. Lot boundary auto-detect will run normally.');
+    }
+  });
+}
 if(mapRoiUseLotChk){
   mapRoiUseLotChk.addEventListener('change',()=>{
+    syncMapRoiButtons();
     if(mapRoiUseLotChk.checked){
       setImportStatus('Use polygon as lot perimeter is ON. Lot boundary detection will be skipped.');
     }else{
