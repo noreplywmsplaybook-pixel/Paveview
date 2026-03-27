@@ -2210,6 +2210,41 @@ function estimateTileLotCoverage(rect,lotPoly){
   }
   return total?inside/total:0;
 }
+function estimateTileStripeLikelihood(rect,bw){
+  if(!rect||!bw||!bw.mask||!bw.w||!bw.h)return 0;
+  const x0=clampNum(Math.floor(rect.x),0,Math.max(0,bw.w-1));
+  const y0=clampNum(Math.floor(rect.y),0,Math.max(0,bw.h-1));
+  const x1=clampNum(Math.ceil(rect.x+rect.w),1,bw.w);
+  const y1=clampNum(Math.ceil(rect.y+rect.h),1,bw.h);
+  const w=Math.max(1,x1-x0),h=Math.max(1,y1-y0);
+  const stepX=Math.max(2,Math.floor(w/64));
+  const stepY=Math.max(2,Math.floor(h/64));
+  let samples=0,white=0,hTransitions=0,vTransitions=0;
+  for(let y=y0;y<y1;y+=stepY){
+    let prev=-1;
+    for(let x=x0;x<x1;x+=stepX){
+      const v=bw.mask[y*bw.w+x]?1:0;
+      samples++;
+      if(v)white++;
+      if(prev!==-1&&prev!==v)hTransitions++;
+      prev=v;
+    }
+  }
+  for(let x=x0;x<x1;x+=stepX){
+    let prev=-1;
+    for(let y=y0;y<y1;y+=stepY){
+      const v=bw.mask[y*bw.w+x]?1:0;
+      if(prev!==-1&&prev!==v)vTransitions++;
+      prev=v;
+    }
+  }
+  if(samples<=0)return 0;
+  const whiteFrac=white/samples;
+  const transitions=(hTransitions+vTransitions)/Math.max(1,samples);
+  // Favors stripe-like regions: moderate white density + frequent transitions.
+  const densityScore=Math.max(0,1-Math.abs(whiteFrac-0.28)/0.28);
+  return Math.max(0,Math.min(1,(densityScore*0.45)+(Math.min(1,transitions*2.2)*0.55)));
+}
 function buildLotZoomScanTiles(lotPoly,imageW,imageH,opts={}){
   if(!Array.isArray(lotPoly)||lotPoly.length<3||!imageW||!imageH)return [];
   const bb=polygonBounds(lotPoly);
@@ -2230,6 +2265,8 @@ function buildLotZoomScanTiles(lotPoly,imageW,imageH,opts={}){
   const cols=Math.max(1,Math.ceil((Math.max(0,boxW-tileSrc))/step)+1);
   const rows=Math.max(1,Math.ceil((Math.max(0,boxH-tileSrc))/step)+1);
   const lotCtr=detectionCenterPoint({points:lotPoly});
+  const stripeBw=(opts&&opts.stripeBw&&opts.stripeBw.mask)?opts.stripeBw:null;
+  const stripeWeight=clampNum(Number(opts.stripeWeight)||0.62,0,1.2);
   const cands=[];
   for(let r=0;r<rows;r++){
     for(let c=0;c<cols;c++){
@@ -2244,7 +2281,8 @@ function buildLotZoomScanTiles(lotPoly,imageW,imageH,opts={}){
       if(coverage<minCoverage)continue;
       const cx=rect.x+rect.w/2,cy=rect.y+rect.h/2;
       const dist=Math.hypot(cx-(lotCtr.x||0),cy-(lotCtr.y||0));
-      cands.push({...rect,coverage,dist});
+      const stripeScore=estimateTileStripeLikelihood(rect,stripeBw);
+      cands.push({...rect,coverage,dist,stripeScore});
     }
   }
   if(opts.cornerBoost!==false){
@@ -2266,12 +2304,15 @@ function buildLotZoomScanTiles(lotPoly,imageW,imageH,opts={}){
       if(coverage<0.02)return;
       const cx=rect.x+rect.w/2,cy=rect.y+rect.h/2;
       const dist=Math.hypot(cx-(lotCtr.x||0),cy-(lotCtr.y||0));
-      cands.push({...rect,coverage,dist,cornerBoost:true,boostRank:i});
+      const stripeScore=estimateTileStripeLikelihood(rect,stripeBw);
+      cands.push({...rect,coverage,dist,stripeScore,cornerBoost:true,boostRank:i});
     });
   }
   cands.sort((a,b)=>{
     if((b.cornerBoost?1:0)!==(a.cornerBoost?1:0))return (b.cornerBoost?1:0)-(a.cornerBoost?1:0);
-    if(Math.abs(b.coverage-a.coverage)>1e-6)return b.coverage-a.coverage;
+    const aRank=a.coverage+(a.stripeScore*stripeWeight);
+    const bRank=b.coverage+(b.stripeScore*stripeWeight);
+    if(Math.abs(bRank-aRank)>1e-6)return bRank-aRank;
     return a.dist-b.dist;
   });
   const uniq=[];
@@ -2485,6 +2526,7 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
     canvasH:rawCanvas.height,
     baseCenterWorld
   };
+  const stripeBw=readBwMask(preprocessImageDataForSnapBw(rawCanvas));
   const roi=normalizeRoiBox(mapCtx?.roi,rawCanvas.width,rawCanvas.height);
   if(roi){
     // Box-focused scan: keep baseline crop + add deeper phases for stall recall.
@@ -2526,7 +2568,9 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
         maxTiles:Number(phase?.maxTiles)||(roi?14:8),
         overlap:Number(phase?.overlap)||0.45,
         minCoverage:roi?0.02:(baseZoom<=18?0.07:0.1),
-        cornerBoost:true
+        cornerBoost:true,
+        stripeBw,
+        stripeWeight:roi?0.72:0.62
       }
     );
     if(!tiles.length)continue;
