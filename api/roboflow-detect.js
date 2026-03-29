@@ -12,18 +12,24 @@ function pickFirstNonEmpty(values) {
   return '';
 }
 
+function roboflowApiKeyFromEnv() {
+  return pickFirstNonEmpty([
+    process.env.ROBOFLOW_API_KEY,
+    process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY,
+    process.env.ROBOFLOW_KEY,
+    process.env.RF_API_KEY,
+    process.env.ROBOFLOW_PRIVATE_API_KEY,
+    process.env.VERCEL_ROBOFLOW_API_KEY
+  ]);
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     sendJson(res, 405, { error: 'Method not allowed.' });
     return;
   }
 
-  const apiKey = pickFirstNonEmpty([
-    process.env.ROBOFLOW_API_KEY,
-    process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY,
-    process.env.ROBOFLOW_KEY,
-    process.env.RF_API_KEY
-  ]);
+  const apiKey = roboflowApiKeyFromEnv();
   const modelId = pickFirstNonEmpty([
     process.env.ROBOFLOW_MODEL_ID,
     process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
@@ -43,7 +49,9 @@ module.exports = async (req, res) => {
         has_ROBOFLOW_API_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_API_KEY])),
         has_NEXT_PUBLIC_ROBOFLOW_API_KEY: Boolean(pickFirstNonEmpty([process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY])),
         has_ROBOFLOW_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_KEY])),
-        has_RF_API_KEY: Boolean(pickFirstNonEmpty([process.env.RF_API_KEY]))
+        has_RF_API_KEY: Boolean(pickFirstNonEmpty([process.env.RF_API_KEY])),
+        has_ROBOFLOW_PRIVATE_API_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_PRIVATE_API_KEY])),
+        has_VERCEL_ROBOFLOW_API_KEY: Boolean(pickFirstNonEmpty([process.env.VERCEL_ROBOFLOW_API_KEY]))
       }
     });
     return;

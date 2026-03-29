@@ -475,21 +475,6 @@ select.sc-inp{cursor:pointer;width:40px}
   width:100%;height:360px;border:1px solid var(--border);background:var(--canvas);
   flex:1;min-width:0;display:block;
 }
-.map-flow-track{
-  display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;padding:8px 10px;
-  background:var(--surface2);border:1px solid var(--border2);border-radius:2px;
-}
-.map-flow-step{
-  font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.04em;
-  text-transform:uppercase;color:var(--text3);
-  display:flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid var(--border);
-  background:var(--surface);border-radius:2px;white-space:nowrap;
-}
-.map-flow-step b{
-  font-size:9px;color:var(--accent);font-weight:700;width:1.1em;text-align:center;
-}
-.map-flow-step.done{border-color:rgba(34,197,94,.35);color:var(--ok);}
-.map-flow-step.active{border-color:var(--accent);color:var(--text);background:var(--accent-bg);}
 .map-split{
   display:flex;gap:10px;align-items:stretch;width:100%;min-height:360px;
 }
@@ -504,20 +489,6 @@ select.sc-inp{cursor:pointer;width:40px}
   flex-shrink:0;
 }
 #map-three-host{flex:1;min-height:200px;}
-#map-3d-review-modal .map-3d-review-box{width:min(1100px,98vw);max-height:94vh}
-.map-3d-review-body{display:flex;gap:12px;min-height:420px;}
-#map-3d-modal-host{
-  flex:2;min-width:260px;min-height:400px;border:1px solid var(--border);background:var(--canvas);
-}
-#map-3d-review-sidebar{
-  flex:0 0 220px;display:flex;flex-direction:column;gap:10px;font-size:11px;color:var(--text2);
-}
-#map-3d-review-hint{font-size:10px;color:var(--text3);line-height:1.45;}
-#map-3d-confirm-stats{
-  font-family:'JetBrains Mono',monospace;font-size:10px;
-  padding:8px;border:1px solid var(--border);background:var(--surface2);color:var(--accent);
-  white-space:pre-wrap;
-}
 .hist-only{}
 #map-historical-year:disabled{opacity:.6;cursor:not-allowed}
 .map-earth-wrap{
@@ -1112,16 +1083,6 @@ select.sc-inp{cursor:pointer;width:40px}
         <div class="import-hint">Tip: drag-and-drop PDF/image directly onto the canvas at any time.</div>
       </div>
       <div id="import-map-panel">
-        <div class="map-flow-track" id="map-flow-track" aria-label="Maps estimate flow">
-          <div class="map-flow-step" data-i="1"><b>1</b><span>Create estimate</span></div>
-          <div class="map-flow-step" data-i="2"><b>2</b><span>Maps imagery</span></div>
-          <div class="map-flow-step" data-i="3"><b>3</b><span>Search / load</span></div>
-          <div class="map-flow-step" data-i="4"><b>4</b><span>3D plane</span></div>
-          <div class="map-flow-step" data-i="5"><b>5</b><span>Crop ROI</span></div>
-          <div class="map-flow-step" data-i="6"><b>6</b><span>Auto-detect</span></div>
-          <div class="map-flow-step" data-i="7"><b>7</b><span>3D review</span></div>
-          <div class="map-flow-step" data-i="8"><b>8</b><span>Confirm</span></div>
-        </div>
         <div class="map-row">
           <label>Search</label>
           <input id="map-search" type="text" placeholder="Address or place">
@@ -1139,9 +1100,7 @@ select.sc-inp{cursor:pointer;width:40px}
           <button class="btn" id="btn-map-roi-clear" title="Clear scan polygon">Clear Polygon</button>
           <button class="btn" id="btn-map-roi-use-lot" title="Same as checkbox: ON = polygon is lot; OFF = polygon is ROI only, full Roboflow sync including lot">Use Polygon As Lot: OFF</button>
           <button class="btn" id="btn-map-debug-bw" title="Debug only: preview pass-2 snap layer">Preview B&W</button>
-          <button class="btn" id="btn-map-ai-detect">Run AI Detect</button>
-          <button class="btn" id="btn-map-flow-crop" title="Drag on the map to set a crop rectangle before auto-detect">Crop area</button>
-          <button class="btn y" id="btn-map-flow-auto" title="Threshold + contour + Roboflow on the cropped region">Flow: crop → auto-detect</button>
+          <button class="btn y" id="btn-map-ai-detect" title="Run primary + car Roboflow models on the current map view">Auto-detect</button>
         </div>
         <div class="import-hint">The <strong>Google Maps</strong> strip above is real tilted 3D (when using current satellite, not Wayback). The flat canvas is still what we snapshot for AI and plan capture. Pick the clearest image with the least obstructions. Drag the canvas to pan; use the <strong>Zoom</strong> slider (middle = load zoom). <strong>Create Lot Polygon</strong> focuses AI on the lot.</div>
         <div class="map-row">
@@ -1180,24 +1139,6 @@ select.sc-inp{cursor:pointer;width:40px}
         <button class="btn" id="btn-map-detect" style="display:none">Run AI Detect</button>
         <button class="btn y" id="btn-map-capture" style="display:none">Use Imagery →</button>
         <button class="btn y" id="btn-page-load">Load Selected →</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- MAP 3D REVIEW (flow testing) -->
-<div class="modal" id="map-3d-review-modal">
-  <div class="mbox map-3d-review-box">
-    <div class="mhdr no-print">
-      <div class="mtitle">3D review — detections</div>
-      <button class="btn" id="btn-map-3d-modal-close" type="button">✕</button>
-    </div>
-    <div class="mbody map-3d-review-body">
-      <div id="map-3d-modal-host"></div>
-      <div id="map-3d-review-sidebar">
-        <p id="map-3d-review-hint">Imagery is color-graded for a bright “toy aerial” look (saturation/contrast); lot uses basic shading so the photo reads cleanly when you orbit. <code style="font-size:9px">?map3dStyle=0</code> for raw pixels. <code style="font-size:9px">?map3dFlip=legacy</code> if flipped. <code style="font-size:9px">?debug3d=1</code> for corners.</p>
-        <div id="map-3d-confirm-stats"></div>
-        <button class="btn y" id="btn-map-flow-confirm" type="button">Confirm estimation</button>
       </div>
     </div>
   </div>
@@ -1782,31 +1723,8 @@ const MAP_PREVIEW_THROTTLE_MS=72;
 const MAP_TILE_CACHE_MAX=200;
 const mapTileImageCache=new Map();
 
-/** Maps imagery experimental flow (3D + crop + /api/map-auto-detect + modal) */
-let mapFlowStepIdx=1;
-let mapFlowCropBox=null;
-let mapFlowCropMode=false;
-let mapFlowCropDrag=null;
-let mapFlowLastApiResponse=null;
 let mapThreeInline={renderer:null,scene:null,camera:null,controls:null,lotGroup:null,plane:null,texture:null,anim:0};
-let mapFlowModal={
-  renderer:null,scene:null,camera:null,controls:null,lotGroup:null,plane:null,dots:null,
-  raycaster:null,dragging:null,crop:null,cropW:0,cropH:0,anim:0,
-};
 
-function updateMapFlowStepper(step){
-  mapFlowStepIdx=Math.max(1,Math.min(8,step|0));
-  document.querySelectorAll('#map-flow-track .map-flow-step').forEach(el=>{
-    const n=+el.dataset.i||0;
-    el.classList.toggle('active',n===mapFlowStepIdx);
-    el.classList.toggle('done',n<mapFlowStepIdx);
-  });
-}
-function resetMapFlowCropToFull(){
-  const detW=mapDetectionRenderSize.w||mapPreviewCanvas.width||1024;
-  const detH=mapDetectionRenderSize.h||mapPreviewCanvas.height||1024;
-  mapFlowCropBox={x:0,y:0,w:detW,h:detH};
-}
 function polygonAreaSqPx(polyPts){
   if(!Array.isArray(polyPts)||polyPts.length<3)return 0;
   let a=0;
@@ -1819,16 +1737,6 @@ function polygonAreaSqPx(polyPts){
     a+=x1*y2-x2*y1;
   }
   return Math.abs(a)/2;
-}
-function normalizeMapFlowCrop(){
-  const detW=mapDetectionRenderSize.w||mapPreviewCanvas.width;
-  const detH=mapDetectionRenderSize.h||mapPreviewCanvas.height;
-  let {x,y,w,h}=mapFlowCropBox||{x:0,y:0,w:detW,h:detH};
-  x=Math.max(0,Math.min(detW-1,Math.floor(x)));
-  y=Math.max(0,Math.min(detH-1,Math.floor(y)));
-  w=Math.max(8,Math.min(detW-x,Math.floor(w)));
-  h=Math.max(8,Math.min(detH-y,Math.floor(h)));
-  return{x,y,w,h};
 }
 
 /** Match CanvasTexture.flipY to plane-local Y; use ?map3dFlip=legacy if overlays look vertically mirrored. */
@@ -2127,32 +2035,6 @@ function addMap3dDebugMarkers(lotGroup,planeMesh,imageWidth,imageHeight,fullFram
     console.debug('[paveview map3d] full→tex corner BR',imageToWorld(cx+iw,cy+ih,iw,ih,pw,ph,c));
   }
 }
-function drawMapFlowCropOverlay(){
-  if(pageModalView!=='map'||!mapPreviewCanvas||!mapFlowCropBox)return;
-  const detW=mapDetectionRenderSize.w||mapPreviewCanvas.width;
-  const detH=mapDetectionRenderSize.h||mapPreviewCanvas.height;
-  const sx=mapPreviewCanvas.width/Math.max(1,detW);
-  const sy=mapPreviewCanvas.height/Math.max(1,detH);
-  let x=mapFlowCropBox.x,y=mapFlowCropBox.y,w=mapFlowCropBox.w,h=mapFlowCropBox.h;
-  if(mapFlowCropDrag){
-    const x0=Math.min(mapFlowCropDrag.x0,mapFlowCropDrag.x1);
-    const y0=Math.min(mapFlowCropDrag.y0,mapFlowCropDrag.y1);
-    const x1=Math.max(mapFlowCropDrag.x0,mapFlowCropDrag.x1);
-    const y1=Math.max(mapFlowCropDrag.y0,mapFlowCropDrag.y1);
-    x=x0;y=y0;w=x1-x0;h=y1-y0;
-  }
-  if(w<2||h<2)return;
-  const cx=x*sx,cy=y*sy,cw=w*sx,ch=h*sy;
-  mapPreviewCtx.save();
-  mapPreviewCtx.strokeStyle='rgba(250,204,21,0.95)';
-  mapPreviewCtx.lineWidth=2;
-  mapPreviewCtx.setLineDash([6,4]);
-  mapPreviewCtx.strokeRect(cx,cy,cw,ch);
-  mapPreviewCtx.fillStyle='rgba(250,204,21,0.08)';
-  mapPreviewCtx.fillRect(cx,cy,cw,ch);
-  mapPreviewCtx.setLineDash([]);
-  mapPreviewCtx.restore();
-}
 function ensureInlineMapThree(){
   if(typeof THREE==='undefined'||typeof THREE.OrbitControls==='undefined')return false;
   const host=document.getElementById('map-three-host');
@@ -2221,225 +2103,6 @@ function syncInlineMapThreeFromRaw(){
   setupMapParkingDemoControls(mapThreeInline.controls);
   resizeInlineMapThree();
   addMapThreeArtPropsToLotGroup(mapThreeInline.lotGroup,baseW,baseH);
-}
-function resizeMapFlowModalThree(){
-  if(!mapFlowModal||!mapFlowModal.renderer)return;
-  const host=document.getElementById('map-3d-modal-host');
-  if(!host)return;
-  const w=Math.max(320,host.clientWidth||640);
-  const h=Math.max(360,host.clientHeight||480);
-  mapFlowModal.camera.aspect=w/h;
-  mapFlowModal.camera.updateProjectionMatrix();
-  mapFlowModal.camera.lookAt(0,0,0);
-  mapFlowModal.renderer.setSize(w,h);
-}
-function stopMapFlowModalLoop(){
-  if(mapFlowModal&&mapFlowModal.anim)cancelAnimationFrame(mapFlowModal.anim);
-  if(mapFlowModal&&mapFlowModal.controls){
-    try{mapFlowModal.controls.dispose();}catch(e){}
-  }
-  if(mapFlowModal&&mapFlowModal.renderer){
-    try{mapFlowModal.renderer.dispose();}catch(e){}
-    const host=document.getElementById('map-3d-modal-host');
-    if(host)host.innerHTML='';
-  }
-  mapFlowModal={renderer:null,scene:null,camera:null,controls:null,lotGroup:null,plane:null,dots:null,raycaster:null,dragging:null,crop:null,cropW:0,cropH:0,anim:0};
-}
-function updateMapFlowConfirmStats(apiData,cropBox){
-  const el=document.getElementById('map-3d-confirm-stats');
-  if(!el)return;
-  const fpp=metersPerPixel(mapViewState.lat,mapViewState.zoom)*3.28084;
-  const poly=apiData.polygon||[];
-  const areaPx=polygonAreaSqPx(poly);
-  const areaSqFt=areaPx*fpp*fpp;
-  const stalls=apiData.stalls||[];
-  el.textContent=`Lot (threshold contour) ≈ ${Math.round(areaSqFt)} sq ft @ map zoom\nStall-like detections: ${stalls.length}\nCrop: ${cropBox.w}×${cropBox.h} px`;
-}
-function openMap3dReviewModal(apiData,cropBox){
-  const host=document.getElementById('map-3d-modal-host');
-  if(!host||typeof THREE==='undefined'||typeof THREE.OrbitControls==='undefined'){
-    setImportStatus('Three.js not loaded — check CDN.',true);
-    return;
-  }
-  stopMapFlowModalLoop();
-  void host.offsetWidth;
-  const rw=Math.max(320,host.clientWidth||640);
-  const rh=Math.max(360,host.clientHeight||480);
-  const scene=new THREE.Scene();
-  scene.background=new THREE.Color(0xe8f2ee);
-  const camera=new THREE.PerspectiveCamera(60,rw/rh,1,5000);
-  const renderer=new THREE.WebGLRenderer({antialias:true});
-  configureMapRendererColor(renderer);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
-  renderer.setSize(rw,rh);
-  const controls=new THREE.OrbitControls(camera,renderer.domElement);
-  const cropCanvas=document.createElement('canvas');
-  cropCanvas.width=Math.max(1,Math.floor(cropBox.w));
-  cropCanvas.height=Math.max(1,Math.floor(cropBox.h));
-  cropCanvas.getContext('2d').drawImage(
-    mapBaseRawImage,
-    cropBox.x,cropBox.y,cropBox.w,cropBox.h,
-    0,0,cropCanvas.width,cropCanvas.height,
-  );
-  const gradedCrop=gradeMapImageryCanvas(cropCanvas);
-  const tex=new THREE.CanvasTexture(gradedCrop);
-  configureMapImageryTexture(tex,renderer);
-  const ar=cropCanvas.width/Math.max(1,cropCanvas.height);
-  const basePlaneH=160;
-  const basePlaneW=basePlaneH*ar;
-  const lotGroup=new THREE.Group();
-  lotGroup.rotation.x=MAP3D_LOT_TILT;
-  scene.add(lotGroup);
-  addMapParkingDemoLights(scene);
-  const plane=new THREE.Mesh(
-    createMapViewPlaneGeometry(basePlaneW,basePlaneH),
-    createMapViewMaterial(tex),
-  );
-  lotGroup.add(plane);
-  const iw=cropCanvas.width;
-  const ih=cropCanvas.height;
-  const {width:pw,height:ph}=plane.geometry.parameters;
-  const span=Math.max(pw,ph,1);
-  const overlayLift=Math.max(0.35,span*0.004);
-  const dotRadius=Math.min(5,Math.max(1.6,span*0.013));
-  const dots=[];
-  (apiData.stalls||[]).forEach((d,di)=>{
-    const c=detectionCenterPoint(d);
-    const {x:lx,y:ly}=imageToWorld(c.x,c.y,iw,ih,pw,ph);
-    if(isMap3dDebugEnabled()){
-      console.debug('[paveview map3d] stall',di,{det:c,planeLocal:{x:lx,y:ly},iw,ih,pw,ph});
-    }
-    const dot=new THREE.Mesh(
-      new THREE.SphereGeometry(dotRadius,18,18),
-      new THREE.MeshBasicMaterial({color:0xfff176}),
-    );
-    dot.position.set(lx,ly,overlayLift);
-    dot.userData={feat:d};
-    lotGroup.add(dot);
-    dots.push(dot);
-  });
-  const cropOrigin={x:cropBox.x,y:cropBox.y};
-  const poly=apiData.polygon||[];
-  if(poly.length>=3){
-    const pts=poly.map((pair)=>{
-      const px=Number(pair[0]);
-      const py=Number(pair[1]);
-      const {x:lx,y:ly}=imageToWorld(px,py,iw,ih,pw,ph,cropOrigin);
-      return new THREE.Vector3(lx,ly,overlayLift);
-    });
-    const g=new THREE.BufferGeometry().setFromPoints(pts);
-    const lineLoop=new THREE.LineLoop(g,new THREE.LineBasicMaterial({color:0x38bdf8}));
-    lotGroup.add(lineLoop);
-  }
-  addMap3dDebugMarkers(lotGroup,plane,iw,ih,cropBox);
-  addMapThreeArtPropsToLotGroup(lotGroup,pw,ph);
-  setupMapViewCamera(camera,pw,ph);
-  setupMapParkingDemoControls(controls);
-  host.appendChild(renderer.domElement);
-  const raycaster=new THREE.Raycaster();
-  const localHit=new THREE.Vector3();
-  mapFlowModal={
-    renderer,scene,camera,controls,lotGroup,plane,dots,raycaster,dragging:null,
-    crop:{...cropBox},cropW:iw,cropH:ih,anim:0,
-  };
-  function screenToNdc(clientX,clientY){
-    const rect=renderer.domElement.getBoundingClientRect();
-    return new THREE.Vector2(
-      ((clientX-rect.left)/rect.width)*2-1,
-      -((clientY-rect.top)/rect.height)*2+1,
-    );
-  }
-  renderer.domElement.addEventListener('pointerdown',e=>{
-    if(e.button!==0)return;
-    const ndc=screenToNdc(e.clientX,e.clientY);
-    raycaster.setFromCamera(ndc,camera);
-    const hits=raycaster.intersectObjects(dots,true);
-    if(hits.length){
-      mapFlowModal.dragging=hits[0].object;
-      try{renderer.domElement.setPointerCapture(e.pointerId);}catch(err){}
-    }
-  });
-  renderer.domElement.addEventListener('pointermove',e=>{
-    if(!mapFlowModal.dragging)return;
-    const ndc=screenToNdc(e.clientX,e.clientY);
-    raycaster.setFromCamera(ndc,camera);
-    const pl=mapFlowModal.plane;
-    const grp=mapFlowModal.lotGroup;
-    if(!pl||!grp)return;
-    const surf=raycaster.intersectObject(pl,false);
-    if(!surf.length)return;
-    localHit.copy(surf[0].point);
-    grp.worldToLocal(localHit);
-    const {width:pw,height:ph}=pl.geometry.parameters;
-    const cw=mapFlowModal.cropW;
-    const ch=mapFlowModal.cropH;
-    mapFlowModal.dragging.position.set(localHit.x,localHit.y,overlayLift);
-    const {x:pixX,y:pixY}=worldToImage(localHit.x,localHit.y,cw,ch,pw,ph);
-    const feat=mapFlowModal.dragging.userData.feat;
-    if(feat){
-      feat.x=pixX;
-      feat.y=pixY;
-    }
-    updateMapFlowConfirmStats({...apiData,stalls:apiData.stalls},cropBox);
-  });
-  function endDrag(){mapFlowModal.dragging=null;}
-  renderer.domElement.addEventListener('pointerup',endDrag);
-  renderer.domElement.addEventListener('pointercancel',endDrag);
-  openModal('map-3d-review-modal');
-  function loop(){
-    if(!mapFlowModal.renderer)return;
-    mapFlowModal.anim=requestAnimationFrame(loop);
-    controls.update();
-    renderer.render(scene,camera);
-  }
-  loop();
-  updateMapFlowConfirmStats(apiData,cropBox);
-}
-async function runMapFlowAutoDetect(){
-  if(!mapBaseRawImage){
-    setImportStatus('Load imagery first.',true);
-    return;
-  }
-  const box=normalizeMapFlowCrop();
-  const fullDataUrl=mapBaseRawImage.toDataURL('image/png');
-  setImportStatus('Flow: server threshold + contour + Roboflow on crop…');
-  updateMapFlowStepper(6);
-  try{
-    const res=await fetch('/api/map-auto-detect',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        imageDataUrl:fullDataUrl,
-        crop:box,
-        threshold:100,
-        runDetections:true,
-      }),
-    });
-    const data=await res.json();
-    if(!res.ok)throw new Error(data?.error||'map-auto-detect failed');
-    mapFlowLastApiResponse=data;
-    openMap3dReviewModal(data,box);
-    updateMapFlowStepper(7);
-    setImportStatus(`Flow: ${(data.polygon||[]).length}-pt boundary, ${(data.stalls||[]).length} stalls — review 3D modal.`);
-  }catch(e){
-    console.error(e);
-    setImportStatus(String(e.message||e),true);
-    updateMapFlowStepper(5);
-  }
-}
-function finalizeMapFlowEstimate(){
-  const data=mapFlowLastApiResponse;
-  if(!data)return;
-  const fpp=metersPerPixel(mapViewState.lat,mapViewState.zoom)*3.28084;
-  const areaPx=polygonAreaSqPx(data.polygon||[]);
-  const areaSqFt=areaPx*fpp*fpp;
-  const n=Array.isArray(data.stalls)?data.stalls.length:0;
-  updateMapFlowStepper(8);
-  setImportStatus(
-    `Confirmed (trial flow): ~${areaSqFt.toFixed(0)} sq ft from threshold polygon, ${n} stall-like picks. Use "Use Imagery →" to load the map plan.`,
-  );
-  closeModal('map-3d-review-modal');
-  stopMapFlowModalLoop();
 }
 
 function mapPointerToCanvasPx(clientX,clientY,rect){
@@ -4604,7 +4267,6 @@ function setPageModalView(view){
     updateHistoricalControls();
     void ensureWaybackYears(false);
     syncMapZoomSliderToViewState();
-    updateMapFlowStepper(Math.max(mapFlowStepIdx,2));
     requestAnimationFrame(()=>{
       resizeInlineMapThree();
       syncInlineMapThreeFromRaw();
@@ -4616,7 +4278,6 @@ function setPageModalView(view){
 
 function openImportSourceChooser(){
   setPageModalView('source');
-  updateMapFlowStepper(1);
   openModal('page-modal');
 }
 
@@ -4960,7 +4621,6 @@ function drawMapOverlay(){
     mapPreviewCtx.restore();
   }
   drawMapRoiOverlay();
-  drawMapFlowCropOverlay();
 }
 const MAP_ROI_DOT_CURSOR=(()=>{
   const svg='<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"><circle cx="9" cy="9" r="4.5" fill="#fff" stroke="#111" stroke-width="1.5"/></svg>';
@@ -4974,10 +4634,6 @@ function syncMapPreviewCursor(){
   }
   if(mapReviewState.active){
     mapPreviewCanvas.style.cursor=mapInteraction.dragging?'grabbing':'grab';
-    return;
-  }
-  if(mapFlowCropMode){
-    mapPreviewCanvas.style.cursor='crosshair';
     return;
   }
   if(mapRoiDrawMode){
@@ -5135,10 +4791,8 @@ async function loadMapPreview(opts={}){
     syncMapInputsFromState();
     if(opts.syncMapZoomBaseline)mapZoomBaselineZ=Number(mapViewState.zoom);
     syncMapZoomSliderToViewState();
-    resetMapFlowCropToFull();
     syncInlineMapThreeFromRaw();
     updateGoogleEarthExploreUi();
-    updateMapFlowStepper(Math.max(mapFlowStepIdx,4));
     setImportStatus('Drag to pan; use the zoom slider (50% = zoom when this view loaded), then click "Use Imagery".');
   }catch(e){
     console.error(e);
@@ -5162,7 +4816,6 @@ async function geocodeMapSearch(){
     mapViewState.lat=loc.lat;
     mapViewState.lng=loc.lng;
     syncMapInputsFromState();
-    updateMapFlowStepper(3);
     await loadMapPreview({fromInputs:false,syncMapZoomBaseline:true,reason:'Loading searched location…'});
   }catch(e){
     console.error(e);
@@ -5289,8 +4942,14 @@ async function runRoboflowDetection(){
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify(payload),
     });
-    const data=await res.json();
-    if(!res.ok)throw new Error(data?.error||'Detection failed');
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok){
+      const base=String(data?.error||'Detection failed');
+      const keyHint=/roboflow|api key|missing/i.test(base)
+        ? ' Set ROBOFLOW_API_KEY (or RF_API_KEY / NEXT_PUBLIC_ROBOFLOW_API_KEY) in Vercel → Project → Settings → Environment Variables, then redeploy.'
+        : '';
+      throw new Error(base+keyHint);
+    }
 
     const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
     const manualScanPoly=normalizeScanPolygon(
@@ -5723,32 +5382,9 @@ if(mapHistoricalYearEl){
 btnMapCapture.addEventListener('click',captureMapImageryIntoPlan);
 if(btnMapDetect)btnMapDetect.addEventListener('click',runRoboflowDetection);
 if(btnMapAiDetect)btnMapAiDetect.addEventListener('click',runRoboflowDetection);
-const btnMapFlowCrop=document.getElementById('btn-map-flow-crop');
-const btnMapFlowAuto=document.getElementById('btn-map-flow-auto');
-if(btnMapFlowCrop){
-  btnMapFlowCrop.addEventListener('click',()=>{
-    mapFlowCropMode=!mapFlowCropMode;
-    btnMapFlowCrop.classList.toggle('y',mapFlowCropMode);
-    btnMapFlowCrop.textContent=mapFlowCropMode?'Crop (on)':'Crop area';
-    if(mapRoiDrawMode&&mapFlowCropMode){
-      mapRoiDrawMode=false;
-      syncMapRoiButtons();
-    }
-    syncMapPreviewCursor();
-    setImportStatus(mapFlowCropMode?'Drag a rectangle on the preview to set the detection crop.':'Crop mode off.');
-  });
-}
-if(btnMapFlowAuto)btnMapFlowAuto.addEventListener('click',()=>{void runMapFlowAutoDetect();});
-const btnMap3dModalClose=document.getElementById('btn-map-3d-modal-close');
-const btnMapFlowConfirm=document.getElementById('btn-map-flow-confirm');
-if(btnMap3dModalClose)btnMap3dModalClose.addEventListener('click',()=>{
-  closeModal('map-3d-review-modal');
-  stopMapFlowModalLoop();
-});
-if(btnMapFlowConfirm)btnMapFlowConfirm.addEventListener('click',finalizeMapFlowEstimate);
 mapPreviewCanvas.addEventListener('mousemove',()=>{
   if(pageModalView!=='map')return;
-  if(mapInteraction.dragging||mapVectorDrag||mapVectorDragEdge||mapFlowCropDrag)return;
+  if(mapInteraction.dragging||mapVectorDrag||mapVectorDragEdge)return;
   syncMapPreviewCursor();
 });
 
@@ -5792,12 +5428,6 @@ mapPreviewCanvas.addEventListener('mousedown',e=>{
   const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
   const toDet=(x,y)=>({x:x/sx,y:y/sy});
   const local=toDet(mx,my);
-  if(!mapReviewState.active&&mapFlowCropMode&&e.button===0){
-    e.preventDefault();
-    const pt=toDet(mxCanvas,myCanvas);
-    mapFlowCropDrag={x0:pt.x,y0:pt.y,x1:pt.x,y1:pt.y};
-    return;
-  }
   if(!mapReviewState.active&&mapRoiDrawMode&&e.button===0){
     e.preventDefault();
     const pt=toDet(mxCanvas,myCanvas);
@@ -5941,19 +5571,6 @@ mapPreviewCanvas.addEventListener('contextmenu',e=>{
   drawMapOverlay();
 });
 window.addEventListener('mousemove',e=>{
-  if(mapFlowCropDrag&&pageModalView==='map'){
-    const rect=mapPreviewCanvas.getBoundingClientRect();
-    const scaleX=mapPreviewCanvas.width/Math.max(1,rect.width);
-    const scaleY=mapPreviewCanvas.height/Math.max(1,rect.height);
-    const mxCanvas=(e.clientX-rect.left)*scaleX;
-    const myCanvas=(e.clientY-rect.top)*scaleY;
-    const sx=mapDetectionRenderSize.w?mapPreviewCanvas.width/mapDetectionRenderSize.w:1;
-    const sy=mapDetectionRenderSize.h?mapPreviewCanvas.height/mapDetectionRenderSize.h:1;
-    mapFlowCropDrag.x1=mxCanvas/sx;
-    mapFlowCropDrag.y1=myCanvas/sy;
-    drawMapOverlay();
-    return;
-  }
   if(mapVectorDrag){
     const rect=mapPreviewCanvas.getBoundingClientRect();
     const mx=e.clientX-rect.left,my=e.clientY-rect.top;
@@ -6020,27 +5637,6 @@ window.addEventListener('mousemove',e=>{
   throttleMapPreview('Panning imagery…');
 });
 window.addEventListener('mouseup',()=>{
-  if(mapFlowCropDrag){
-    const detW=mapDetectionRenderSize.w||mapPreviewCanvas.width;
-    const detH=mapDetectionRenderSize.h||mapPreviewCanvas.height;
-    let x0=Math.min(mapFlowCropDrag.x0,mapFlowCropDrag.x1);
-    let y0=Math.min(mapFlowCropDrag.y0,mapFlowCropDrag.y1);
-    let w=Math.abs(mapFlowCropDrag.x1-mapFlowCropDrag.x0);
-    let h=Math.abs(mapFlowCropDrag.y1-mapFlowCropDrag.y0);
-    if(w>12&&h>12){
-      x0=Math.max(0,Math.min(detW-w,x0));
-      y0=Math.max(0,Math.min(detH-h,y0));
-      w=Math.min(w,detW-x0);
-      h=Math.min(h,detH-y0);
-      mapFlowCropBox={x:x0,y:y0,w,h};
-      updateMapFlowStepper(5);
-      setImportStatus(`Crop ROI: ${Math.round(w)}×${Math.round(h)} px. Run "Flow: crop → auto-detect".`);
-    }
-    mapFlowCropDrag=null;
-    drawMapOverlay();
-    syncMapPreviewCursor();
-    return;
-  }
   if(mapVectorDrag){mapVectorDrag=null;return;}
   if(mapVectorDragEdge){mapVectorDragEdge=null;syncMapPreviewCursor();return;}
   if(!mapInteraction.dragging)return;
@@ -6055,7 +5651,6 @@ window.addEventListener('mouseup',()=>{
 syncMapPreviewCursor();
 window.addEventListener('resize',()=>{
   resizeInlineMapThree();
-  resizeMapFlowModalThree();
   resizeGoogleEarthExploreMap();
 });
 if(mapRenderStyleSel)mapRenderStyleSel.value=mapRenderStyle;

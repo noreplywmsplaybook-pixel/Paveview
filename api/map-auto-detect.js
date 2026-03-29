@@ -14,6 +14,17 @@ function pickFirstNonEmpty(values) {
   return '';
 }
 
+function roboflowApiKeyFromEnv() {
+  return pickFirstNonEmpty([
+    process.env.ROBOFLOW_API_KEY,
+    process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY,
+    process.env.ROBOFLOW_KEY,
+    process.env.RF_API_KEY,
+    process.env.ROBOFLOW_PRIVATE_API_KEY,
+    process.env.VERCEL_ROBOFLOW_API_KEY
+  ]);
+}
+
 /** Douglas–Peucker on open polyline */
 function simplifyRdp(points, epsilon) {
   if (!points || points.length < 3) return points ? points.slice() : [];
@@ -155,12 +166,7 @@ function orderBoundaryByAngle(boundary) {
 }
 
 async function runRoboflowHybrid(imageBase64) {
-  const apiKey = pickFirstNonEmpty([
-    process.env.ROBOFLOW_API_KEY,
-    process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY,
-    process.env.ROBOFLOW_KEY,
-    process.env.RF_API_KEY,
-  ]);
+  const apiKey = roboflowApiKeyFromEnv();
   const modelId = pickFirstNonEmpty([
     process.env.ROBOFLOW_MODEL_ID,
     process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
