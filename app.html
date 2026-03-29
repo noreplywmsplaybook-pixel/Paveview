@@ -1176,7 +1176,7 @@ select.sc-inp{cursor:pointer;width:40px}
     <div class="mbody map-3d-review-body">
       <div id="map-3d-modal-host"></div>
       <div id="map-3d-review-sidebar">
-        <p id="map-3d-review-hint">Drag yellow markers on the lot plane to nudge stall centers. Orbit / pan / zoom like any 3D view. If dots look flipped vertically vs the photo, open with <code style="font-size:9px">?map3dFlip=legacy</code>. Debug: <code style="font-size:9px">?debug3d=1</code> or localStorage <code style="font-size:9px">paveview_debug_3d=1</code>.</p>
+        <p id="map-3d-review-hint">Terrain uses displacement from the same aerial texture (tune height with <code style="font-size:9px">?disp=6</code>). Drag yellow markers to nudge stall centers. If dots look flipped vs the photo, try <code style="font-size:9px">?map3dFlip=legacy</code>. Debug: <code style="font-size:9px">?debug3d=1</code>.</p>
         <div id="map-3d-confirm-stats"></div>
         <button class="btn y" id="btn-map-flow-confirm" type="button">Confirm estimation</button>
       </div>
@@ -1756,6 +1756,48 @@ function configureMapImageryTexture(tex,renderer){
   }
   tex.needsUpdate=true;
 }
+
+const MAP3D_PLANE_W_SEG=256;
+const MAP3D_PLANE_H_SEG=256;
+
+/** Height from shared aerial texture (luminance → displacement). Override: ?disp=8 */
+function map3dDisplacementScale(){
+  try{
+    const q=new URLSearchParams(location.search).get('disp');
+    if(q!==null&&q!==''){
+      const n=Number(q);
+      if(Number.isFinite(n))return Math.max(0,n);
+    }
+  }catch(e){}
+  return 10;
+}
+
+function createMapTerrainPlaneGeometry(width,height){
+  return new THREE.PlaneGeometry(
+    width,
+    height,
+    MAP3D_PLANE_W_SEG,
+    MAP3D_PLANE_H_SEG,
+  );
+}
+
+function createMapTerrainStandardMaterial(mapTex){
+  const opts={
+    displacementBias:0,
+    metalness:0.04,
+    roughness:0.9,
+    side:THREE.DoubleSide,
+    color:0x35383f,
+    displacementScale:0,
+  };
+  if(mapTex){
+    opts.map=mapTex;
+    opts.displacementMap=mapTex;
+    opts.displacementScale=map3dDisplacementScale();
+    opts.color=0xffffff;
+  }
+  return new THREE.MeshStandardMaterial(opts);
+}
 /** Oblique aerial framing (tilted view, not nadir). */
 function frameMap3dObliqueCamera(camera,controls,planeW,planeH){
   if(!camera||!controls)return;
@@ -1844,6 +1886,9 @@ window.paveviewMap3d={
   configureMapImageryTexture,
   frameMap3dObliqueCamera,
   map3dLegacyTextureOrientation,
+  createMapTerrainPlaneGeometry,
+  createMapTerrainStandardMaterial,
+  map3dDisplacementScale,
 };
 
 function addMap3dDebugMarkers(lotGroup,planeMesh,imageWidth,imageHeight,fullFrameCrop){
@@ -1919,20 +1964,20 @@ function ensureInlineMapThree(){
   host.appendChild(renderer.domElement);
   const controls=new THREE.OrbitControls(camera,renderer.domElement);
   controls.enableDamping=true;
-  scene.add(new THREE.HemisphereLight(0xa8b8d8,0x0f1014,0.58));
-  scene.add(new THREE.AmbientLight(0x7a8298,0.38));
-  const key=new THREE.DirectionalLight(0xfff5e6,0.95);
+  scene.add(new THREE.HemisphereLight(0xa8b8d8,0x0f1014,0.72));
+  scene.add(new THREE.AmbientLight(0x8a92a8,0.45));
+  const key=new THREE.DirectionalLight(0xffffff,1);
   key.position.set(80,140,55);
   scene.add(key);
-  const fill=new THREE.DirectionalLight(0xb8c8ff,0.28);
+  const fill=new THREE.DirectionalLight(0xb8c8ff,0.38);
   fill.position.set(-90,60,-70);
   scene.add(fill);
   const lotGroup=new THREE.Group();
   lotGroup.rotation.x=-Math.PI/2;
   scene.add(lotGroup);
   const plane=new THREE.Mesh(
-    new THREE.PlaneGeometry(200,200),
-    new THREE.MeshLambertMaterial({color:0xffffff,side:THREE.DoubleSide}),
+    createMapTerrainPlaneGeometry(200,200),
+    createMapTerrainStandardMaterial(null),
   );
   lotGroup.add(plane);
   frameMap3dObliqueCamera(camera,controls,200,200);
@@ -1966,10 +2011,19 @@ function syncInlineMapThreeFromRaw(){
   if(mapThreeInline.texture)mapThreeInline.texture.dispose();
   mapThreeInline.texture=new THREE.CanvasTexture(imgCanvas);
   configureMapImageryTexture(mapThreeInline.texture,mapThreeInline.renderer);
-  mapThreeInline.plane.material.map=mapThreeInline.texture;
-  mapThreeInline.plane.material.needsUpdate=true;
+  const mat=mapThreeInline.plane.material;
+  if(mat&&mat.isMeshStandardMaterial){
+    mat.map=mapThreeInline.texture;
+    mat.displacementMap=mapThreeInline.texture;
+    mat.displacementScale=map3dDisplacementScale();
+    mat.color.setHex(0xffffff);
+    mat.needsUpdate=true;
+  }else{
+    if(mat&&mat.dispose)mat.dispose();
+    mapThreeInline.plane.material=createMapTerrainStandardMaterial(mapThreeInline.texture);
+  }
   mapThreeInline.plane.geometry.dispose();
-  mapThreeInline.plane.geometry=new THREE.PlaneGeometry(baseW,baseH);
+  mapThreeInline.plane.geometry=createMapTerrainPlaneGeometry(baseW,baseH);
   frameMap3dObliqueCamera(mapThreeInline.camera,mapThreeInline.controls,baseW,baseH);
   resizeInlineMapThree();
 }
@@ -2034,17 +2088,17 @@ function openMap3dReviewModal(apiData,cropBox){
   const lotGroup=new THREE.Group();
   lotGroup.rotation.x=-Math.PI/2;
   scene.add(lotGroup);
-  scene.add(new THREE.HemisphereLight(0xa8b8d8,0x0f1014,0.58));
-  scene.add(new THREE.AmbientLight(0x7a8298,0.38));
-  const sun=new THREE.DirectionalLight(0xfff5e6,0.95);
+  scene.add(new THREE.HemisphereLight(0xa8b8d8,0x0f1014,0.72));
+  scene.add(new THREE.AmbientLight(0x8a92a8,0.45));
+  const sun=new THREE.DirectionalLight(0xffffff,1.05);
   sun.position.set(220,280,180);
   scene.add(sun);
-  const fill=new THREE.DirectionalLight(0xb8c8ff,0.32);
+  const fill=new THREE.DirectionalLight(0xb8c8ff,0.4);
   fill.position.set(-200,90,-160);
   scene.add(fill);
   const plane=new THREE.Mesh(
-    new THREE.PlaneGeometry(basePlaneW,basePlaneH),
-    new THREE.MeshLambertMaterial({map:tex,side:THREE.DoubleSide}),
+    createMapTerrainPlaneGeometry(basePlaneW,basePlaneH),
+    createMapTerrainStandardMaterial(tex),
   );
   lotGroup.add(plane);
   const iw=cropCanvas.width;
