@@ -19,11 +19,21 @@ function roboflowApiKeyFromEnv() {
     process.env.ROBOFLOW_KEY,
     process.env.RF_API_KEY,
     process.env.ROBOFLOW_PRIVATE_API_KEY,
-    process.env.VERCEL_ROBOFLOW_API_KEY
+    process.env.VERCEL_ROBOFLOW_API_KEY,
+    process.env.ROBOFLOW_API_TOKEN,
+    process.env.ROBOFLOW_INFERENCE_API_KEY,
+    process.env.ROBOFLOW_TOKEN
   ]);
 }
 
 module.exports = async (req, res) => {
+  if (req.method === 'GET') {
+    sendJson(res, 200, {
+      ok: true,
+      roboflowConfigured: Boolean(roboflowApiKeyFromEnv())
+    });
+    return;
+  }
   if (req.method !== 'POST') {
     sendJson(res, 405, { error: 'Method not allowed.' });
     return;
@@ -51,7 +61,10 @@ module.exports = async (req, res) => {
         has_ROBOFLOW_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_KEY])),
         has_RF_API_KEY: Boolean(pickFirstNonEmpty([process.env.RF_API_KEY])),
         has_ROBOFLOW_PRIVATE_API_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_PRIVATE_API_KEY])),
-        has_VERCEL_ROBOFLOW_API_KEY: Boolean(pickFirstNonEmpty([process.env.VERCEL_ROBOFLOW_API_KEY]))
+        has_VERCEL_ROBOFLOW_API_KEY: Boolean(pickFirstNonEmpty([process.env.VERCEL_ROBOFLOW_API_KEY])),
+        has_ROBOFLOW_API_TOKEN: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_API_TOKEN])),
+        has_ROBOFLOW_INFERENCE_API_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_INFERENCE_API_KEY])),
+        has_ROBOFLOW_TOKEN: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_TOKEN]))
       }
     });
     return;

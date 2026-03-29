@@ -471,24 +471,29 @@ select.sc-inp{cursor:pointer;width:40px}
   font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);
   border:1px solid var(--border);background:var(--surface2);padding:6px 8px;margin-bottom:8px;min-height:30px;
 }
+.map-preview-wrap{
+  width:100%;margin-top:8px;border:1px solid var(--border);background:var(--canvas);
+  border-radius:2px;overflow:hidden;
+}
+.map-preview-wrap--offscreen{
+  position:fixed;left:-10000px;top:0;width:1024px;height:1024px;margin:0;
+  border:none;opacity:0;pointer-events:none;overflow:hidden;
+}
+.map-preview-wrap--offscreen #map-preview{
+  display:block;width:1024px;height:1024px;
+}
+.map-preview-wrap--visible{
+  position:relative;left:auto;top:auto;opacity:1;pointer-events:auto;
+  max-height:min(52vh,520px);
+}
+.map-preview-wrap--visible #map-preview{
+  width:100%;height:auto;max-height:min(52vh,520px);display:block;
+  border:none;background:var(--canvas);object-fit:contain;
+}
 #map-preview{
-  width:100%;height:360px;border:1px solid var(--border);background:var(--canvas);
+  border:1px solid var(--border);background:var(--canvas);
   flex:1;min-width:0;display:block;
 }
-.map-split{
-  display:flex;gap:10px;align-items:stretch;width:100%;min-height:360px;
-}
-.map-split-main{flex:1;min-width:220px;display:flex;flex-direction:column;gap:6px;}
-.map-split-3d{
-  width:min(36vw,320px);min-width:200px;display:flex;flex-direction:column;
-  border:1px solid var(--border);background:var(--canvas);
-}
-.map-split-3d-hdr{
-  font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.1em;
-  text-transform:uppercase;color:var(--text3);padding:6px 8px;border-bottom:1px solid var(--border);
-  flex-shrink:0;
-}
-#map-three-host{flex:1;min-height:200px;}
 .hist-only{}
 #map-historical-year:disabled{opacity:.6;cursor:not-allowed}
 .map-earth-wrap{
@@ -1100,12 +1105,12 @@ select.sc-inp{cursor:pointer;width:40px}
           <button class="btn" id="btn-map-roi-clear" title="Clear scan polygon">Clear Polygon</button>
           <button class="btn" id="btn-map-roi-use-lot" title="Same as checkbox: ON = polygon is lot; OFF = polygon is ROI only, full Roboflow sync including lot">Use Polygon As Lot: OFF</button>
           <button class="btn" id="btn-map-debug-bw" title="Debug only: preview pass-2 snap layer">Preview B&W</button>
+          <button class="btn" id="btn-map-tile-preview" type="button" title="Show the flat satellite tile used for AI and capture">Show tile preview</button>
           <button class="btn y" id="btn-map-ai-detect" title="Run primary + car Roboflow models on the current map view">Auto-detect</button>
         </div>
-        <div class="import-hint">The <strong>Google Maps</strong> strip above is real tilted 3D (when using current satellite, not Wayback). The flat canvas is still what we snapshot for AI and plan capture. Pick the clearest image with the least obstructions. Drag the canvas to pan; use the <strong>Zoom</strong> slider (middle = load zoom). <strong>Create Lot Polygon</strong> focuses AI on the lot.</div>
+        <div class="import-hint">Use the <strong>Google Maps</strong> strip for tilted 3D context (current satellite only; hidden for Wayback). Pan and zoom there to match what we tile for AI and capture. The <strong>Zoom</strong> slider still sets resolution (middle = load zoom). <strong>Show tile preview</strong> reveals the flat composite; it opens automatically for lot polygon drawing and after auto-detect.</div>
         <div class="map-row">
           <label class="ir"><input type="checkbox" id="map-roi-use-lot" title="ON: drawn polygon is the lot perimeter; other RF classes still sync. OFF: polygon is scan area only; RF lot + every class sync (including lot from Roboflow)."> <span class="il">Use polygon as lot perimeter</span></label>
-          <label class="ir"><input type="checkbox" id="map-3d-art-toggle" checked title="Low-poly trees &amp; cars on the Three.js preview (decorative; not from AI)."> <span class="il">Stylized 3D trees &amp; cars on orbit preview</span></label>
         </div>
         <div class="map-row">
           <label>Zoom</label>
@@ -1116,18 +1121,12 @@ select.sc-inp{cursor:pointer;width:40px}
         </div>
         <div id="map-import-status">Pick a location and click Refresh.</div>
         <div id="map-earth-wrap" class="map-earth-wrap" style="display:none">
-          <div class="map-earth-hdr">Google Maps — tilt &amp; rotate (3D / Earth-style). Use for context; capture &amp; detections use the flat satellite composite below.</div>
+          <div class="map-earth-hdr">Google Maps — pan, zoom, tilt &amp; rotate. This view drives the flat satellite tiles used for AI and capture.</div>
           <div id="map-google-earth-host" aria-label="Google Maps 3D explore"></div>
           <p class="map-earth-note" id="map-earth-disabled-note" style="display:none">3D explore uses live Google Maps (disabled for historical / Wayback imagery).</p>
         </div>
-        <div class="map-split">
-          <div class="map-split-main">
-            <canvas id="map-preview" width="1024" height="1024"></canvas>
-          </div>
-          <div class="map-split-3d">
-            <div class="map-split-3d-hdr">3D preview (orbit)</div>
-            <div id="map-three-host"></div>
-          </div>
+        <div id="map-preview-wrap" class="map-preview-wrap map-preview-wrap--offscreen" aria-hidden="true">
+          <canvas id="map-preview" width="1024" height="1024"></canvas>
         </div>
       </div>
       <div id="page-thumbs"></div>
@@ -1539,6 +1538,8 @@ function renderPlanTabs(){
 const GOOGLE_MAPS_API_KEY='AIzaSyDmfG4UZGYNEE6vlPEBiD8b6YT624eGZK0';
 let googleMapsJsLoaderPromise=null;
 let mapGoogleEarthExplore=null;
+let mapGoogleEarthSyncingFromApp=false;
+let mapGoogleEarthIdleListener=null;
 function loadGoogleMapsJsOnce(){
   if(window.google&&window.google.maps&&window.google.maps.Map)return Promise.resolve();
   if(googleMapsJsLoaderPromise)return googleMapsJsLoaderPromise;
@@ -1564,6 +1565,39 @@ function resizeGoogleEarthExploreMap(){
   if(!mapGoogleEarthExplore||!window.google||!google.maps)return;
   try{google.maps.event.trigger(mapGoogleEarthExplore,'resize');}catch(e){}
 }
+function setMapTilePreviewVisible(visible){
+  const wrap=document.getElementById('map-preview-wrap');
+  const btn=document.getElementById('btn-map-tile-preview');
+  if(!wrap)return;
+  wrap.classList.toggle('map-preview-wrap--offscreen',!visible);
+  wrap.classList.toggle('map-preview-wrap--visible',!!visible);
+  wrap.setAttribute('aria-hidden',visible?'false':'true');
+  if(btn)btn.textContent=visible?'Hide tile preview':'Show tile preview';
+}
+function attachGoogleEarthExploreIdleSync(){
+  if(!mapGoogleEarthExplore||!window.google||!google.maps)return;
+  if(mapGoogleEarthIdleListener)return;
+  mapGoogleEarthIdleListener=google.maps.event.addListener(mapGoogleEarthExplore,'idle',()=>{
+    if(mapGoogleEarthSyncingFromApp)return;
+    if(pageModalView!=='map'||mapViewState.mode==='historical')return;
+    const c=mapGoogleEarthExplore.getCenter();
+    if(!c)return;
+    const z=mapGoogleEarthExplore.getZoom();
+    const lat=c.lat();
+    const lng=c.lng();
+    const zi=typeof z==='number'&&Number.isFinite(z)?z:Number(mapViewState.zoom)||20;
+    const la=Number(mapViewState.lat)||0;
+    const ln=Number(mapViewState.lng)||0;
+    const zz=Number(mapViewState.zoom)||20;
+    const eps=1e-7;
+    if(Math.abs(lat-la)<eps&&Math.abs(lng-ln)<eps&&Math.abs(zi-zz)<1e-5)return;
+    mapViewState.lat=lat;
+    mapViewState.lng=lng;
+    mapViewState.zoom=zi;
+    syncMapZoomSliderToViewState();
+    throttleMapPreview('Google Map view…');
+  });
+}
 function updateGoogleEarthExploreUi(){
   const wrap=document.getElementById('map-earth-wrap');
   const host=document.getElementById('map-google-earth-host');
@@ -1586,25 +1620,31 @@ function ensureGoogleEarthExploreMap(){
     const lat=Number(mapViewState.lat)||0;
     const lng=Number(mapViewState.lng)||0;
     const z=Math.max(15,Math.min(22,Math.round(Number(mapViewState.zoom)||20)));
-    if(!mapGoogleEarthExplore){
-      mapGoogleEarthExplore=new google.maps.Map(host,{
-        center:{lat,lng},
-        zoom:z,
-        mapTypeId:google.maps.MapTypeId.HYBRID,
-        tilt:45,
-        heading:28,
-        mapTypeControl:true,
-        rotateControl:true,
-        scaleControl:true,
-        streetViewControl:false,
-        fullscreenControl:true,
-      });
-    }else{
-      mapGoogleEarthExplore.setCenter({lat,lng});
-      mapGoogleEarthExplore.setZoom(z);
-      try{
-        mapGoogleEarthExplore.setTilt(45);
-      }catch(e){/* older API */}
+    mapGoogleEarthSyncingFromApp=true;
+    try{
+      if(!mapGoogleEarthExplore){
+        mapGoogleEarthExplore=new google.maps.Map(host,{
+          center:{lat,lng},
+          zoom:z,
+          mapTypeId:google.maps.MapTypeId.HYBRID,
+          tilt:45,
+          heading:28,
+          mapTypeControl:true,
+          rotateControl:true,
+          scaleControl:true,
+          streetViewControl:false,
+          fullscreenControl:true,
+        });
+        attachGoogleEarthExploreIdleSync();
+      }else{
+        mapGoogleEarthExplore.setCenter({lat,lng});
+        mapGoogleEarthExplore.setZoom(z);
+        try{
+          mapGoogleEarthExplore.setTilt(45);
+        }catch(e){/* older API */}
+      }
+    }finally{
+      setTimeout(()=>{mapGoogleEarthSyncingFromApp=false;},480);
     }
     setTimeout(()=>resizeGoogleEarthExploreMap(),60);
     setTimeout(()=>resizeGoogleEarthExploreMap(),320);
@@ -1675,7 +1715,7 @@ function setAiDetectButtonState(state){
       btn.textContent='AI Detect ✓';
       btn.disabled=false;
     }else{
-      btn.textContent='Run AI Detect';
+      btn.textContent='Auto-detect';
       btn.disabled=false;
     }
   });
@@ -1844,8 +1884,7 @@ function addMapParkingDemoLights(scene){
 }
 
 function isMap3dArtPropsEnabled(){
-  const el=document.getElementById('map-3d-art-toggle');
-  return !el||!!el.checked;
+  return false;
 }
 function mapArtSeeded01(seed){
   const x=Math.sin(seed)*43758.5453123;
@@ -2084,25 +2123,7 @@ function resizeInlineMapThree(){
   mapThreeInline.renderer.setSize(w,h);
 }
 function syncInlineMapThreeFromRaw(){
-  if(!ensureInlineMapThree())return;
-  if(!mapBaseRawImage)return;
-  const imgCanvas=mapBaseRawImage;
-  const ar=imgCanvas.width/Math.max(1,imgCanvas.height);
-  const baseH=200;
-  const baseW=baseH*ar;
-  if(mapThreeInline.texture)mapThreeInline.texture.dispose();
-  const graded=gradeMapImageryCanvas(imgCanvas);
-  mapThreeInline.texture=new THREE.CanvasTexture(graded);
-  configureMapImageryTexture(mapThreeInline.texture,mapThreeInline.renderer);
-  const mat=mapThreeInline.plane.material;
-  if(mat&&mat.dispose)mat.dispose();
-  mapThreeInline.plane.material=createMapViewMaterial(mapThreeInline.texture);
-  mapThreeInline.plane.geometry.dispose();
-  mapThreeInline.plane.geometry=createMapViewPlaneGeometry(baseW,baseH);
-  setupMapViewCamera(mapThreeInline.camera,baseW,baseH);
-  setupMapParkingDemoControls(mapThreeInline.controls);
-  resizeInlineMapThree();
-  addMapThreeArtPropsToLotGroup(mapThreeInline.lotGroup,baseW,baseH);
+  /* Orbit Three.js preview removed; tile composite stays on #map-preview (often off-screen). */
 }
 
 function mapPointerToCanvasPx(clientX,clientY,rect){
@@ -4268,8 +4289,6 @@ function setPageModalView(view){
     void ensureWaybackYears(false);
     syncMapZoomSliderToViewState();
     requestAnimationFrame(()=>{
-      resizeInlineMapThree();
-      syncInlineMapThreeFromRaw();
       updateGoogleEarthExploreUi();
     });
   }
@@ -4374,7 +4393,7 @@ function applyMapZoomSliderFromUi(){
   mapViewState.zoom=z;
   const lat=mapViewState.lat;
   const ft=mapFeetPerPixel(lat,z);
-  setImportStatus(`Zoom ~${ft.toFixed(2)} ft/px · z${z.toFixed(2)} — drag to pan`);
+  setImportStatus(`Zoom ~${ft.toFixed(2)} ft/px · z${z.toFixed(2)} — pan/zoom Google Maps or open tile preview to drag the flat view`);
   throttleMapPreview('Updating map zoom…');
 }
 function normalizeLng(lng){
@@ -4791,9 +4810,8 @@ async function loadMapPreview(opts={}){
     syncMapInputsFromState();
     if(opts.syncMapZoomBaseline)mapZoomBaselineZ=Number(mapViewState.zoom);
     syncMapZoomSliderToViewState();
-    syncInlineMapThreeFromRaw();
     updateGoogleEarthExploreUi();
-    setImportStatus('Drag to pan; use the zoom slider (50% = zoom when this view loaded), then click "Use Imagery".');
+    setImportStatus('Pan/zoom in Google Maps or use the zoom slider (50% = load zoom). Use "Show tile preview" to see the flat composite, then "Use Imagery".');
   }catch(e){
     console.error(e);
     if(reqId!==mapRenderReqId)return;
@@ -4927,6 +4945,17 @@ async function captureMapImageryIntoPlan(){
 async function runRoboflowDetection(){
   setAiDetectButtonState('running');
   try{
+    try{
+      const healthRes=await fetch('/api/roboflow-detect',{method:'GET'});
+      if(healthRes.ok){
+        const h=await healthRes.json().catch(()=>({}));
+        if(h&&h.roboflowConfigured===false){
+          setImportStatus('Roboflow is not configured on the server. Set ROBOFLOW_API_KEY (or RF_API_KEY, ROBOFLOW_API_TOKEN, NEXT_PUBLIC_ROBOFLOW_API_KEY, etc.) in Vercel → Project → Settings → Environment Variables for this branch’s environment (Production / Preview), then redeploy.',true);
+          setAiDetectButtonState('idle');
+          return;
+        }
+      }
+    }catch(_){/* static host or offline — try POST anyway */}
     setImportStatus('Running Roboflow detection…');
     mapReviewState.active=false;
     mapInteraction.dragging=false;
@@ -4946,7 +4975,7 @@ async function runRoboflowDetection(){
     if(!res.ok){
       const base=String(data?.error||'Detection failed');
       const keyHint=/roboflow|api key|missing/i.test(base)
-        ? ' Set ROBOFLOW_API_KEY (or RF_API_KEY / NEXT_PUBLIC_ROBOFLOW_API_KEY) in Vercel → Project → Settings → Environment Variables, then redeploy.'
+        ? ' Set ROBOFLOW_API_KEY (or RF_API_KEY / ROBOFLOW_API_TOKEN / NEXT_PUBLIC_ROBOFLOW_API_KEY) in Vercel for Production and Preview, then redeploy.'
         : '';
       throw new Error(base+keyHint);
     }
@@ -5107,6 +5136,7 @@ async function runRoboflowDetection(){
       ? ` Zoom scan ${tileStats.tilesRan}/${tileStats.tilesPlanned} tiles, +${tileStats.added} merged stalls.`
       : '';
     setImportStatus(`Detected ${mapVectorDetections.length} zones. Snapped ${snapMoved}/${snapTotal} vertices (${snapPct}%).${zoomLabel} ${classSummary||'No classes found'}. Click polygons to edit vertices.`);
+    setMapTilePreviewVisible(true);
     setAiDetectButtonState('done');
   }catch(e){
     console.error(e);
@@ -5312,6 +5342,7 @@ if(btnMapRoiDraw){
     mapRoiDrawMode=!mapRoiDrawMode;
     if(mapRoiDrawMode){
       if(!Array.isArray(mapScanPoly))mapScanPoly=[];
+      setMapTilePreviewVisible(true);
       setImportStatus('Lot polygon mode ON. Click around the lot boundary; click near the first point to close.');
     }else{
       setImportStatus('Lot polygon mode OFF.');
@@ -5351,10 +5382,12 @@ if(mapRoiUseLotChk){
     }
   });
 }
-const map3dArtToggle=document.getElementById('map-3d-art-toggle');
-if(map3dArtToggle){
-  map3dArtToggle.addEventListener('change',()=>{
-    if(pageModalView==='map')syncInlineMapThreeFromRaw();
+const btnMapTilePreview=document.getElementById('btn-map-tile-preview');
+if(btnMapTilePreview){
+  btnMapTilePreview.addEventListener('click',()=>{
+    const wrap=document.getElementById('map-preview-wrap');
+    const vis=!!(wrap&&wrap.classList.contains('map-preview-wrap--visible'));
+    setMapTilePreviewVisible(!vis);
   });
 }
 mapImageryModeSel.addEventListener('change',async()=>{
@@ -5650,7 +5683,6 @@ window.addEventListener('mouseup',()=>{
 });
 syncMapPreviewCursor();
 window.addEventListener('resize',()=>{
-  resizeInlineMapThree();
   resizeGoogleEarthExploreMap();
 });
 if(mapRenderStyleSel)mapRenderStyleSel.value=mapRenderStyle;
