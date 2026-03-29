@@ -4945,17 +4945,6 @@ async function captureMapImageryIntoPlan(){
 async function runRoboflowDetection(){
   setAiDetectButtonState('running');
   try{
-    try{
-      const healthRes=await fetch('/api/roboflow-detect',{method:'GET'});
-      if(healthRes.ok){
-        const h=await healthRes.json().catch(()=>({}));
-        if(h&&h.roboflowConfigured===false){
-          setImportStatus('Roboflow is not configured on the server. Set ROBOFLOW_API_KEY (or RF_API_KEY, ROBOFLOW_API_TOKEN, NEXT_PUBLIC_ROBOFLOW_API_KEY, etc.) in Vercel → Project → Settings → Environment Variables for this branch’s environment (Production / Preview), then redeploy.',true);
-          setAiDetectButtonState('idle');
-          return;
-        }
-      }
-    }catch(_){/* static host or offline — try POST anyway */}
     setImportStatus('Running Roboflow detection…');
     mapReviewState.active=false;
     mapInteraction.dragging=false;
@@ -4970,14 +4959,22 @@ async function runRoboflowDetection(){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify(payload),
+      cache:'no-store',
     });
     const data=await res.json().catch(()=>({}));
     if(!res.ok){
       const base=String(data?.error||'Detection failed');
-      const keyHint=/roboflow|api key|missing/i.test(base)
-        ? ' Set ROBOFLOW_API_KEY (or RF_API_KEY / ROBOFLOW_API_TOKEN / NEXT_PUBLIC_ROBOFLOW_API_KEY) in Vercel for Production and Preview, then redeploy.'
-        : '';
-      throw new Error(base+keyHint);
+      const d=data?.diagnostics||{};
+      const parts=[base];
+      if(d.vercelEnv)parts.push(`Vercel: ${d.vercelEnv}.`);
+      if(Array.isArray(d.relatedEnvKeyNames)&&d.relatedEnvKeyNames.length){
+        parts.push(`Env names on server: ${d.relatedEnvKeyNames.join(', ')}.`);
+      }
+      if(typeof d.hint==='string'&&d.hint.trim())parts.push(d.hint.trim());
+      else if(/roboflow|api key|missing/i.test(base)){
+        parts.push('In Vercel, enable ROBOFLOW_API_KEY for Preview (branch deploys) and Production, then redeploy.');
+      }
+      throw new Error(parts.join(' '));
     }
 
     const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];

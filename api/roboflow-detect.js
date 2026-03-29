@@ -1,6 +1,9 @@
-function sendJson(res, statusCode, payload) {
+function sendJson(res, statusCode, payload, extraHeaders = {}) {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json');
+  for (const [k, v] of Object.entries(extraHeaders)) {
+    res.setHeader(k, v);
+  }
   res.end(JSON.stringify(payload));
 }
 
@@ -12,26 +15,72 @@ function pickFirstNonEmpty(values) {
   return '';
 }
 
+const ROBOFLOW_KEY_CANDIDATES = [
+  'ROBOFLOW_API_KEY',
+  'NEXT_PUBLIC_ROBOFLOW_API_KEY',
+  'ROBOFLOW_KEY',
+  'RF_API_KEY',
+  'ROBOFLOW_PRIVATE_API_KEY',
+  'VERCEL_ROBOFLOW_API_KEY',
+  'ROBOFLOW_API_TOKEN',
+  'ROBOFLOW_INFERENCE_API_KEY',
+  'ROBOFLOW_TOKEN'
+];
+
 function roboflowApiKeyFromEnv() {
-  return pickFirstNonEmpty([
-    process.env.ROBOFLOW_API_KEY,
-    process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY,
-    process.env.ROBOFLOW_KEY,
-    process.env.RF_API_KEY,
-    process.env.ROBOFLOW_PRIVATE_API_KEY,
-    process.env.VERCEL_ROBOFLOW_API_KEY,
-    process.env.ROBOFLOW_API_TOKEN,
-    process.env.ROBOFLOW_INFERENCE_API_KEY,
-    process.env.ROBOFLOW_TOKEN
-  ]);
+  return pickFirstNonEmpty(ROBOFLOW_KEY_CANDIDATES.map((k) => process.env[k]));
+}
+
+/** Names only (no values) — safe to return to the client for debugging. */
+function listRoboflowRelatedEnvKeyNames() {
+  try {
+    return Object.keys(process.env)
+      .filter((k) => /ROBOFLOW|RF_API/i.test(k))
+      .sort();
+  } catch (e) {
+    return [];
+  }
+}
+
+function findEmptyRoboflowEnvKeys() {
+  const out = [];
+  for (const k of ROBOFLOW_KEY_CANDIDATES) {
+    if (process.env[k] !== undefined && !pickFirstNonEmpty([process.env[k]])) {
+      out.push(k);
+    }
+  }
+  return out;
+}
+
+function buildRoboflowEnvDiagnostics() {
+  const vercelEnv = process.env.VERCEL_ENV || null;
+  const relatedEnvKeyNames = listRoboflowRelatedEnvKeyNames();
+  const emptyValueEnvKeys = findEmptyRoboflowEnvKeys();
+  let hint = '';
+  if (!relatedEnvKeyNames.length) {
+    hint =
+      'This server process has no ROBOFLOW_* / RF_API_* variables. In Vercel: Project → Settings → Environment Variables → add ROBOFLOW_API_KEY. Branch/preview deploys need the Preview checkbox enabled (not Production-only), then Redeploy.';
+  } else if (emptyValueEnvKeys.length) {
+    hint = `These variables exist but are empty: ${emptyValueEnvKeys.join(', ')}. Paste the Roboflow private key value and redeploy.`;
+  } else if (vercelEnv === 'preview' || vercelEnv === 'development') {
+    hint = `This run is Vercel "${vercelEnv}". If the key exists only for Production, open ROBOFLOW_API_KEY in Vercel and enable Preview (and Development) for branch URLs, then Redeploy.`;
+  }
+  return {
+    vercelEnv,
+    vercelGitBranch: process.env.VERCEL_GIT_COMMIT_REF || null,
+    relatedEnvKeyNames,
+    emptyValueEnvKeys,
+    hint
+  };
 }
 
 module.exports = async (req, res) => {
   if (req.method === 'GET') {
-    sendJson(res, 200, {
-      ok: true,
-      roboflowConfigured: Boolean(roboflowApiKeyFromEnv())
-    });
+    const configured = Boolean(roboflowApiKeyFromEnv());
+    const payload = configured
+      ? { ok: true, roboflowConfigured: true, vercelEnv: process.env.VERCEL_ENV || null }
+      : { ok: true, roboflowConfigured: false, ...buildRoboflowEnvDiagnostics() };
+    sendJson(res, 200, payload, { 'Cache-Control': 'no-store' });
     return;
   }
   if (req.method !== 'POST') {
@@ -54,8 +103,8 @@ module.exports = async (req, res) => {
     sendJson(res, 500, {
       error: 'Missing Roboflow API key environment variable.',
       diagnostics: {
-        vercelEnv: process.env.VERCEL_ENV || null,
         nodeEnv: process.env.NODE_ENV || null,
+        ...buildRoboflowEnvDiagnostics(),
         has_ROBOFLOW_API_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_API_KEY])),
         has_NEXT_PUBLIC_ROBOFLOW_API_KEY: Boolean(pickFirstNonEmpty([process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY])),
         has_ROBOFLOW_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_KEY])),
