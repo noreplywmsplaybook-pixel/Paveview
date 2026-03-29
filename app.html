@@ -1176,7 +1176,7 @@ select.sc-inp{cursor:pointer;width:40px}
     <div class="mbody map-3d-review-body">
       <div id="map-3d-modal-host"></div>
       <div id="map-3d-review-sidebar">
-        <p id="map-3d-review-hint">Drag yellow markers on the lot plane to nudge stall centers. Left drag: orbit. Right-drag or middle: pan. Scroll: zoom.</p>
+        <p id="map-3d-review-hint">Drag yellow markers on the lot plane to nudge stall centers. Left drag: orbit. Right-drag or middle: pan. Scroll: zoom. Debug alignment: add <code style="font-size:9px">?debug3d=1</code> to the URL or set localStorage <code style="font-size:9px">paveview_debug_3d=1</code>.</p>
         <div id="map-3d-confirm-stats"></div>
         <button class="btn y" id="btn-map-flow-confirm" type="button">Confirm estimation</button>
       </div>
@@ -1699,7 +1699,7 @@ let mapFlowLastApiResponse=null;
 let mapThreeInline={renderer:null,scene:null,camera:null,controls:null,plane:null,texture:null,anim:0};
 let mapFlowModal={
   renderer:null,scene:null,camera:null,controls:null,plane:null,dots:null,
-  raycaster:null,dragging:null,crop:null,cropW:0,cropH:0,planeW:0,planeH:0,anim:0,
+  raycaster:null,dragging:null,crop:null,cropW:0,cropH:0,anim:0,
 };
 
 function updateMapFlowStepper(step){
@@ -1737,6 +1737,105 @@ function normalizeMapFlowCrop(){
   w=Math.max(8,Math.min(detW-x,Math.floor(w)));
   h=Math.max(8,Math.min(detH-y,Math.floor(h)));
   return{x,y,w,h};
+}
+
+/**
+ * Pixel (top-left origin, +x right, +y down) → world XZ for a mesh with PlaneGeometry
+ * centered at the origin and rotated rotation.x = -π/2 (Y up, ground in XZ).
+ * Texture must match the same width/height pixel grid as imageWidth/imageHeight.
+ *
+ * @param {number} px
+ * @param {number} py
+ * @param {number} imageWidth
+ * @param {number} imageHeight
+ * @param {number} planeWidth  THREE.PlaneGeometry parameters.width
+ * @param {number} planeHeight THREE.PlaneGeometry parameters.height
+ * @param {{x?:number,y?:number}} [crop]  If set, subtracts crop.x / crop.y when px,py are in full-frame space
+ * @returns {{x:number,z:number}}
+ */
+function imageToWorld(px,py,imageWidth,imageHeight,planeWidth,planeHeight,crop){
+  let ix=Number(px)||0;
+  let iy=Number(py)||0;
+  if(crop&&(Number.isFinite(crop.x)||Number.isFinite(crop.y))){
+    ix-=Number(crop.x)||0;
+    iy-=Number(crop.y)||0;
+  }
+  const iw=Math.max(1,imageWidth);
+  const ih=Math.max(1,imageHeight);
+  const pw=planeWidth;
+  const ph=planeHeight;
+  const u=ix/iw;
+  const v=iy/ih;
+  const x=(u-0.5)*pw;
+  const z=-(v-0.5)*ph;
+  return{x,z};
+}
+
+/**
+ * Inverse of imageToWorld (same plane + image dimensions, crop must not be applied to world coords).
+ */
+function worldToImage(wx,wz,imageWidth,imageHeight,planeWidth,planeHeight){
+  const iw=Math.max(1,imageWidth);
+  const ih=Math.max(1,imageHeight);
+  const pw=Math.max(1e-9,planeWidth);
+  const ph=Math.max(1e-9,planeHeight);
+  const u=wx/pw+0.5;
+  const v=0.5-wz/ph;
+  return{x:u*iw,y:v*ih};
+}
+
+function isMap3dDebugEnabled(){
+  try{
+    if(String(localStorage.getItem('paveview_debug_3d')||'')==='1')return true;
+    return new URLSearchParams(location.search).has('debug3d');
+  }catch(e){return false;}
+}
+
+/**
+ * Debug: spheres at texture pixel (0,0), corners, center (elevated). Optional full-frame spot checks.
+ * Enable with ?debug3d=1 or localStorage paveview_debug_3d=1
+ *
+ * @param {THREE.Scene} scene
+ * @param {THREE.Mesh} planeMesh
+ * @param {number} imageWidth  texture / detection basis width
+ * @param {number} imageHeight
+ * @param {{x?:number,y?:number}} [fullFrameCrop]  if provided, logs full-image coords mapped into this texture
+ */
+window.paveviewMap3d={
+  imageToWorld,
+  worldToImage,
+  isMap3dDebugEnabled,
+};
+
+function addMap3dDebugMarkers(scene,planeMesh,imageWidth,imageHeight,fullFrameCrop){
+  if(!isMap3dDebugEnabled()||!scene||!planeMesh||typeof THREE==='undefined')return;
+  const {width:pw,height:ph}=planeMesh.geometry.parameters;
+  const iw=Math.max(1,imageWidth);
+  const ih=Math.max(1,imageHeight);
+  const addDot=(px,py,col,name,crop)=>{
+    const {x,z}=imageToWorld(px,py,iw,ih,pw,ph,crop);
+    const m=new THREE.Mesh(
+      new THREE.SphereGeometry(2,14,14),
+      new THREE.MeshBasicMaterial({color:col,depthTest:true}),
+    );
+    m.position.set(x,4,z);
+    m.userData.debugName=name;
+    scene.add(m);
+    console.debug('[paveview map3d]',name,{px,py,crop,world:{x,z},plane:{width:pw,height:ph},image:{w:iw,h:ih}});
+  };
+  addDot(0,0,0x00ffff,'tex_(0,0)');
+  addDot(iw,0,0xff44aa,'tex_top_right');
+  addDot(iw,ih,0xffaa44,'tex_bottom_right');
+  addDot(0,ih,0x44aaff,'tex_bottom_left');
+  addDot(iw/2,ih/2,0xffffff,'tex_center');
+  if(fullFrameCrop&&Number.isFinite(fullFrameCrop.x)){
+    const cx=Number(fullFrameCrop.x)||0;
+    const cy=Number(fullFrameCrop.y)||0;
+    const c={x:cx,y:cy};
+    addDot(cx,cy,0xff00ff,'full_frame aligns → tex (0,0)',c);
+    addDot(cx+iw/2,cy+ih/2,0x88ff88,'full_frame crop center',c);
+    console.debug('[paveview map3d] full→tex corner BR',imageToWorld(cx+iw,cy+ih,iw,ih,pw,ph,c));
+  }
 }
 function drawMapFlowCropOverlay(){
   if(pageModalView!=='map'||!mapPreviewCanvas||!mapFlowCropBox)return;
@@ -1847,7 +1946,7 @@ function stopMapFlowModalLoop(){
     const host=document.getElementById('map-3d-modal-host');
     if(host)host.innerHTML='';
   }
-  mapFlowModal={renderer:null,scene:null,camera:null,controls:null,plane:null,dots:null,raycaster:null,dragging:null,crop:null,cropW:0,cropH:0,planeW:0,planeH:0,anim:0};
+  mapFlowModal={renderer:null,scene:null,camera:null,controls:null,plane:null,dots:null,raycaster:null,dragging:null,crop:null,cropW:0,cropH:0,anim:0};
 }
 function updateMapFlowConfirmStats(apiData,cropBox){
   const el=document.getElementById('map-3d-confirm-stats');
@@ -1886,50 +1985,57 @@ function openMap3dReviewModal(apiData,cropBox){
   );
   const tex=new THREE.CanvasTexture(cropCanvas);
   const ar=cropCanvas.width/Math.max(1,cropCanvas.height);
-  const planeH=160;
-  const planeW=planeH*ar;
+  const basePlaneH=160;
+  const basePlaneW=basePlaneH*ar;
   const plane=new THREE.Mesh(
-    new THREE.PlaneGeometry(planeW,planeH),
+    new THREE.PlaneGeometry(basePlaneW,basePlaneH),
     new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide}),
   );
   plane.rotation.x=-Math.PI/2;
   scene.add(plane);
+  const iw=cropCanvas.width;
+  const ih=cropCanvas.height;
+  const {width:pw,height:ph}=plane.geometry.parameters;
+  const overlayY=1;
   const dots=[];
-  (apiData.stalls||[]).forEach((d)=>{
+  (apiData.stalls||[]).forEach((d,di)=>{
     const c=detectionCenterPoint(d);
-    const gx=(c.x/cropCanvas.width-0.5)*planeW;
-    const gz=-(c.y/cropCanvas.height-0.5)*planeH;
+    const {x:wx,z:wz}=imageToWorld(c.x,c.y,iw,ih,pw,ph);
+    if(isMap3dDebugEnabled()){
+      console.debug('[paveview map3d] stall',di,{det:c,world:{x:wx,z:wz},iw,ih,pw,ph});
+    }
     const dot=new THREE.Mesh(
       new THREE.SphereGeometry(2.4,18,18),
       new THREE.MeshBasicMaterial({color:0xfff176}),
     );
-    dot.position.set(gx,2.2,gz);
+    dot.position.set(wx,overlayY,wz);
     dot.userData={feat:d};
     scene.add(dot);
     dots.push(dot);
   });
+  const cropOrigin={x:cropBox.x,y:cropBox.y};
   const poly=apiData.polygon||[];
   if(poly.length>=3){
     const pts=poly.map((pair)=>{
-      const px=Number(pair[0])-cropBox.x;
-      const py=Number(pair[1])-cropBox.y;
-      const gx=(px/cropCanvas.width-0.5)*planeW;
-      const gz=- py/cropCanvas.height*planeH+0.5*planeH;
-      return new THREE.Vector3(gx,1.2,gz);
+      const px=Number(pair[0]);
+      const py=Number(pair[1]);
+      const {x:wx,z:wz}=imageToWorld(px,py,iw,ih,pw,ph,cropOrigin);
+      return new THREE.Vector3(wx,overlayY,wz);
     });
     const g=new THREE.BufferGeometry().setFromPoints(pts);
     scene.add(new THREE.LineLoop(g,new THREE.LineBasicMaterial({color:0x38bdf8})));
   }
+  addMap3dDebugMarkers(scene,plane,iw,ih,cropBox);
   scene.add(new THREE.AmbientLight(0xffffff,0.9));
   const controls=new THREE.OrbitControls(camera,renderer.domElement);
   controls.enableDamping=true;
   controls.target.set(0,0,0);
   host.appendChild(renderer.domElement);
   const raycaster=new THREE.Raycaster();
-  const dragPlane=new THREE.Plane(new THREE.Vector3(0,1,0),-2.2);
+  const dragPlane=new THREE.Plane(new THREE.Vector3(0,1,0),-overlayY);
   mapFlowModal={
     renderer,scene,camera,controls,plane,dots,raycaster,dragging:null,
-    crop:{...cropBox},cropW:cropCanvas.width,cropH:cropCanvas.height,planeW,planeH,anim:0,
+    crop:{...cropBox},cropW:iw,cropH:ih,anim:0,
   };
   function screenToNdc(clientX,clientY){
     const rect=renderer.domElement.getBoundingClientRect();
@@ -1954,12 +2060,15 @@ function openMap3dReviewModal(apiData,cropBox){
     raycaster.setFromCamera(ndc,camera);
     const out=new THREE.Vector3();
     if(raycaster.ray.intersectPlane(dragPlane,out)){
-      const {planeW:pw,planeH:ph,cropW:cw,cropH:ch}=mapFlowModal;
+      const pl=mapFlowModal.plane;
+      if(!pl)return;
+      const {width:pw,height:ph}=pl.geometry.parameters;
+      const cw=mapFlowModal.cropW;
+      const ch=mapFlowModal.cropH;
       mapFlowModal.dragging.position.x=out.x;
       mapFlowModal.dragging.position.z=out.z;
-      mapFlowModal.dragging.position.y=2.2;
-      const lx=((out.x/pw)+0.5)*cw;
-      const ly=(0.5-out.z/ph)*ch;
+      mapFlowModal.dragging.position.y=overlayY;
+      const {x:lx,y:ly}=worldToImage(out.x,out.z,cw,ch,pw,ph);
       const feat=mapFlowModal.dragging.userData.feat;
       if(feat){
         feat.x=lx;
