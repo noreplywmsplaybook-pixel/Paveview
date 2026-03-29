@@ -1,0 +1,7 @@
+{
+  "name": "paveview",
+  "private": true,
+  "dependencies": {
+    "sharp": "^0.33.5"
+  }
+}
