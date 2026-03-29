@@ -29,6 +29,11 @@ module.exports = async (req, res) => {
     process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
     'my-first-project-ug0a7/4'
   ]);
+  const carModelId = pickFirstNonEmpty([
+    process.env.ROBOFLOW_CAR_MODEL_ID,
+    process.env.NEXT_PUBLIC_ROBOFLOW_CAR_MODEL_ID,
+    'parking-lot-egjcr-an53v/1'
+  ]);
   if (!apiKey) {
     sendJson(res, 500, {
       error: 'Missing Roboflow API key environment variable.',
@@ -87,11 +92,70 @@ module.exports = async (req, res) => {
       return { ok: rfRes.ok, status: rfRes.status, payload, url };
     };
 
+    /** Second model (cars) — merged as parking_stall for yellow-dot UX. Same key as primary. */
+    const fetchCarModelPredictionsNormalized = async () => {
+      if (!carModelId || carModelId === modelId) return [];
+      try {
+        const carUrl = `https://detect.roboflow.com/${carModelId}?api_key=${encodeURIComponent(apiKey)}&confidence=${confidence}&overlap=${overlap}`;
+        const carRes = await fetch(carUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: imageBase64
+        });
+        let carPayload = null;
+        try {
+          carPayload = await carRes.json();
+        } catch (e) {
+          return [];
+        }
+        if (!carRes.ok || !carPayload || !Array.isArray(carPayload.predictions)) return [];
+        return carPayload.predictions.map((p) => ({
+          ...p,
+          class: 'parking_stall',
+          confidence:
+            typeof p.confidence === 'number'
+              ? p.confidence
+              : Number(p.confidence) || 0,
+          detection_source: 'roboflow_car'
+        }));
+      } catch (e) {
+        return [];
+      }
+    };
+
+    const mergeCarModelIntoPrimaryResult = async (baseResult) => {
+      if (!baseResult || !baseResult.ok || !baseResult.payload) return baseResult;
+      const carNorm = await fetchCarModelPredictionsNormalized();
+      if (!carNorm.length) return baseResult;
+      const base = Array.isArray(baseResult.payload.predictions)
+        ? baseResult.payload.predictions
+        : [];
+      return {
+        ...baseResult,
+        payload: {
+          ...baseResult.payload,
+          predictions: base.concat(carNorm),
+          meta: {
+            ...(typeof baseResult.payload.meta === 'object' && baseResult.payload.meta
+              ? baseResult.payload.meta
+              : {}),
+            car_model_count: carNorm.length
+          }
+        }
+      };
+    };
+
     let result = null;
     if (mode === 'segment') {
-      result = await runRequest('https://outline.roboflow.com');
+      result = await mergeCarModelIntoPrimaryResult(
+        await runRequest('https://outline.roboflow.com')
+      );
     } else if (mode === 'detect') {
-      result = await runRequest('https://detect.roboflow.com');
+      result = await mergeCarModelIntoPrimaryResult(
+        await runRequest('https://detect.roboflow.com')
+      );
     } else {
       // hybrid: get segmentation for area classes and detection for symbol classes
       const [seg, det] = await Promise.all([
@@ -129,7 +193,9 @@ module.exports = async (req, res) => {
         // Do not merge detect-model area predictions: they are axis-aligned boxes only.
         // Lot/obstruction outlines must come from segmentation polygons.
         const areaFallbackFromDet = [];
-        const merged = [...keepSeg, ...keepDet];
+        let merged = [...keepSeg, ...keepDet];
+        const carPred = await fetchCarModelPredictionsNormalized();
+        merged = merged.concat(carPred);
         sendJson(res, 200, {
           predictions: merged,
           image,
@@ -138,6 +204,7 @@ module.exports = async (req, res) => {
             segmentation_count: keepSeg.length,
             area_fallback_count: areaFallbackFromDet.length,
             detection_count: keepDet.length,
+            car_model_count: carPred.length,
             seg_ok: seg.ok,
             det_ok: det.ok
           }

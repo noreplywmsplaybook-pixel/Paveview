@@ -166,6 +166,11 @@ async function runRoboflowHybrid(imageBase64) {
     process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
     'my-first-project-ug0a7/4',
   ]);
+  const carModelId = pickFirstNonEmpty([
+    process.env.ROBOFLOW_CAR_MODEL_ID,
+    process.env.NEXT_PUBLIC_ROBOFLOW_CAR_MODEL_ID,
+    'parking-lot-egjcr-an53v/1',
+  ]);
   if (!apiKey) {
     return { ok: false, error: 'Missing Roboflow API key.' };
   }
@@ -221,7 +226,37 @@ async function runRoboflowHybrid(imageBase64) {
   const image = seg.payload?.image || det.payload?.image || null;
   const keepSeg = segPred.filter((p) => isAreaClass(p.class));
   const keepDet = detPred.filter((p) => isSymbolClass(p.class));
-  const merged = [...keepSeg, ...keepDet];
+  let merged = [...keepSeg, ...keepDet];
+  if (carModelId && carModelId !== modelId && apiKey) {
+    try {
+      const carUrl = `https://detect.roboflow.com/${carModelId}?api_key=${encodeURIComponent(apiKey)}&confidence=25&overlap=30`;
+      const carRes = await fetch(carUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: imageBase64,
+      });
+      let carPayload = null;
+      try {
+        carPayload = await carRes.json();
+      } catch (e) {
+        carPayload = null;
+      }
+      if (carRes.ok && carPayload && Array.isArray(carPayload.predictions)) {
+        const carPred = carPayload.predictions.map((p) => ({
+          ...p,
+          class: 'parking_stall',
+          confidence:
+            typeof p.confidence === 'number'
+              ? p.confidence
+              : Number(p.confidence) || 0,
+          detection_source: 'roboflow_car',
+        }));
+        merged = merged.concat(carPred);
+      }
+    } catch (e) {
+      /* car model optional */
+    }
+  }
   return {
     ok: seg.ok || det.ok,
     predictions: merged,
