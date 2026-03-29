@@ -6,7 +6,6 @@
 <title>PaveView Takeoff</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* ── DESIGN SYSTEM ── */
@@ -1147,7 +1146,7 @@ select.sc-inp{cursor:pointer;width:40px}
             <canvas id="map-preview" width="1024" height="1024"></canvas>
           </div>
           <div class="map-split-3d">
-            <div class="map-split-3d-hdr">3D preview (orbit)</div>
+            <div class="map-split-3d-hdr">3D preview (fixed angle)</div>
             <div id="map-three-host"></div>
           </div>
         </div>
@@ -1176,7 +1175,7 @@ select.sc-inp{cursor:pointer;width:40px}
     <div class="mbody map-3d-review-body">
       <div id="map-3d-modal-host"></div>
       <div id="map-3d-review-sidebar">
-        <p id="map-3d-review-hint">Tilted Google-style 3D map (fake relief, no noisy displacement). Drag yellow markers to nudge stalls. If dots look flipped vs the photo, try <code style="font-size:9px">?map3dFlip=legacy</code>. Debug: <code style="font-size:9px">?debug3d=1</code>.</p>
+        <p id="map-3d-review-hint">Fixed-angle 3D map (no orbit). Drag yellow markers to nudge stalls. If dots look flipped vs the photo, try <code style="font-size:9px">?map3dFlip=legacy</code>. Debug: <code style="font-size:9px">?debug3d=1</code>.</p>
         <div id="map-3d-confirm-stats"></div>
         <button class="btn y" id="btn-map-flow-confirm" type="button">Confirm estimation</button>
       </div>
@@ -1696,9 +1695,9 @@ let mapFlowCropBox=null;
 let mapFlowCropMode=false;
 let mapFlowCropDrag=null;
 let mapFlowLastApiResponse=null;
-let mapThreeInline={renderer:null,scene:null,camera:null,controls:null,lotGroup:null,plane:null,texture:null,anim:0};
+let mapThreeInline={renderer:null,scene:null,camera:null,lotGroup:null,plane:null,texture:null,anim:0};
 let mapFlowModal={
-  renderer:null,scene:null,camera:null,controls:null,lotGroup:null,plane:null,dots:null,
+  renderer:null,scene:null,camera:null,lotGroup:null,plane:null,dots:null,
   raycaster:null,dragging:null,crop:null,cropW:0,cropH:0,anim:0,
 };
 
@@ -1805,19 +1804,7 @@ function setupMapViewCamera(camera,pw,ph){
   camera.near=1;
   camera.far=Math.max(4500,span*28);
   camera.updateProjectionMatrix();
-}
-
-function setupMapViewOrbitControls(controls,pw,ph){
-  if(!controls)return;
-  const span=Math.max(1,Number(pw)||200,Number(ph)||150);
-  controls.enableDamping=true;
-  controls.dampingFactor=0.05;
-  controls.target.set(0,0,0);
-  controls.maxPolarAngle=Math.PI/2.1;
-  controls.enablePan=true;
-  controls.minDistance=Math.max(44,span*0.22);
-  controls.maxDistance=Math.min(900,Math.max(220,span*1.42));
-  controls.update();
+  camera.lookAt(0,0,0);
 }
 
 /**
@@ -1892,7 +1879,6 @@ window.paveviewMap3d={
   createMapViewPlaneGeometry,
   createMapViewMaterial,
   setupMapViewCamera,
-  setupMapViewOrbitControls,
   applySubtleMapSurfaceWave,
 };
 
@@ -1954,7 +1940,7 @@ function drawMapFlowCropOverlay(){
   mapPreviewCtx.restore();
 }
 function ensureInlineMapThree(){
-  if(typeof THREE==='undefined'||typeof THREE.OrbitControls==='undefined')return false;
+  if(typeof THREE==='undefined')return false;
   const host=document.getElementById('map-three-host');
   if(!host||mapThreeInline.renderer)return true;
   const w=Math.max(120,host.clientWidth||280);
@@ -1967,7 +1953,6 @@ function ensureInlineMapThree(){
   renderer.setSize(w,h);
   host.innerHTML='';
   host.appendChild(renderer.domElement);
-  const controls=new THREE.OrbitControls(camera,renderer.domElement);
   scene.add(new THREE.AmbientLight(0xffffff,0.6));
   const directional=new THREE.DirectionalLight(0xffffff,1);
   directional.position.set(100,200,100);
@@ -1981,12 +1966,10 @@ function ensureInlineMapThree(){
   );
   lotGroup.add(plane);
   setupMapViewCamera(camera,200,200);
-  setupMapViewOrbitControls(controls,200,200);
-  mapThreeInline={renderer,scene,camera,controls,lotGroup,plane,texture:null,anim:0};
+  mapThreeInline={renderer,scene,camera,lotGroup,plane,texture:null,anim:0};
   function loop(){
     if(!mapThreeInline.renderer)return;
     mapThreeInline.anim=requestAnimationFrame(loop);
-    controls.update();
     renderer.render(scene,camera);
   }
   loop();
@@ -2000,6 +1983,7 @@ function resizeInlineMapThree(){
   const h=Math.max(160,host.clientHeight||200);
   mapThreeInline.camera.aspect=w/h;
   mapThreeInline.camera.updateProjectionMatrix();
+  mapThreeInline.camera.lookAt(0,0,0);
   mapThreeInline.renderer.setSize(w,h);
 }
 function syncInlineMapThreeFromRaw(){
@@ -2018,7 +2002,6 @@ function syncInlineMapThreeFromRaw(){
   mapThreeInline.plane.geometry.dispose();
   mapThreeInline.plane.geometry=createMapViewPlaneGeometry(baseW,baseH);
   setupMapViewCamera(mapThreeInline.camera,baseW,baseH);
-  setupMapViewOrbitControls(mapThreeInline.controls,baseW,baseH);
   resizeInlineMapThree();
 }
 function resizeMapFlowModalThree(){
@@ -2029,6 +2012,7 @@ function resizeMapFlowModalThree(){
   const h=Math.max(360,host.clientHeight||480);
   mapFlowModal.camera.aspect=w/h;
   mapFlowModal.camera.updateProjectionMatrix();
+  mapFlowModal.camera.lookAt(0,0,0);
   mapFlowModal.renderer.setSize(w,h);
 }
 function stopMapFlowModalLoop(){
@@ -2038,7 +2022,7 @@ function stopMapFlowModalLoop(){
     const host=document.getElementById('map-3d-modal-host');
     if(host)host.innerHTML='';
   }
-  mapFlowModal={renderer:null,scene:null,camera:null,controls:null,lotGroup:null,plane:null,dots:null,raycaster:null,dragging:null,crop:null,cropW:0,cropH:0,anim:0};
+  mapFlowModal={renderer:null,scene:null,camera:null,lotGroup:null,plane:null,dots:null,raycaster:null,dragging:null,crop:null,cropW:0,cropH:0,anim:0};
 }
 function updateMapFlowConfirmStats(apiData,cropBox){
   const el=document.getElementById('map-3d-confirm-stats');
@@ -2052,7 +2036,7 @@ function updateMapFlowConfirmStats(apiData,cropBox){
 }
 function openMap3dReviewModal(apiData,cropBox){
   const host=document.getElementById('map-3d-modal-host');
-  if(!host||typeof THREE==='undefined'||typeof THREE.OrbitControls==='undefined'){
+  if(!host||typeof THREE==='undefined'){
     setImportStatus('Three.js not loaded — check CDN.',true);
     return;
   }
@@ -2127,14 +2111,12 @@ function openMap3dReviewModal(apiData,cropBox){
     lotGroup.add(lineLoop);
   }
   addMap3dDebugMarkers(lotGroup,plane,iw,ih,cropBox);
-  const controls=new THREE.OrbitControls(camera,renderer.domElement);
   setupMapViewCamera(camera,pw,ph);
-  setupMapViewOrbitControls(controls,pw,ph);
   host.appendChild(renderer.domElement);
   const raycaster=new THREE.Raycaster();
   const localHit=new THREE.Vector3();
   mapFlowModal={
-    renderer,scene,camera,controls,lotGroup,plane,dots,raycaster,dragging:null,
+    renderer,scene,camera,lotGroup,plane,dots,raycaster,dragging:null,
     crop:{...cropBox},cropW:iw,cropH:ih,anim:0,
   };
   function screenToNdc(clientX,clientY){
@@ -2184,7 +2166,6 @@ function openMap3dReviewModal(apiData,cropBox){
   function loop(){
     if(!mapFlowModal.renderer)return;
     mapFlowModal.anim=requestAnimationFrame(loop);
-    controls.update();
     renderer.render(scene,camera);
   }
   loop();
