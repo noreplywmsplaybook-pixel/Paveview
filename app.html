@@ -6,6 +6,7 @@
 <title>PaveView Takeoff</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* ── DESIGN SYSTEM ── */
@@ -519,6 +520,19 @@ select.sc-inp{cursor:pointer;width:40px}
 }
 .hist-only{}
 #map-historical-year:disabled{opacity:.6;cursor:not-allowed}
+.map-earth-wrap{
+  display:flex;flex-direction:column;gap:6px;width:100%;margin-bottom:10px;
+  border:1px solid var(--border);background:var(--surface2);border-radius:2px;padding:8px 10px;
+}
+.map-earth-hdr{
+  font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--text3);
+}
+.map-earth-note{font-size:10px;color:var(--dim);margin:0;line-height:1.4;}
+#map-google-earth-host{
+  width:100%;min-height:min(42vh,420px);height:42vh;max-height:520px;
+  border-radius:2px;border:1px solid var(--border);background:#0d1117;
+}
 
 /* settings */
 #settings-modal .mbox{width:700px;max-width:98vw}
@@ -1129,9 +1143,10 @@ select.sc-inp{cursor:pointer;width:40px}
           <button class="btn" id="btn-map-flow-crop" title="Drag on the map to set a crop rectangle before auto-detect">Crop area</button>
           <button class="btn y" id="btn-map-flow-auto" title="Threshold + contour + Roboflow on the cropped region">Flow: crop → auto-detect</button>
         </div>
-        <div class="import-hint">Pick the clearest image with the least obstructions (cars, trees, shadows). Drag the map to pan. The <strong>Zoom</strong> slider is centered on the zoom when imagery loads (middle = that view): drag left/right to zoom out/in with small steps. Use <strong>Create Lot Polygon</strong> and click around the lot boundary to focus AI on only that area.</div>
+        <div class="import-hint">The <strong>Google Maps</strong> strip above is real tilted 3D (when using current satellite, not Wayback). The flat canvas is still what we snapshot for AI and plan capture. Pick the clearest image with the least obstructions. Drag the canvas to pan; use the <strong>Zoom</strong> slider (middle = load zoom). <strong>Create Lot Polygon</strong> focuses AI on the lot.</div>
         <div class="map-row">
           <label class="ir"><input type="checkbox" id="map-roi-use-lot" title="ON: drawn polygon is the lot perimeter; other RF classes still sync. OFF: polygon is scan area only; RF lot + every class sync (including lot from Roboflow)."> <span class="il">Use polygon as lot perimeter</span></label>
+          <label class="ir"><input type="checkbox" id="map-3d-art-toggle" checked title="Low-poly trees &amp; cars on the Three.js preview (decorative; not from AI)."> <span class="il">Stylized 3D trees &amp; cars on orbit preview</span></label>
         </div>
         <div class="map-row">
           <label>Zoom</label>
@@ -1141,12 +1156,17 @@ select.sc-inp{cursor:pointer;width:40px}
           <span id="map-zoom-slider-lbl">—</span>
         </div>
         <div id="map-import-status">Pick a location and click Refresh.</div>
+        <div id="map-earth-wrap" class="map-earth-wrap" style="display:none">
+          <div class="map-earth-hdr">Google Maps — tilt &amp; rotate (3D / Earth-style). Use for context; capture &amp; detections use the flat satellite composite below.</div>
+          <div id="map-google-earth-host" aria-label="Google Maps 3D explore"></div>
+          <p class="map-earth-note" id="map-earth-disabled-note" style="display:none">3D explore uses live Google Maps (disabled for historical / Wayback imagery).</p>
+        </div>
         <div class="map-split">
           <div class="map-split-main">
             <canvas id="map-preview" width="1024" height="1024"></canvas>
           </div>
           <div class="map-split-3d">
-            <div class="map-split-3d-hdr">3D preview (fixed angle)</div>
+            <div class="map-split-3d-hdr">3D preview (orbit)</div>
             <div id="map-three-host"></div>
           </div>
         </div>
@@ -1175,7 +1195,7 @@ select.sc-inp{cursor:pointer;width:40px}
     <div class="mbody map-3d-review-body">
       <div id="map-3d-modal-host"></div>
       <div id="map-3d-review-sidebar">
-        <p id="map-3d-review-hint">Fixed-angle 3D map (no orbit). Drag yellow markers to nudge stalls. If dots look flipped vs the photo, try <code style="font-size:9px">?map3dFlip=legacy</code>. Debug: <code style="font-size:9px">?debug3d=1</code>.</p>
+        <p id="map-3d-review-hint">Imagery is color-graded for a bright “toy aerial” look (saturation/contrast); lot uses basic shading so the photo reads cleanly when you orbit. <code style="font-size:9px">?map3dStyle=0</code> for raw pixels. <code style="font-size:9px">?map3dFlip=legacy</code> if flipped. <code style="font-size:9px">?debug3d=1</code> for corners.</p>
         <div id="map-3d-confirm-stats"></div>
         <button class="btn y" id="btn-map-flow-confirm" type="button">Confirm estimation</button>
       </div>
@@ -1576,6 +1596,79 @@ function renderPlanTabs(){
 
 // ── FILE LOADING / IMPORT MODAL ──
 const GOOGLE_MAPS_API_KEY='AIzaSyDmfG4UZGYNEE6vlPEBiD8b6YT624eGZK0';
+let googleMapsJsLoaderPromise=null;
+let mapGoogleEarthExplore=null;
+function loadGoogleMapsJsOnce(){
+  if(window.google&&window.google.maps&&window.google.maps.Map)return Promise.resolve();
+  if(googleMapsJsLoaderPromise)return googleMapsJsLoaderPromise;
+  googleMapsJsLoaderPromise=new Promise((resolve,reject)=>{
+    const cb='_pvGmInit_'+Date.now().toString(36)+Math.floor(Math.random()*1e6);
+    window[cb]=()=>{
+      try{delete window[cb];}catch(err){window[cb]=undefined;}
+      resolve();
+    };
+    const s=document.createElement('script');
+    s.async=true;
+    s.defer=true;
+    s.onerror=()=>reject(new Error('Google Maps JavaScript API failed to load'));
+    s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(GOOGLE_MAPS_API_KEY)+'&callback='+cb;
+    document.head.appendChild(s);
+  }).catch(err=>{
+    googleMapsJsLoaderPromise=null;
+    throw err;
+  });
+  return googleMapsJsLoaderPromise;
+}
+function resizeGoogleEarthExploreMap(){
+  if(!mapGoogleEarthExplore||!window.google||!google.maps)return;
+  try{google.maps.event.trigger(mapGoogleEarthExplore,'resize');}catch(e){}
+}
+function updateGoogleEarthExploreUi(){
+  const wrap=document.getElementById('map-earth-wrap');
+  const host=document.getElementById('map-google-earth-host');
+  const note=document.getElementById('map-earth-disabled-note');
+  if(!wrap||!host)return;
+  const show=pageModalView==='map';
+  wrap.style.display=show?'flex':'none';
+  if(!show)return;
+  const hist=mapViewState.mode==='historical';
+  host.style.display=hist?'none':'';
+  if(note)note.style.display=hist?'block':'none';
+  if(!hist)void ensureGoogleEarthExploreMap();
+}
+function ensureGoogleEarthExploreMap(){
+  if(pageModalView!=='map'||mapViewState.mode==='historical')return;
+  const host=document.getElementById('map-google-earth-host');
+  if(!host)return;
+  loadGoogleMapsJsOnce().then(()=>{
+    if(pageModalView!=='map'||mapViewState.mode==='historical')return;
+    const lat=Number(mapViewState.lat)||0;
+    const lng=Number(mapViewState.lng)||0;
+    const z=Math.max(15,Math.min(22,Math.round(Number(mapViewState.zoom)||20)));
+    if(!mapGoogleEarthExplore){
+      mapGoogleEarthExplore=new google.maps.Map(host,{
+        center:{lat,lng},
+        zoom:z,
+        mapTypeId:google.maps.MapTypeId.HYBRID,
+        tilt:45,
+        heading:28,
+        mapTypeControl:true,
+        rotateControl:true,
+        scaleControl:true,
+        streetViewControl:false,
+        fullscreenControl:true,
+      });
+    }else{
+      mapGoogleEarthExplore.setCenter({lat,lng});
+      mapGoogleEarthExplore.setZoom(z);
+      try{
+        mapGoogleEarthExplore.setTilt(45);
+      }catch(e){/* older API */}
+    }
+    setTimeout(()=>resizeGoogleEarthExploreMap(),60);
+    setTimeout(()=>resizeGoogleEarthExploreMap(),320);
+  }).catch(e=>console.warn('[paveview] 3D map explore:',e));
+}
 const WAYBACK_SELECTION_URL='https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer?f=pjson';
 const WAYBACK_FALLBACK_BY_YEAR={
   '2026':{m:'64001',date:'2026-02-26',label:'World Imagery (Wayback 2026-02-26)'},
@@ -1695,9 +1788,9 @@ let mapFlowCropBox=null;
 let mapFlowCropMode=false;
 let mapFlowCropDrag=null;
 let mapFlowLastApiResponse=null;
-let mapThreeInline={renderer:null,scene:null,camera:null,lotGroup:null,plane:null,texture:null,anim:0};
+let mapThreeInline={renderer:null,scene:null,camera:null,controls:null,lotGroup:null,plane:null,texture:null,anim:0};
 let mapFlowModal={
-  renderer:null,scene:null,camera:null,lotGroup:null,plane:null,dots:null,
+  renderer:null,scene:null,camera:null,controls:null,lotGroup:null,plane:null,dots:null,
   raycaster:null,dragging:null,crop:null,cropW:0,cropH:0,anim:0,
 };
 
@@ -1742,11 +1835,34 @@ function normalizeMapFlowCrop(){
 function map3dLegacyTextureOrientation(){
   try{return new URLSearchParams(location.search).get('map3dFlip')==='legacy';}catch(e){return false;}
 }
+/** Toy-aerial grade (reference-B style): punchy greens, crisp asphalt, bright roofs. ?map3dStyle=0 to use raw imagery. */
+function isMap3dToyStyleEnabled(){
+  try{return new URLSearchParams(location.search).get('map3dStyle')!=='0';}catch(e){return true;}
+}
+const MAP3D_TOY_GRADE_FILTER='saturate(1.48) contrast(1.16) brightness(1.04)';
+function gradeMapImageryCanvas(source){
+  if(!source||!isMap3dToyStyleEnabled())return source;
+  const w=source.width|0;
+  const h=source.height|0;
+  if(w<1||h<1)return source;
+  const out=document.createElement('canvas');
+  out.width=w;
+  out.height=h;
+  const ctx=out.getContext('2d');
+  if(!ctx)return source;
+  ctx.imageSmoothingEnabled=true;
+  ctx.imageSmoothingQuality='high';
+  ctx.filter=MAP3D_TOY_GRADE_FILTER;
+  ctx.drawImage(source,0,0,w,h);
+  ctx.filter='none';
+  return out;
+}
 function configureMapImageryTexture(tex,renderer){
   if(!tex)return;
   tex.wrapS=THREE.ClampToEdgeWrapping;
   tex.wrapT=THREE.ClampToEdgeWrapping;
   tex.flipY=map3dLegacyTextureOrientation();
+  tex.encoding=THREE.sRGBEncoding;
   tex.generateMipmaps=true;
   tex.minFilter=THREE.LinearMipmapLinearFilter;
   tex.magFilter=THREE.LinearFilter;
@@ -1755,62 +1871,156 @@ function configureMapImageryTexture(tex,renderer){
   }
   tex.needsUpdate=true;
 }
-
-/** Google-style 3D map: tilted lot, subtle waved surface (no displacementMap). */
-const MAP3D_PLANE_SEG_X=64;
-const MAP3D_PLANE_SEG_Y=64;
-const MAP3D_LOT_TILT=-Math.PI/3.2;
-
-/** Very light vertex ripple for shading/depth (keep under ~1 unit). */
-function applySubtleMapSurfaceWave(geometry,amplitude){
-  const pos=geometry.attributes.position;
-  const amp=amplitude==null?0.42:Math.max(0.18,Math.min(0.92,Number(amplitude)));
-  for(let i=0;i<pos.count;i++){
-    const x=pos.getX(i),y=pos.getY(i);
-    const z=Math.sin(x*0.082)*Math.cos(y*0.068)*amp;
-    pos.setZ(i,z);
-  }
-  pos.needsUpdate=true;
-  geometry.computeVertexNormals();
+function configureMapRendererColor(renderer){
+  if(!renderer)return;
+  try{
+    renderer.outputEncoding=THREE.sRGBEncoding;
+    renderer.toneMapping=THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure=1.07;
+  }catch(e){}
 }
 
+/** Flat lot (parking-style demo): group rotation -π/2 so plane lies horizontal in world. */
+const MAP3D_LOT_TILT=-Math.PI/2;
+
 function createMapViewPlaneGeometry(width,height){
-  const g=new THREE.PlaneGeometry(
-    width,
-    height,
-    MAP3D_PLANE_SEG_X,
-    MAP3D_PLANE_SEG_Y,
-  );
-  applySubtleMapSurfaceWave(g,0.42);
-  return g;
+  return new THREE.PlaneGeometry(width,height);
 }
 
 function createMapViewMaterial(mapTex){
+  if(mapTex){
+    return new THREE.MeshBasicMaterial({
+      map:mapTex,
+      side:THREE.DoubleSide,
+    });
+  }
   return new THREE.MeshStandardMaterial({
-    map:mapTex||null,
+    map:null,
     metalness:0.03,
     roughness:0.88,
     side:THREE.DoubleSide,
-    color:mapTex?0xffffff:0x5a626c,
+    color:0x5a626c,
   });
 }
 
 function setupMapViewCamera(camera,pw,ph){
   if(!camera)return;
-  const span=Math.max(1,Number(pw)||200,Number(ph)||150);
-  const ref=200;
-  const d=Math.max(95,(span/ref)*120);
-  camera.position.set(d,d,d);
+  const wRef=200;
+  const hRef=150;
+  const pwN=Number(pw)||wRef;
+  const phN=Number(ph)||hRef;
+  const kx=pwN/wRef;
+  const ky=phN/hRef;
+  const k=Math.max(0.35,kx,ky);
+  camera.position.set(100*k,120*k,100*k);
   camera.near=1;
-  camera.far=Math.max(4500,span*28);
+  camera.far=Math.max(1000,pwN*25,phN*25);
   camera.updateProjectionMatrix();
   camera.lookAt(0,0,0);
+}
+
+function setupMapParkingDemoControls(controls){
+  if(!controls)return;
+  controls.enableDamping=true;
+  controls.dampingFactor=0.05;
+  controls.target.set(0,0,0);
+  controls.update();
+}
+
+function addMapParkingDemoLights(scene){
+  if(!scene)return;
+  scene.add(new THREE.AmbientLight(0xffffff,0.58));
+  const light=new THREE.DirectionalLight(0xffffff,0.82);
+  light.position.set(-60,140,85);
+  scene.add(light);
+}
+
+function isMap3dArtPropsEnabled(){
+  const el=document.getElementById('map-3d-art-toggle');
+  return !el||!!el.checked;
+}
+function mapArtSeeded01(seed){
+  const x=Math.sin(seed)*43758.5453123;
+  return x-Math.floor(x);
+}
+function removeMapThreeArtProps(lotGroup){
+  if(!lotGroup||typeof THREE==='undefined')return;
+  const prev=lotGroup.getObjectByName('map3dArtProps');
+  if(!prev)return;
+  lotGroup.remove(prev);
+  const shared=prev.userData&&prev.userData._artSharedMaterials;
+  prev.traverse(obj=>{
+    if(obj.geometry){
+      obj.geometry.dispose();
+      obj.geometry=null;
+    }
+    const m=obj.material;
+    if(!m)return;
+    if(m.userData&&m.userData._artSharedSkipDispose)return;
+    if(Array.isArray(m))m.forEach(x=>{try{x.dispose();}catch(e){}});
+    else try{m.dispose();}catch(e){}
+    obj.material=null;
+  });
+  if(Array.isArray(shared)){
+    shared.forEach(m=>{try{m.dispose();}catch(e){}});
+  }
+}
+function addMapThreeArtPropsToLotGroup(lotGroup,pw,ph){
+  if(typeof THREE==='undefined'||!lotGroup)return;
+  removeMapThreeArtProps(lotGroup);
+  if(!isMap3dArtPropsEnabled())return;
+  const art=new THREE.Group();
+  art.name='map3dArtProps';
+  const seed=(Number(mapViewState.lat)||0)*9311+(Number(mapViewState.lng)||0)*8887;
+  const span=Math.max(Number(pw)||200,Number(ph)||200,1);
+  const lift=Math.max(0.5,span*0.004);
+  const carW=Math.max(1.0,span*0.02);
+  const carH=Math.max(0.35,span*0.007);
+  const carL=Math.max(1.6,span*0.032);
+  const carCols=[0xe53935,0x1e88e5,0x43a047,0xfdd835,0x6d4c41,0xeeeeee,0x78909c];
+  const nCars=40;
+  for(let i=0;i<nCars;i++){
+    const gx=(mapArtSeeded01(seed+i*2.17)-0.5)*pw*0.9;
+    const gy=(mapArtSeeded01(seed+i*3.91+1)-0.5)*ph*0.9;
+    const mat=new THREE.MeshStandardMaterial({
+      color:carCols[i%carCols.length],metalness:0.2,roughness:0.5,
+    });
+    mat.userData._artSharedSkipDispose=false;
+    const m=new THREE.Mesh(new THREE.BoxGeometry(carW,carH,carL),mat);
+    m.position.set(gx,gy,lift+carH*0.5);
+    m.rotation.z=mapArtSeeded01(seed+i*5.3)*Math.PI*2;
+    art.add(m);
+  }
+  const treeTopMat=new THREE.MeshStandardMaterial({color:0x2e7d32,metalness:0,roughness:0.88});
+  const trunkMat=new THREE.MeshStandardMaterial({color:0x5d4037,metalness:0,roughness:0.9});
+  treeTopMat.userData._artSharedSkipDispose=true;
+  trunkMat.userData._artSharedSkipDispose=true;
+  art.userData._artSharedMaterials=[treeTopMat,trunkMat];
+  const nTrees=32;
+  for(let i=0;i<nTrees;i++){
+    const gx=(mapArtSeeded01(seed+i*7.13+2)-0.5)*pw*0.94;
+    const gy=(mapArtSeeded01(seed+i*11.07+3)-0.5)*ph*0.94;
+    const sc=0.55+mapArtSeeded01(seed+i*13.1)*0.95;
+    const hTr=0.75*sc,hCn=1.15*sc,rTr=0.11*sc,rTop=0.62*sc;
+    const trunk=new THREE.Mesh(new THREE.CylinderGeometry(rTr*0.85,rTr,hTr,6),trunkMat);
+    trunk.rotation.x=Math.PI/2;
+    trunk.position.z=hTr*0.5;
+    const top=new THREE.Mesh(new THREE.ConeGeometry(rTop,hCn,8),treeTopMat);
+    top.rotation.x=Math.PI/2;
+    top.position.z=hTr+hCn*0.5;
+    const tree=new THREE.Group();
+    tree.add(trunk);
+    tree.add(top);
+    tree.position.set(gx,gy,lift);
+    art.add(tree);
+  }
+  lotGroup.add(art);
 }
 
 /**
  * Pixel (top-left origin, +x right, +y down) → PlaneGeometry **local** XY (centered),
  * before any mesh/group rotation. Plane lies in XY with normal +Z; parent group
- * should apply the same tilt as lotGroup (e.g. MAP3D_LOT_TILT).
+ * should use the same lotGroup rotation as MAP3D_LOT_TILT (flat lot).
  *
  * @param {number} px
  * @param {number} py
@@ -1874,12 +2084,16 @@ window.paveviewMap3d={
   worldToImage,
   isMap3dDebugEnabled,
   configureMapImageryTexture,
+  configureMapRendererColor,
+  gradeMapImageryCanvas,
+  isMap3dToyStyleEnabled,
   map3dLegacyTextureOrientation,
   MAP3D_LOT_TILT,
   createMapViewPlaneGeometry,
   createMapViewMaterial,
   setupMapViewCamera,
-  applySubtleMapSurfaceWave,
+  setupMapParkingDemoControls,
+  addMapParkingDemoLights,
 };
 
 function addMap3dDebugMarkers(lotGroup,planeMesh,imageWidth,imageHeight,fullFrameCrop){
@@ -1940,23 +2154,22 @@ function drawMapFlowCropOverlay(){
   mapPreviewCtx.restore();
 }
 function ensureInlineMapThree(){
-  if(typeof THREE==='undefined')return false;
+  if(typeof THREE==='undefined'||typeof THREE.OrbitControls==='undefined')return false;
   const host=document.getElementById('map-three-host');
   if(!host||mapThreeInline.renderer)return true;
   const w=Math.max(120,host.clientWidth||280);
   const h=Math.max(160,host.clientHeight||260);
   const scene=new THREE.Scene();
-  scene.background=new THREE.Color(0xeef2f7);
+  scene.background=new THREE.Color(0xe8f2ee);
   const camera=new THREE.PerspectiveCamera(60,w/h,1,5000);
   const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+  configureMapRendererColor(renderer);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
   renderer.setSize(w,h);
   host.innerHTML='';
   host.appendChild(renderer.domElement);
-  scene.add(new THREE.AmbientLight(0xffffff,0.6));
-  const directional=new THREE.DirectionalLight(0xffffff,1);
-  directional.position.set(100,200,100);
-  scene.add(directional);
+  const controls=new THREE.OrbitControls(camera,renderer.domElement);
+  addMapParkingDemoLights(scene);
   const lotGroup=new THREE.Group();
   lotGroup.rotation.x=MAP3D_LOT_TILT;
   scene.add(lotGroup);
@@ -1966,10 +2179,12 @@ function ensureInlineMapThree(){
   );
   lotGroup.add(plane);
   setupMapViewCamera(camera,200,200);
-  mapThreeInline={renderer,scene,camera,lotGroup,plane,texture:null,anim:0};
+  setupMapParkingDemoControls(controls);
+  mapThreeInline={renderer,scene,camera,controls,lotGroup,plane,texture:null,anim:0};
   function loop(){
     if(!mapThreeInline.renderer)return;
     mapThreeInline.anim=requestAnimationFrame(loop);
+    controls.update();
     renderer.render(scene,camera);
   }
   loop();
@@ -1994,7 +2209,8 @@ function syncInlineMapThreeFromRaw(){
   const baseH=200;
   const baseW=baseH*ar;
   if(mapThreeInline.texture)mapThreeInline.texture.dispose();
-  mapThreeInline.texture=new THREE.CanvasTexture(imgCanvas);
+  const graded=gradeMapImageryCanvas(imgCanvas);
+  mapThreeInline.texture=new THREE.CanvasTexture(graded);
   configureMapImageryTexture(mapThreeInline.texture,mapThreeInline.renderer);
   const mat=mapThreeInline.plane.material;
   if(mat&&mat.dispose)mat.dispose();
@@ -2002,7 +2218,9 @@ function syncInlineMapThreeFromRaw(){
   mapThreeInline.plane.geometry.dispose();
   mapThreeInline.plane.geometry=createMapViewPlaneGeometry(baseW,baseH);
   setupMapViewCamera(mapThreeInline.camera,baseW,baseH);
+  setupMapParkingDemoControls(mapThreeInline.controls);
   resizeInlineMapThree();
+  addMapThreeArtPropsToLotGroup(mapThreeInline.lotGroup,baseW,baseH);
 }
 function resizeMapFlowModalThree(){
   if(!mapFlowModal||!mapFlowModal.renderer)return;
@@ -2017,12 +2235,15 @@ function resizeMapFlowModalThree(){
 }
 function stopMapFlowModalLoop(){
   if(mapFlowModal&&mapFlowModal.anim)cancelAnimationFrame(mapFlowModal.anim);
+  if(mapFlowModal&&mapFlowModal.controls){
+    try{mapFlowModal.controls.dispose();}catch(e){}
+  }
   if(mapFlowModal&&mapFlowModal.renderer){
     try{mapFlowModal.renderer.dispose();}catch(e){}
     const host=document.getElementById('map-3d-modal-host');
     if(host)host.innerHTML='';
   }
-  mapFlowModal={renderer:null,scene:null,camera:null,lotGroup:null,plane:null,dots:null,raycaster:null,dragging:null,crop:null,cropW:0,cropH:0,anim:0};
+  mapFlowModal={renderer:null,scene:null,camera:null,controls:null,lotGroup:null,plane:null,dots:null,raycaster:null,dragging:null,crop:null,cropW:0,cropH:0,anim:0};
 }
 function updateMapFlowConfirmStats(apiData,cropBox){
   const el=document.getElementById('map-3d-confirm-stats');
@@ -2036,7 +2257,7 @@ function updateMapFlowConfirmStats(apiData,cropBox){
 }
 function openMap3dReviewModal(apiData,cropBox){
   const host=document.getElementById('map-3d-modal-host');
-  if(!host||typeof THREE==='undefined'){
+  if(!host||typeof THREE==='undefined'||typeof THREE.OrbitControls==='undefined'){
     setImportStatus('Three.js not loaded — check CDN.',true);
     return;
   }
@@ -2045,11 +2266,13 @@ function openMap3dReviewModal(apiData,cropBox){
   const rw=Math.max(320,host.clientWidth||640);
   const rh=Math.max(360,host.clientHeight||480);
   const scene=new THREE.Scene();
-  scene.background=new THREE.Color(0xeef2f7);
+  scene.background=new THREE.Color(0xe8f2ee);
   const camera=new THREE.PerspectiveCamera(60,rw/rh,1,5000);
   const renderer=new THREE.WebGLRenderer({antialias:true});
+  configureMapRendererColor(renderer);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
   renderer.setSize(rw,rh);
+  const controls=new THREE.OrbitControls(camera,renderer.domElement);
   const cropCanvas=document.createElement('canvas');
   cropCanvas.width=Math.max(1,Math.floor(cropBox.w));
   cropCanvas.height=Math.max(1,Math.floor(cropBox.h));
@@ -2058,7 +2281,8 @@ function openMap3dReviewModal(apiData,cropBox){
     cropBox.x,cropBox.y,cropBox.w,cropBox.h,
     0,0,cropCanvas.width,cropCanvas.height,
   );
-  const tex=new THREE.CanvasTexture(cropCanvas);
+  const gradedCrop=gradeMapImageryCanvas(cropCanvas);
+  const tex=new THREE.CanvasTexture(gradedCrop);
   configureMapImageryTexture(tex,renderer);
   const ar=cropCanvas.width/Math.max(1,cropCanvas.height);
   const basePlaneH=160;
@@ -2066,10 +2290,7 @@ function openMap3dReviewModal(apiData,cropBox){
   const lotGroup=new THREE.Group();
   lotGroup.rotation.x=MAP3D_LOT_TILT;
   scene.add(lotGroup);
-  scene.add(new THREE.AmbientLight(0xffffff,0.6));
-  const directional=new THREE.DirectionalLight(0xffffff,1);
-  directional.position.set(100,200,100);
-  scene.add(directional);
+  addMapParkingDemoLights(scene);
   const plane=new THREE.Mesh(
     createMapViewPlaneGeometry(basePlaneW,basePlaneH),
     createMapViewMaterial(tex),
@@ -2111,12 +2332,14 @@ function openMap3dReviewModal(apiData,cropBox){
     lotGroup.add(lineLoop);
   }
   addMap3dDebugMarkers(lotGroup,plane,iw,ih,cropBox);
+  addMapThreeArtPropsToLotGroup(lotGroup,pw,ph);
   setupMapViewCamera(camera,pw,ph);
+  setupMapParkingDemoControls(controls);
   host.appendChild(renderer.domElement);
   const raycaster=new THREE.Raycaster();
   const localHit=new THREE.Vector3();
   mapFlowModal={
-    renderer,scene,camera,lotGroup,plane,dots,raycaster,dragging:null,
+    renderer,scene,camera,controls,lotGroup,plane,dots,raycaster,dragging:null,
     crop:{...cropBox},cropW:iw,cropH:ih,anim:0,
   };
   function screenToNdc(clientX,clientY){
@@ -2166,6 +2389,7 @@ function openMap3dReviewModal(apiData,cropBox){
   function loop(){
     if(!mapFlowModal.renderer)return;
     mapFlowModal.anim=requestAnimationFrame(loop);
+    controls.update();
     renderer.render(scene,camera);
   }
   loop();
@@ -4381,7 +4605,11 @@ function setPageModalView(view){
     void ensureWaybackYears(false);
     syncMapZoomSliderToViewState();
     updateMapFlowStepper(Math.max(mapFlowStepIdx,2));
-    requestAnimationFrame(()=>{resizeInlineMapThree();syncInlineMapThreeFromRaw();});
+    requestAnimationFrame(()=>{
+      resizeInlineMapThree();
+      syncInlineMapThreeFromRaw();
+      updateGoogleEarthExploreUi();
+    });
   }
   syncMapPreviewCursor();
 }
@@ -4909,6 +5137,7 @@ async function loadMapPreview(opts={}){
     syncMapZoomSliderToViewState();
     resetMapFlowCropToFull();
     syncInlineMapThreeFromRaw();
+    updateGoogleEarthExploreUi();
     updateMapFlowStepper(Math.max(mapFlowStepIdx,4));
     setImportStatus('Drag to pan; use the zoom slider (50% = zoom when this view loaded), then click "Use Imagery".');
   }catch(e){
@@ -5463,6 +5692,12 @@ if(mapRoiUseLotChk){
     }
   });
 }
+const map3dArtToggle=document.getElementById('map-3d-art-toggle');
+if(map3dArtToggle){
+  map3dArtToggle.addEventListener('change',()=>{
+    if(pageModalView==='map')syncInlineMapThreeFromRaw();
+  });
+}
 mapImageryModeSel.addEventListener('change',async()=>{
   mapTileImageCache.clear();
   mapViewState.mode=mapImageryModeSel.value;
@@ -5473,6 +5708,7 @@ mapImageryModeSel.addEventListener('change',async()=>{
     updateHistoricalControls();
   }
   await loadMapPreview({fromInputs:true,syncMapZoomBaseline:true});
+  updateGoogleEarthExploreUi();
 });
 const mapHistoricalYearEl=document.getElementById('map-historical-year');
 if(mapHistoricalYearEl){
@@ -5820,6 +6056,7 @@ syncMapPreviewCursor();
 window.addEventListener('resize',()=>{
   resizeInlineMapThree();
   resizeMapFlowModalThree();
+  resizeGoogleEarthExploreMap();
 });
 if(mapRenderStyleSel)mapRenderStyleSel.value=mapRenderStyle;
 if(mapDrawClassSel)mapVectorDrawState.cls=mapDrawClassSel.value||mapVectorDrawState.cls;
