@@ -1176,7 +1176,7 @@ select.sc-inp{cursor:pointer;width:40px}
     <div class="mbody map-3d-review-body">
       <div id="map-3d-modal-host"></div>
       <div id="map-3d-review-sidebar">
-        <p id="map-3d-review-hint">Drag yellow markers on the lot plane to nudge stall centers. Left drag: orbit. Right-drag or middle: pan. Scroll: zoom. Debug alignment: add <code style="font-size:9px">?debug3d=1</code> to the URL or set localStorage <code style="font-size:9px">paveview_debug_3d=1</code>.</p>
+        <p id="map-3d-review-hint">Drag yellow markers on the lot plane to nudge stall centers. Orbit / pan / zoom like any 3D view. If dots look flipped vertically vs the photo, open with <code style="font-size:9px">?map3dFlip=legacy</code>. Debug: <code style="font-size:9px">?debug3d=1</code> or localStorage <code style="font-size:9px">paveview_debug_3d=1</code>.</p>
         <div id="map-3d-confirm-stats"></div>
         <button class="btn y" id="btn-map-flow-confirm" type="button">Confirm estimation</button>
       </div>
@@ -1696,7 +1696,7 @@ let mapFlowCropBox=null;
 let mapFlowCropMode=false;
 let mapFlowCropDrag=null;
 let mapFlowLastApiResponse=null;
-let mapThreeInline={renderer:null,scene:null,camera:null,controls:null,plane:null,texture:null,anim:0};
+let mapThreeInline={renderer:null,scene:null,camera:null,controls:null,lotGroup:null,plane:null,texture:null,anim:0};
 let mapFlowModal={
   renderer:null,scene:null,camera:null,controls:null,lotGroup:null,plane:null,dots:null,
   raycaster:null,dragging:null,crop:null,cropW:0,cropH:0,anim:0,
@@ -1739,6 +1739,42 @@ function normalizeMapFlowCrop(){
   return{x,y,w,h};
 }
 
+/** Match CanvasTexture.flipY to plane-local Y; use ?map3dFlip=legacy if overlays look vertically mirrored. */
+function map3dLegacyTextureOrientation(){
+  try{return new URLSearchParams(location.search).get('map3dFlip')==='legacy';}catch(e){return false;}
+}
+function configureMapImageryTexture(tex,renderer){
+  if(!tex)return;
+  tex.wrapS=THREE.ClampToEdgeWrapping;
+  tex.wrapT=THREE.ClampToEdgeWrapping;
+  tex.flipY=map3dLegacyTextureOrientation();
+  tex.generateMipmaps=true;
+  tex.minFilter=THREE.LinearMipmapLinearFilter;
+  tex.magFilter=THREE.LinearFilter;
+  if(renderer&&renderer.capabilities){
+    try{tex.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}catch(e){}
+  }
+  tex.needsUpdate=true;
+}
+/** Oblique aerial framing (tilted view, not nadir). */
+function frameMap3dObliqueCamera(camera,controls,planeW,planeH){
+  if(!camera||!controls)return;
+  const span=Math.max(1,Number(planeW)||200,Number(planeH)||200);
+  const dist=span*1.12;
+  const elev=span*0.48;
+  camera.near=Math.max(0.2,span/750);
+  camera.far=span*150;
+  camera.updateProjectionMatrix();
+  camera.position.set(dist*0.9,elev,dist*0.78);
+  controls.target.set(0,0,0);
+  controls.minDistance=span*0.07;
+  controls.maxDistance=span*14;
+  controls.minPolarAngle=Math.PI*0.1;
+  controls.maxPolarAngle=Math.PI*0.495;
+  controls.enablePan=true;
+  controls.update();
+}
+
 /**
  * Pixel (top-left origin, +x right, +y down) → PlaneGeometry **local** XY (centered),
  * before any mesh/group rotation. Plane lies in XY with normal +Z; parent group
@@ -1767,7 +1803,7 @@ function imageToWorld(px,py,imageWidth,imageHeight,planeWidth,planeHeight,crop){
   const u=ix/iw;
   const v=iy/ih;
   const x=(u-0.5)*pw;
-  const y=(0.5-v)*ph;
+  const y=map3dLegacyTextureOrientation()?(0.5-v)*ph:(v-0.5)*ph;
   return{x,y};
 }
 
@@ -1780,7 +1816,7 @@ function worldToImage(lx,ly,imageWidth,imageHeight,planeWidth,planeHeight){
   const pw=Math.max(1e-9,planeWidth);
   const ph=Math.max(1e-9,planeHeight);
   const u=lx/pw+0.5;
-  const v=0.5-ly/ph;
+  const v=map3dLegacyTextureOrientation()?(0.5-ly/ph):(ly/ph+0.5);
   return{x:u*iw,y:v*ih};
 }
 
@@ -1805,6 +1841,9 @@ window.paveviewMap3d={
   imageToWorld,
   worldToImage,
   isMap3dDebugEnabled,
+  configureMapImageryTexture,
+  frameMap3dObliqueCamera,
+  map3dLegacyTextureOrientation,
 };
 
 function addMap3dDebugMarkers(lotGroup,planeMesh,imageWidth,imageHeight,fullFrameCrop){
@@ -1871,9 +1910,8 @@ function ensureInlineMapThree(){
   const w=Math.max(120,host.clientWidth||280);
   const h=Math.max(160,host.clientHeight||260);
   const scene=new THREE.Scene();
-  scene.background=new THREE.Color(0x0d0d0f);
-  const camera=new THREE.PerspectiveCamera(60,w/h,1,8000);
-  camera.position.set(180,220,180);
+  scene.background=new THREE.Color(0x12141a);
+  const camera=new THREE.PerspectiveCamera(52,w/h,0.4,12000);
   const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
   renderer.setSize(w,h);
@@ -1881,17 +1919,24 @@ function ensureInlineMapThree(){
   host.appendChild(renderer.domElement);
   const controls=new THREE.OrbitControls(camera,renderer.domElement);
   controls.enableDamping=true;
-  scene.add(new THREE.AmbientLight(0xffffff,0.82));
-  const dir=new THREE.DirectionalLight(0xffffff,0.4);
-  dir.position.set(120,200,60);
-  scene.add(dir);
+  scene.add(new THREE.HemisphereLight(0xa8b8d8,0x0f1014,0.58));
+  scene.add(new THREE.AmbientLight(0x7a8298,0.38));
+  const key=new THREE.DirectionalLight(0xfff5e6,0.95);
+  key.position.set(80,140,55);
+  scene.add(key);
+  const fill=new THREE.DirectionalLight(0xb8c8ff,0.28);
+  fill.position.set(-90,60,-70);
+  scene.add(fill);
+  const lotGroup=new THREE.Group();
+  lotGroup.rotation.x=-Math.PI/2;
+  scene.add(lotGroup);
   const plane=new THREE.Mesh(
     new THREE.PlaneGeometry(200,200),
-    new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide}),
+    new THREE.MeshLambertMaterial({color:0xffffff,side:THREE.DoubleSide}),
   );
-  plane.rotation.x=-Math.PI/2;
-  scene.add(plane);
-  mapThreeInline={renderer,scene,camera,controls,plane,texture:null,anim:0};
+  lotGroup.add(plane);
+  frameMap3dObliqueCamera(camera,controls,200,200);
+  mapThreeInline={renderer,scene,camera,controls,lotGroup,plane,texture:null,anim:0};
   function loop(){
     if(!mapThreeInline.renderer)return;
     mapThreeInline.anim=requestAnimationFrame(loop);
@@ -1920,14 +1965,12 @@ function syncInlineMapThreeFromRaw(){
   const baseW=baseH*ar;
   if(mapThreeInline.texture)mapThreeInline.texture.dispose();
   mapThreeInline.texture=new THREE.CanvasTexture(imgCanvas);
-  try{
-    const mx=mapThreeInline.renderer.capabilities.getMaxAnisotropy();
-    mapThreeInline.texture.anisotropy=Math.min(8,mx);
-  }catch(e){}
+  configureMapImageryTexture(mapThreeInline.texture,mapThreeInline.renderer);
   mapThreeInline.plane.material.map=mapThreeInline.texture;
   mapThreeInline.plane.material.needsUpdate=true;
   mapThreeInline.plane.geometry.dispose();
   mapThreeInline.plane.geometry=new THREE.PlaneGeometry(baseW,baseH);
+  frameMap3dObliqueCamera(mapThreeInline.camera,mapThreeInline.controls,baseW,baseH);
   resizeInlineMapThree();
 }
 function resizeMapFlowModalThree(){
@@ -1970,9 +2013,8 @@ function openMap3dReviewModal(apiData,cropBox){
   const rw=Math.max(320,host.clientWidth||640);
   const rh=Math.max(360,host.clientHeight||480);
   const scene=new THREE.Scene();
-  scene.background=new THREE.Color(0x0d0d0f);
-  const camera=new THREE.PerspectiveCamera(55,rw/rh,0.5,8000);
-  camera.position.set(140,200,140);
+  scene.background=new THREE.Color(0x12141a);
+  const camera=new THREE.PerspectiveCamera(52,rw/rh,0.35,12000);
   const renderer=new THREE.WebGLRenderer({antialias:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
   renderer.setSize(rw,rh);
@@ -1985,21 +2027,32 @@ function openMap3dReviewModal(apiData,cropBox){
     0,0,cropCanvas.width,cropCanvas.height,
   );
   const tex=new THREE.CanvasTexture(cropCanvas);
+  configureMapImageryTexture(tex,renderer);
   const ar=cropCanvas.width/Math.max(1,cropCanvas.height);
   const basePlaneH=160;
   const basePlaneW=basePlaneH*ar;
   const lotGroup=new THREE.Group();
   lotGroup.rotation.x=-Math.PI/2;
   scene.add(lotGroup);
+  scene.add(new THREE.HemisphereLight(0xa8b8d8,0x0f1014,0.58));
+  scene.add(new THREE.AmbientLight(0x7a8298,0.38));
+  const sun=new THREE.DirectionalLight(0xfff5e6,0.95);
+  sun.position.set(220,280,180);
+  scene.add(sun);
+  const fill=new THREE.DirectionalLight(0xb8c8ff,0.32);
+  fill.position.set(-200,90,-160);
+  scene.add(fill);
   const plane=new THREE.Mesh(
     new THREE.PlaneGeometry(basePlaneW,basePlaneH),
-    new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide}),
+    new THREE.MeshLambertMaterial({map:tex,side:THREE.DoubleSide}),
   );
   lotGroup.add(plane);
   const iw=cropCanvas.width;
   const ih=cropCanvas.height;
   const {width:pw,height:ph}=plane.geometry.parameters;
-  const overlayLift=1;
+  const span=Math.max(pw,ph,1);
+  const overlayLift=Math.max(0.35,span*0.004);
+  const dotRadius=Math.min(5,Math.max(1.6,span*0.013));
   const dots=[];
   (apiData.stalls||[]).forEach((d,di)=>{
     const c=detectionCenterPoint(d);
@@ -2008,7 +2061,7 @@ function openMap3dReviewModal(apiData,cropBox){
       console.debug('[paveview map3d] stall',di,{det:c,planeLocal:{x:lx,y:ly},iw,ih,pw,ph});
     }
     const dot=new THREE.Mesh(
-      new THREE.SphereGeometry(2.4,18,18),
+      new THREE.SphereGeometry(dotRadius,18,18),
       new THREE.MeshBasicMaterial({color:0xfff176}),
     );
     dot.position.set(lx,ly,overlayLift);
@@ -2030,10 +2083,9 @@ function openMap3dReviewModal(apiData,cropBox){
     lotGroup.add(lineLoop);
   }
   addMap3dDebugMarkers(lotGroup,plane,iw,ih,cropBox);
-  scene.add(new THREE.AmbientLight(0xffffff,0.9));
   const controls=new THREE.OrbitControls(camera,renderer.domElement);
   controls.enableDamping=true;
-  controls.target.set(0,0,0);
+  frameMap3dObliqueCamera(camera,controls,pw,ph);
   host.appendChild(renderer.domElement);
   const raycaster=new THREE.Raycaster();
   const localHit=new THREE.Vector3();
@@ -2052,7 +2104,7 @@ function openMap3dReviewModal(apiData,cropBox){
     if(e.button!==0)return;
     const ndc=screenToNdc(e.clientX,e.clientY);
     raycaster.setFromCamera(ndc,camera);
-    const hits=raycaster.intersectObjects(dots,false);
+    const hits=raycaster.intersectObjects(dots,true);
     if(hits.length){
       mapFlowModal.dragging=hits[0].object;
       try{renderer.domElement.setPointerCapture(e.pointerId);}catch(err){}
