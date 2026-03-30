@@ -79,6 +79,9 @@ function isStallLikeClass(cls) {
   const c = normalizedLower(cls);
   return (
     c.includes('stall')
+    || c.includes('car')
+    || c.includes('vehicle')
+    || c.includes('automobile')
     || c.includes('ada')
     || c.includes('handicap')
     || c.includes('accessible')
@@ -104,6 +107,9 @@ function isSymbolClass(cls) {
   const c = normalizedLower(cls);
   return (
     c.includes('stall')
+    || c.includes('car')
+    || c.includes('vehicle')
+    || c.includes('automobile')
     || c.includes('ada')
     || c.includes('handicap')
     || c.includes('accessible')
@@ -184,11 +190,17 @@ module.exports = async (req, res) => {
     process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
     'my-first-project-ug0a7/4'
   ]);
+  /** First pass is often a car/vehicle detector whose boxes = stall occupancy; class names may be "car", not "stall". */
   const stallModelIdRaw = pickFirstNonEmpty([
     process.env.ROBOFLOW_STALL_MODEL_ID,
+    process.env.ROBOFLOW_CAR_MODEL_ID,
     process.env.ROBOFLOW_STALL_MODEL,
+    process.env.ROBOFLOW_CAR_MODEL,
     process.env.NEXT_PUBLIC_ROBOFLOW_STALL_MODEL_ID,
+    process.env.NEXT_PUBLIC_ROBOFLOW_CAR_MODEL_ID,
     process.env.STALL_MODEL_ID,
+    process.env.CAR_MODEL_ID,
+    process.env.VEHICLE_MODEL_ID,
     ''
   ]);
 
@@ -220,16 +232,21 @@ module.exports = async (req, res) => {
   const hint403 =
     'Roboflow 403: your Private API key cannot run this model path, or the path is wrong. '
     + 'Open Deploy → copy the Hosted Inference URL. '
-    + 'Use ROBOFLOW_MODEL_ID (+ ROBOFLOW_WORKSPACE) for main; ROBOFLOW_STALL_MODEL_ID (+ ROBOFLOW_STALL_WORKSPACE or same WORKSPACE) for stall. '
+    + 'Use ROBOFLOW_MODEL_ID (+ ROBOFLOW_WORKSPACE) for main; ROBOFLOW_STALL_MODEL_ID or ROBOFLOW_CAR_MODEL_ID for the car/stall slot detector. '
     + 'Redeploy after env changes.';
 
   if (req.method === 'GET') {
     const stallIdSeen = Boolean(
       pickFirstNonEmpty([
         process.env.ROBOFLOW_STALL_MODEL_ID,
+        process.env.ROBOFLOW_CAR_MODEL_ID,
         process.env.ROBOFLOW_STALL_MODEL,
+        process.env.ROBOFLOW_CAR_MODEL,
         process.env.NEXT_PUBLIC_ROBOFLOW_STALL_MODEL_ID,
-        process.env.STALL_MODEL_ID
+        process.env.NEXT_PUBLIC_ROBOFLOW_CAR_MODEL_ID,
+        process.env.STALL_MODEL_ID,
+        process.env.CAR_MODEL_ID,
+        process.env.VEHICLE_MODEL_ID
       ])
     );
     sendJson(res, 200, {
@@ -243,15 +260,20 @@ module.exports = async (req, res) => {
       stall_model_configured: Boolean(stallPath),
       env_stall_id_var_recognized: stallIdSeen,
       stall_id_env_aliases: [
-        'ROBOFLOW_STALL_MODEL_ID (preferred)',
+        'ROBOFLOW_STALL_MODEL_ID',
+        'ROBOFLOW_CAR_MODEL_ID (car detector → stall slots)',
         'ROBOFLOW_STALL_MODEL',
+        'ROBOFLOW_CAR_MODEL',
+        'STALL_MODEL_ID',
+        'CAR_MODEL_ID',
+        'VEHICLE_MODEL_ID',
         'NEXT_PUBLIC_ROBOFLOW_STALL_MODEL_ID',
-        'STALL_MODEL_ID'
+        'NEXT_PUBLIC_ROBOFLOW_CAR_MODEL_ID'
       ],
       hint: !stallPath
-        ? 'stall_model_path is empty: set ROBOFLOW_STALL_MODEL_ID to the project/version from Roboflow Deploy (e.g. my-parking-stall/2). Use ROBOFLOW_STALL_WORKSPACE only if that model’s URL has a workspace slug before the project name.'
+        ? 'slot_detector_path empty: set ROBOFLOW_STALL_MODEL_ID or ROBOFLOW_CAR_MODEL_ID to project/version from Roboflow Deploy (car detectors count). Redeploy; ensure var is enabled for this Preview/Production.'
         : (!stallIdSeen
-          ? 'No stall model env var found — add ROBOFLOW_STALL_MODEL_ID in Vercel for this Preview/Production, then redeploy.'
+          ? 'No slot detector env var found — add ROBOFLOW_CAR_MODEL_ID or ROBOFLOW_STALL_MODEL_ID in Vercel, then redeploy.'
           : null),
       vercelEnv: process.env.VERCEL_ENV || null
     });
@@ -317,8 +339,8 @@ module.exports = async (req, res) => {
     if (mode === 'stall') {
       if (!stallKey || !stallPath) {
         sendJson(res, 500, {
-          error: 'Stall mode requires ROBOFLOW_STALL_MODEL_ID and a valid API key.',
-          hint: 'Set ROBOFLOW_STALL_MODEL_ID (and ROBOFLOW_STALL_WORKSPACE if needed).'
+          error: 'Stall/car slot mode requires a detector model ID and API key.',
+          hint: 'Set ROBOFLOW_CAR_MODEL_ID or ROBOFLOW_STALL_MODEL_ID (project/version from Deploy).'
         });
         return;
       }
@@ -362,9 +384,9 @@ module.exports = async (req, res) => {
       }
       if (!stallKey || !stallPath) {
         sendJson(res, 500, {
-          error: 'Dual mode requires stall model path and API key.',
-          hint: `stallPath empty=${!stallPath}, stallKey empty=${!stallKey}. Set ROBOFLOW_STALL_MODEL_ID (e.g. project-slug/3). Names also accepted: ROBOFLOW_STALL_MODEL, STALL_MODEL_ID. Redeploy after Vercel env changes.`,
-          env_stall_id_recognized: Boolean(stallModelIdRaw)
+          error: 'Dual mode requires the car/stall slot detector model path and API key.',
+          hint: `slotPath empty=${!stallPath}, slotKey empty=${!stallKey}. Set ROBOFLOW_CAR_MODEL_ID or ROBOFLOW_STALL_MODEL_ID (e.g. my-cars/2). Also: CAR_MODEL_ID, VEHICLE_MODEL_ID. Redeploy so Vercel injects the variable.`,
+          env_slot_id_recognized: Boolean(stallModelIdRaw)
         });
         return;
       }

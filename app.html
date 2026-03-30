@@ -2983,7 +2983,7 @@ function syncMapVectorDetectionsForTransfer(){
 
 function mapVectorToZoneType(cls){
   const c=String(cls||'').toLowerCase();
-  if(c.includes('stall')||c.includes('ada')||c.includes('handicap')||c.includes('accessible')||c.includes('arrow')||c.includes('stencil')||c.includes('crosswalk')||c.includes('hatch')){
+  if(c.includes('stall')||c.includes('car')||c.includes('vehicle')||c.includes('automobile')||c.includes('ada')||c.includes('handicap')||c.includes('accessible')||c.includes('arrow')||c.includes('stencil')||c.includes('crosswalk')||c.includes('hatch')){
     return 'marker';
   }
   if(c.includes('lot'))return 'lot';
@@ -3086,6 +3086,9 @@ function classIsHatchLike(cls){
 function classIsStallLike(cls){
   const c=String(cls||'').toLowerCase();
   return c.includes('stall')
+    || c.includes('car')
+    || c.includes('vehicle')
+    || c.includes('automobile')
     || c.includes('ada')
     || c.includes('handicap')
     || c.includes('accessible')
@@ -3112,7 +3115,7 @@ function collectObstructionPolygonsFromVectors(vectors){
 function isParkingStallLikeVectorClass(cls){
   const c=String(cls||'').toLowerCase();
   if(c.includes('hatch')||c.includes('crosswalk')||c.includes('stencil')||c.includes('arrow'))return false;
-  return c.includes('stall')||c.includes('ada')||c.includes('handicap')||c.includes('accessible');
+  return c.includes('stall')||c.includes('car')||c.includes('vehicle')||c.includes('automobile')||c.includes('ada')||c.includes('handicap')||c.includes('accessible');
 }
 function vectorStallClearOfObstructions(pts, obstructionPolys){
   if(!Array.isArray(obstructionPolys)||!obstructionPolys.length)return true;
