@@ -15,6 +15,17 @@ function pickFirstNonEmpty(values) {
   return '';
 }
 
+/**
+ * Roboflow hosted V1 (detect.roboflow.com / outline.roboflow.com) expects confidence & overlap
+ * as 0–1 fractions in the query string (see official Python HTTP examples).
+ * Values > 1 are treated as legacy percent-style (e.g. 25 → 0.25).
+ */
+function toRoboflowFractionParam(n, def) {
+  const raw = Number.isFinite(Number(n)) ? Number(n) : def;
+  if (raw > 1) return Math.min(0.99, Math.max(0.01, raw / 100));
+  return Math.min(0.99, Math.max(0.01, raw));
+}
+
 /** Map common env / UI values to detect | segment | hybrid */
 function normalizeInferenceModeLabel(v) {
   const s = String(v || '')
@@ -214,12 +225,10 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const confidence = Number.isFinite(Number(body.confidence))
-    ? Math.max(1, Math.min(99, Number(body.confidence)))
-    : 25;
-  const overlap = Number.isFinite(Number(body.overlap))
-    ? Math.max(1, Math.min(99, Number(body.overlap)))
-    : 30;
+  const rawConf = Number.isFinite(Number(body.confidence)) ? Number(body.confidence) : 25;
+  const rawOverlap = Number.isFinite(Number(body.overlap)) ? Number(body.overlap) : 30;
+  const confFrac = toRoboflowFractionParam(rawConf, 0.25);
+  const overlapFrac = toRoboflowFractionParam(rawOverlap, 0.3);
   const modeFromEnv = normalizeInferenceModeLabel(
     pickFirstNonEmpty([
       process.env.ROBOFLOW_INFERENCE_MODE,
@@ -253,19 +262,40 @@ module.exports = async (req, res) => {
 
   try {
     const runRequest = async (baseUrl) => {
-      const url = `${baseUrl}/${modelId}?api_key=${encodeURIComponent(apiKey)}&confidence=${confidence}&overlap=${overlap}`;
-      const rfRes = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: imageBase64
+      const q = new URLSearchParams({
+        api_key: apiKey,
+        confidence: String(confFrac),
+        overlap: String(overlapFrac)
       });
+      const url = `${baseUrl}/${modelId}?${q.toString()}`;
+      /** Official Roboflow V1 hosted examples: raw base64 in body + Content-Type: application/json */
+      const postOpts = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: imageBase64
+      };
+      let rfRes = await fetch(url, postOpts);
       let payload = null;
       try {
         payload = await rfRes.json();
       } catch (e) {
         payload = null;
+      }
+      if (!rfRes.ok) {
+        const retry = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: imageBase64
+        });
+        let retryPayload = null;
+        try {
+          retryPayload = await retry.json();
+        } catch (e) {
+          retryPayload = null;
+        }
+        if (retry.ok) {
+          return { ok: true, status: retry.status, payload: retryPayload, url };
+        }
       }
       return { ok: rfRes.ok, status: rfRes.status, payload, url };
     };
@@ -274,12 +304,15 @@ module.exports = async (req, res) => {
     const fetchCarModelPredictionsNormalized = async () => {
       if (!carModelId || carModelId === modelId) return [];
       try {
-        const carUrl = `https://detect.roboflow.com/${carModelId}?api_key=${encodeURIComponent(apiKey)}&confidence=${confidence}&overlap=${overlap}`;
+        const cq = new URLSearchParams({
+          api_key: apiKey,
+          confidence: String(confFrac),
+          overlap: String(overlapFrac)
+        });
+        const carUrl = `https://detect.roboflow.com/${carModelId}?${cq.toString()}`;
         const carRes = await fetch(carUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: imageBase64
         });
         let carPayload = null;
