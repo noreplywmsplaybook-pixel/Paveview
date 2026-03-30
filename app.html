@@ -4458,6 +4458,10 @@ async function runRoboflowDetection(){
       throw new Error(msg.trim()||'Detection failed');
     }
 
+    if(data?.meta?.stall_request_failed&&data?.meta?.warn){
+      console.warn('Roboflow stall model:',data.meta.stall_error||'',data.meta.warn);
+    }
+
     const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
     const manualScanPoly=normalizeScanPolygon(
       mapScanPoly,

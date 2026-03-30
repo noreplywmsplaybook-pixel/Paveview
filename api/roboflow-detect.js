@@ -11,7 +11,10 @@ function sendJson(res, statusCode, payload) {
 
 function pickFirstNonEmpty(values) {
   for (const v of values) {
-    const t = String(v || '').trim();
+    let t = String(v || '').trim();
+    if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+      t = t.slice(1, -1).trim();
+    }
     if (t) return t;
   }
   return '';
@@ -181,9 +184,15 @@ module.exports = async (req, res) => {
     process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
     'my-first-project-ug0a7/4'
   ]);
-  const stallModelIdRaw = pickFirstNonEmpty([process.env.ROBOFLOW_STALL_MODEL_ID, '']);
+  const stallModelIdRaw = pickFirstNonEmpty([
+    process.env.ROBOFLOW_STALL_MODEL_ID,
+    process.env.ROBOFLOW_STALL_MODEL,
+    process.env.NEXT_PUBLIC_ROBOFLOW_STALL_MODEL_ID,
+    process.env.STALL_MODEL_ID,
+    ''
+  ]);
 
-  const mainWs = String(process.env.ROBOFLOW_WORKSPACE || '').trim().replace(/^\/+|\/+$/g, '');
+  const mainWs = pickFirstNonEmpty([process.env.ROBOFLOW_WORKSPACE, '']).replace(/^\/+|\/+$/g, '');
   const stallWs = pickFirstNonEmpty([
     process.env.ROBOFLOW_STALL_WORKSPACE,
     process.env.ROBOFLOW_WORKSPACE,
@@ -193,12 +202,15 @@ module.exports = async (req, res) => {
   const buildMainPath = () => {
     const id = String(mainModelIdRaw || '').trim().replace(/^\/+/, '');
     if (!mainWs) return id;
+    if (id.startsWith(`${mainWs}/`) || id === mainWs) return id;
     return `${mainWs}/${id}`;
   };
+  /** If ROBOFLOW_STALL_MODEL_ID already includes the workspace prefix, do not prepend again. */
   const buildStallPath = () => {
     const id = String(stallModelIdRaw || '').trim().replace(/^\/+/, '');
     if (!id) return '';
     if (!stallWs) return id;
+    if (id.startsWith(`${stallWs}/`) || id === stallWs) return id;
     return `${stallWs}/${id}`;
   };
 
@@ -212,6 +224,14 @@ module.exports = async (req, res) => {
     + 'Redeploy after env changes.';
 
   if (req.method === 'GET') {
+    const stallIdSeen = Boolean(
+      pickFirstNonEmpty([
+        process.env.ROBOFLOW_STALL_MODEL_ID,
+        process.env.ROBOFLOW_STALL_MODEL,
+        process.env.NEXT_PUBLIC_ROBOFLOW_STALL_MODEL_ID,
+        process.env.STALL_MODEL_ID
+      ])
+    );
     sendJson(res, 200, {
       ok: true,
       branch: 'New-Testing-Grounds',
@@ -221,6 +241,18 @@ module.exports = async (req, res) => {
       main_model_path: mainPath,
       stall_model_path: stallPath || null,
       stall_model_configured: Boolean(stallPath),
+      env_stall_id_var_recognized: stallIdSeen,
+      stall_id_env_aliases: [
+        'ROBOFLOW_STALL_MODEL_ID (preferred)',
+        'ROBOFLOW_STALL_MODEL',
+        'NEXT_PUBLIC_ROBOFLOW_STALL_MODEL_ID',
+        'STALL_MODEL_ID'
+      ],
+      hint: !stallPath
+        ? 'stall_model_path is empty: set ROBOFLOW_STALL_MODEL_ID to the project/version from Roboflow Deploy (e.g. my-parking-stall/2). Use ROBOFLOW_STALL_WORKSPACE only if that model’s URL has a workspace slug before the project name.'
+        : (!stallIdSeen
+          ? 'No stall model env var found — add ROBOFLOW_STALL_MODEL_ID in Vercel for this Preview/Production, then redeploy.'
+          : null),
       vercelEnv: process.env.VERCEL_ENV || null
     });
     return;
@@ -330,8 +362,9 @@ module.exports = async (req, res) => {
       }
       if (!stallKey || !stallPath) {
         sendJson(res, 500, {
-          error: 'Dual mode requires stall model: set ROBOFLOW_STALL_MODEL_ID.',
-          hint: 'Optional ROBOFLOW_STALL_API_KEY if different from main; else ROBOFLOW_API_KEY is used.'
+          error: 'Dual mode requires stall model path and API key.',
+          hint: `stallPath empty=${!stallPath}, stallKey empty=${!stallKey}. Set ROBOFLOW_STALL_MODEL_ID (e.g. project-slug/3). Names also accepted: ROBOFLOW_STALL_MODEL, STALL_MODEL_ID. Redeploy after Vercel env changes.`,
+          env_stall_id_recognized: Boolean(stallModelIdRaw)
         });
         return;
       }
@@ -371,6 +404,9 @@ module.exports = async (req, res) => {
       const image = seg.payload?.image || det.payload?.image || stallRes.payload?.image || null;
 
       const stallKeptInMerge = mergedPredictions.filter((p) => p._stallPass === 1).length;
+      const stallFailReason = stallRes.ok
+        ? null
+        : (stallRes.payload?.error || stallRes.payload?.message || `HTTP ${stallRes.status}`);
       sendJson(res, 200, {
         predictions: mergedPredictions,
         image,
@@ -382,12 +418,18 @@ module.exports = async (req, res) => {
           main_model_path: mainPath,
           stall_raw_count: stallPreds.length,
           stall_kept_after_merge: stallKeptInMerge,
+          stall_http_status: stallRes.status,
+          stall_request_failed: !stallRes.ok,
+          stall_error: stallFailReason,
           main_segmentation_count: keepSeg.length,
           main_detection_count: keepDet.length,
           stall_ok: stallRes.ok,
           seg_ok: seg.ok,
           det_ok: det.ok,
-          merged_count: mergedPredictions.length
+          merged_count: mergedPredictions.length,
+          warn: !stallRes.ok
+            ? 'Stall model request failed; predictions are main hybrid only. Check stall model path, key, and GET /api/roboflow-detect.'
+            : undefined
         }
       });
       return;
