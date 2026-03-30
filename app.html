@@ -4437,7 +4437,10 @@ async function runRoboflowDetection(){
       body:JSON.stringify(payload),
     });
     const data=await res.json();
-    if(!res.ok)throw new Error(data?.error||'Detection failed');
+    if(!res.ok){
+      const msg=[data?.error,data?.hint].filter(Boolean).join(' — ');
+      throw new Error(msg||'Detection failed');
+    }
 
     const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
     const manualScanPoly=normalizeScanPolygon(

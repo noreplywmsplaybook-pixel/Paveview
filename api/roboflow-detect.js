@@ -1,6 +1,6 @@
 function sendJson(res, statusCode, payload) {
   res.statusCode = statusCode;
-  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(JSON.stringify(payload));
 }
 
@@ -10,6 +10,53 @@ function pickFirstNonEmpty(values) {
     if (t) return t;
   }
   return '';
+}
+
+function sanitizeUrlForLog(url) {
+  if (!url || typeof url !== 'string') return '';
+  try {
+    const u = new URL(url);
+    u.searchParams.delete('api_key');
+    return u.toString();
+  } catch {
+    return url.replace(/([?&])api_key=[^&]*/g, '$1api_key=(redacted)');
+  }
+}
+
+/** Vercel usually parses JSON; some runtimes leave body empty or as Buffer — normalize + optional stream read. */
+async function parseJsonBody(req) {
+  const b = req.body;
+  if (b != null && typeof b === 'object' && !Buffer.isBuffer(b)) {
+    return b;
+  }
+  if (Buffer.isBuffer(b)) {
+    try {
+      return JSON.parse(b.toString('utf8') || '{}');
+    } catch {
+      return {};
+    }
+  }
+  if (typeof b === 'string') {
+    try {
+      return JSON.parse(b || '{}');
+    } catch {
+      return {};
+    }
+  }
+  if (req.readable && typeof req[Symbol.asyncIterator] === 'function') {
+    try {
+      const chunks = [];
+      for await (const chunk of req) {
+        chunks.push(chunk);
+      }
+      if (!chunks.length) return {};
+      const raw = Buffer.concat(chunks).toString('utf8');
+      return JSON.parse(raw || '{}');
+    } catch {
+      return {};
+    }
+  }
+  return {};
 }
 
 function bboxFromPred(p) {
@@ -86,7 +133,6 @@ function isSymbolClass(cls) {
   );
 }
 
-/** Merge stall-model boxes with main-model stall-like symbols; keep non-stall symbols from main. */
 function mergeDualPredictions(stallPreds, keepSeg, keepDet) {
   const stallFromPass1 = (stallPreds || []).map((p) => ({
     ...p,
@@ -123,11 +169,6 @@ function mergeDualPredictions(stallPreds, keepSeg, keepDet) {
 }
 
 module.exports = async (req, res) => {
-  if (req.method !== 'POST') {
-    sendJson(res, 405, { error: 'Method not allowed.' });
-    return;
-  }
-
   const apiKey = pickFirstNonEmpty([
     process.env.ROBOFLOW_API_KEY,
     process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY,
@@ -146,9 +187,30 @@ module.exports = async (req, res) => {
     'my-first-project-ug0a7/6'
   ]);
 
+  if (req.method === 'GET') {
+    sendJson(res, 200, {
+      ok: true,
+      service: 'roboflow-detect',
+      hasApiKey: Boolean(apiKey),
+      vercelEnv: process.env.VERCEL_ENV || null,
+      stall_model_id: stallModelId,
+      main_model_id: mainModelId,
+      hint: apiKey
+        ? 'POST JSON with imageDataUrl or imageBase64. Keys are loaded.'
+        : 'Set ROBOFLOW_API_KEY for Preview AND Production in Vercel → Project → Settings → Environment Variables (preview deployments do not use Production-only secrets).'
+    });
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'Method not allowed. Use GET for health or POST to infer.' });
+    return;
+  }
+
   if (!apiKey) {
     sendJson(res, 500, {
-      error: 'Missing Roboflow API key environment variable.',
+      error: 'Missing Roboflow API key.',
+      hint: 'In Vercel, add ROBOFLOW_API_KEY to every environment you use (at least Preview + Production). Deleted keys affect all new deployments.',
       diagnostics: {
         vercelEnv: process.env.VERCEL_ENV || null,
         has_ROBOFLOW_API_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_API_KEY]))
@@ -159,9 +221,9 @@ module.exports = async (req, res) => {
 
   let body = {};
   try {
-    body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    body = await parseJsonBody(req);
   } catch (e) {
-    sendJson(res, 400, { error: 'Invalid JSON body.' });
+    sendJson(res, 400, { error: 'Invalid JSON body.', detail: String(e?.message || e) });
     return;
   }
 
@@ -169,7 +231,10 @@ module.exports = async (req, res) => {
   const imageDataUrl = String(body.imageDataUrl || '').trim();
   const imageBase64 = rawBase64 || (imageDataUrl.includes(',') ? imageDataUrl.split(',')[1].trim() : '');
   if (!imageBase64) {
-    sendJson(res, 400, { error: 'imageBase64 (or imageDataUrl) is required.' });
+    sendJson(res, 400, {
+      error: 'imageBase64 (or imageDataUrl) is required.',
+      receivedKeys: Object.keys(body || {})
+    });
     return;
   }
 
@@ -215,14 +280,18 @@ module.exports = async (req, res) => {
     return { ok: rfRes.ok, status: rfRes.status, payload, url };
   };
 
+  const roboflowErrorMessage = (result) => {
+    const p = result?.payload;
+    return p?.error || p?.message || p?.detail || `HTTP ${result?.status}`;
+  };
+
   try {
-    // Stall-only: zoom tile recall (object detection — every box is a stall).
     if (mode === 'stall' || mode === 'detect') {
       const result = await runDetect(stallModelId);
       if (!result.ok) {
         sendJson(res, result.status || 502, {
-          error: result.payload?.error || result.payload?.message || 'Roboflow stall model request failed.',
-          source: result.url,
+          error: roboflowErrorMessage(result) || 'Roboflow stall model request failed.',
+          source: sanitizeUrlForLog(result.url),
           meta: { mode: 'stall', stall_model_id: stallModelId }
         });
         return;
@@ -245,7 +314,6 @@ module.exports = async (req, res) => {
       return;
     }
 
-    // Main hybrid only (segmentation + detection on main model) — debugging / rare use.
     if (mode === 'main') {
       const [seg, det] = await Promise.all([
         runOutline(mainModelId),
@@ -253,13 +321,15 @@ module.exports = async (req, res) => {
       ]);
       if (!seg.ok && !det.ok) {
         sendJson(res, seg.status || det.status || 502, {
-          error: seg.payload?.error || det.payload?.error || 'Roboflow main model failed.',
+          error: roboflowErrorMessage(seg) || roboflowErrorMessage(det) || 'Roboflow main model failed.',
+          source_seg: sanitizeUrlForLog(seg.url),
+          source_det: sanitizeUrlForLog(det.url),
           meta: { main_model_id: mainModelId }
         });
         return;
       }
-      const segPred = Array.isArray(seg.payload?.predictions) ? seg.payload.predictions : [];
-      const detPred = Array.isArray(det.payload?.predictions) ? det.payload.predictions : [];
+      const segPred = seg.ok && Array.isArray(seg.payload?.predictions) ? seg.payload.predictions : [];
+      const detPred = det.ok && Array.isArray(det.payload?.predictions) ? det.payload.predictions : [];
       const keepSeg = segPred.filter((p) => isAreaClass(p.class));
       const keepDet = detPred.filter((p) => isSymbolClass(p.class));
       const merged = [...keepSeg, ...keepDet];
@@ -279,13 +349,12 @@ module.exports = async (req, res) => {
       return;
     }
 
-    // dual: (1) stall model first, (2) main hybrid second, merge stalls.
     if (mode === 'segment') {
       const result = await runOutline(mainModelId);
       if (!result.ok) {
         sendJson(res, result.status || 502, {
-          error: result.payload?.error || result.payload?.message || 'Roboflow segmentation failed.',
-          source: result.url
+          error: roboflowErrorMessage(result) || 'Roboflow segmentation failed.',
+          source: sanitizeUrlForLog(result.url)
         });
         return;
       }
@@ -306,12 +375,20 @@ module.exports = async (req, res) => {
     if (!stallRes.ok && !seg.ok && !det.ok) {
       sendJson(res, 502, {
         error: 'Roboflow failed on stall model and main model (segmentation + detection).',
+        stall_error: stallRes.ok ? null : roboflowErrorMessage(stallRes),
+        seg_error: seg.ok ? null : roboflowErrorMessage(seg),
+        det_error: det.ok ? null : roboflowErrorMessage(det),
         meta: {
           stall_model_id: stallModelId,
           main_model_id: mainModelId,
           stall_status: stallRes.status,
           seg_status: seg.status,
           det_status: det.status
+        },
+        sources: {
+          stall: sanitizeUrlForLog(stallRes.url),
+          seg: sanitizeUrlForLog(seg.url),
+          det: sanitizeUrlForLog(det.url)
         }
       });
       return;
