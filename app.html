@@ -3347,8 +3347,10 @@ function markerLikelyDuplicate(a,b,pxTol=12){
     : ((ta==='stall'||ta==='ada')?32:(ta==='stencil'?24:14));
   return Math.hypot((a.x||0)-(b.x||0),(a.y||0)-(b.y||0))<=tol;
 }
-function confidenceThresholdForClass(cls,opts={}){
+function confidenceThresholdForClass(cls,det,opts={}){
   const c=String(cls||'').toLowerCase();
+  // Dedicated stall-model pass (server sets _stallPass:1): allow slightly lower scores.
+  if(det&&det._stallPass===1&&c.includes('stall'))return 0.14;
   // Keep stall-like detections visible while filtering low-confidence noise.
   if(c.includes('stall'))return 0.22;
   if(c.includes('ada')||c.includes('handicap'))return 0.2;
@@ -3359,7 +3361,7 @@ function filterDetectionsByClassConfidence(detections,opts={}){
   if(!Array.isArray(detections)||!detections.length)return [];
   return detections.filter(det=>{
     const conf=Number(det?.confidence||0);
-    return conf>=confidenceThresholdForClass(det?.class,opts);
+    return conf>=confidenceThresholdForClass(det?.class,det,opts);
   });
 }
 function detectionCenterPoint(det){
@@ -3412,10 +3414,19 @@ function dedupeStallLikeDetections(detections){
       kept.push(det);
       return;
     }
-    // Keep the strongest confidence if detections overlap.
     const prevConf=Number(kept[dupIdx]?.confidence||0);
     const curConf=Number(det?.confidence||0);
-    if(curConf>prevConf)kept[dupIdx]=det;
+    const prevPass=kept[dupIdx]?._stallPass;
+    const curPass=det?._stallPass;
+    let replace=false;
+    if(curPass===1&&prevPass===2){
+      replace=curConf+0.02>=prevConf;
+    }else if(curPass===2&&prevPass===1){
+      replace=curConf>prevConf+0.02;
+    }else{
+      replace=curConf>prevConf;
+    }
+    if(replace)kept[dupIdx]=det;
   });
   return kept;
 }

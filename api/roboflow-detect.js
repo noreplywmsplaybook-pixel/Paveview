@@ -59,6 +59,15 @@ function boundsIouBoxes(a, b) {
   return inter / union;
 }
 
+/** Roboflow usually returns 0–1; some responses use 0–100. Client thresholds assume 0–1. */
+function normalizeRfConfidence(pred) {
+  let c = Number(pred?.confidence);
+  if (!Number.isFinite(c)) return 0;
+  if (c > 1 && c <= 100) c /= 100;
+  if (c > 1) c = 1;
+  return c;
+}
+
 function normalizedLower(cls) {
   return String(cls || '').trim().toLowerCase();
 }
@@ -106,35 +115,55 @@ function mergeDualPredictions(stallPreds, keepSeg, keepDet) {
   const stallFromPass1 = (stallPreds || []).map((p) => ({
     ...p,
     class: 'parking_stall',
-    confidence: Number(p.confidence) || 0,
+    confidence: normalizeRfConfidence(p),
     _stallPass: 1
   }));
 
   const mainMerged = [...(keepSeg || []), ...(keepDet || [])];
   const mainNonStall = mainMerged.filter((p) => !isStallLikeClass(p?.class));
-  const mainStallLike = mainMerged.filter((p) => isStallLikeClass(p?.class));
+  const mainStallLike = mainMerged
+    .filter((p) => isStallLikeClass(p?.class))
+    .map((p) => ({
+      ...p,
+      confidence: normalizeRfConfidence(p),
+      _stallPass: 2
+    }));
 
-  const stallPool = [...stallFromPass1, ...mainStallLike.map((p) => ({ ...p, _stallPass: 2 }))];
+  /** Stall-specialist first so duplicates tend to resolve toward the stall model when scores are close. */
+  const stallPool = [...stallFromPass1, ...mainStallLike];
   const mergedStalls = [];
   stallPool.forEach((p) => {
-    const dup = mergedStalls.find((q) => {
+    const dupIdx = mergedStalls.findIndex((q) => {
       const d = centerDist(p, q);
       const iou = boundsIouBoxes(bboxFromPred(p), bboxFromPred(q));
       return d <= 36 || iou >= 0.35;
     });
-    if (!dup) {
+    if (dupIdx < 0) {
       mergedStalls.push(p);
       return;
     }
+    const dup = mergedStalls[dupIdx];
     const pc = Number(p.confidence) || 0;
     const qc = Number(dup.confidence) || 0;
-    if (pc > qc) {
-      const idx = mergedStalls.indexOf(dup);
-      if (idx >= 0) mergedStalls[idx] = p;
+    const pPass = p._stallPass;
+    const qPass = dup._stallPass;
+    let replace = false;
+    if (pPass === 1 && qPass === 2) {
+      replace = pc + 0.03 >= qc;
+    } else if (pPass === 2 && qPass === 1) {
+      replace = pc > qc + 0.03;
+    } else {
+      replace = pc > qc;
     }
+    if (replace) mergedStalls[dupIdx] = p;
   });
 
-  return [...mainNonStall, ...mergedStalls];
+  const mainNonStallNorm = mainNonStall.map((p) => ({
+    ...p,
+    confidence: normalizeRfConfidence(p)
+  }));
+
+  return [...mainNonStallNorm, ...mergedStalls];
 }
 
 module.exports = async (req, res) => {
@@ -275,7 +304,9 @@ module.exports = async (req, res) => {
       const preds = Array.isArray(result.payload?.predictions) ? result.payload.predictions : [];
       const normalized = preds.map((p) => ({
         ...p,
-        class: normalizedLower(p?.class).includes('stall') ? p.class : 'parking_stall'
+        class: normalizedLower(p?.class).includes('stall') ? p.class : 'parking_stall',
+        confidence: normalizeRfConfidence(p),
+        _stallPass: 1
       }));
       sendJson(res, 200, {
         ...result.payload,
@@ -339,6 +370,7 @@ module.exports = async (req, res) => {
       const mergedPredictions = mergeDualPredictions(stallPreds, keepSeg, keepDet);
       const image = seg.payload?.image || det.payload?.image || stallRes.payload?.image || null;
 
+      const stallKeptInMerge = mergedPredictions.filter((p) => p._stallPass === 1).length;
       sendJson(res, 200, {
         predictions: mergedPredictions,
         image,
@@ -348,7 +380,8 @@ module.exports = async (req, res) => {
           main_model_id: mainModelIdRaw,
           stall_model_path: stallPath,
           main_model_path: mainPath,
-          stall_pass_count: stallPreds.length,
+          stall_raw_count: stallPreds.length,
+          stall_kept_after_merge: stallKeptInMerge,
           main_segmentation_count: keepSeg.length,
           main_detection_count: keepDet.length,
           stall_ok: stallRes.ok,
