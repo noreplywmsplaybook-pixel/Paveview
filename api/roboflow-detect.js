@@ -215,8 +215,28 @@ module.exports = async (req, res) => {
     { name: 'RF_API_KEY', value: process.env.RF_API_KEY }
   ];
 
-  const stallPick = pickKeyWithSource(stallEntries);
-  const mainPick = pickKeyWithSource(mainEntries);
+  const sharedOnlyEntries = [
+    { name: 'ROBOFLOW_API_KEY', value: process.env.ROBOFLOW_API_KEY },
+    { name: 'ROBOFLOW_KEY', value: process.env.ROBOFLOW_KEY },
+    { name: 'RF_API_KEY', value: process.env.RF_API_KEY }
+  ];
+  const forceSingleKey = ['1', 'true', 'yes'].includes(
+    String(process.env.ROBOFLOW_FORCE_SINGLE_API_KEY || '').toLowerCase()
+  );
+
+  let stallPick;
+  let mainPick;
+  if (forceSingleKey) {
+    const p = pickKeyWithSource(sharedOnlyEntries);
+    stallPick = { key: p.key, source: p.source };
+    mainPick = {
+      key: p.key,
+      source: p.source ? `${p.source} (ROBOFLOW_FORCE_SINGLE_API_KEY)` : null
+    };
+  } else {
+    stallPick = pickKeyWithSource(stallEntries);
+    mainPick = pickKeyWithSource(mainEntries);
+  }
   const stallApiKey = stallPick.key;
   const mainApiKey = mainPick.key;
 
@@ -266,8 +286,13 @@ module.exports = async (req, res) => {
         || (mainPick.source && mainPick.source !== 'ROBOFLOW_API_KEY')
           ? 'ROBOFLOW_STALL_API_KEY / ROBOFLOW_MAIN_API_KEY override ROBOFLOW_API_KEY. If those vars are set to an old key, you will get 401 until you delete them or update them to match your current private key.'
           : null,
+      force_single_key: forceSingleKey,
+      main_detect_only_env: ['1', 'true', 'yes'].includes(
+        String(process.env.ROBOFLOW_MAIN_DETECT_ONLY || '').toLowerCase()
+      ),
+      serverless_fallback_enabled: String(process.env.ROBOFLOW_SERVERLESS_FALLBACK || '1') !== '0',
       key_env_note:
-        'This route reads ROBOFLOW_API_KEY, ROBOFLOW_STALL_API_KEY, ROBOFLOW_MAIN_API_KEY, ROBOFLOW_KEY, RF_API_KEY only. NEXT_PUBLIC_ROBOFLOW_API_KEY is ignored (often publishable; causes 401 if used server-side).',
+        'Set ROBOFLOW_FORCE_SINGLE_API_KEY=1 to ignore ROBOFLOW_STALL_API_KEY / ROBOFLOW_MAIN_API_KEY and use only ROBOFLOW_API_KEY. Set ROBOFLOW_MAIN_DETECT_ONLY=1 to skip outline.roboflow.com (detection only).',
       hint: (!stallApiKey || !mainApiKey)
         ? 'Set ROBOFLOW_API_KEY (Private key) for both passes, or separate ROBOFLOW_STALL_API_KEY / ROBOFLOW_MAIN_API_KEY if models live in different Roboflow workspaces. Enable Preview + Production in Vercel.'
         : (sameKey
@@ -282,24 +307,34 @@ module.exports = async (req, res) => {
     return;
   }
 
-  if (!stallApiKey || !mainApiKey) {
-    sendJson(res, 500, {
-      error: 'Missing Roboflow API key(s).',
-      hint: 'Two separate projects: add ROBOFLOW_STALL_API_KEY (Private key from the stall project workspace) and ROBOFLOW_MAIN_API_KEY (Private key from the main project workspace). Optionally set ROBOFLOW_STALL_MODEL_ID and ROBOFLOW_MAIN_MODEL_ID. If both models are under one workspace, ROBOFLOW_API_KEY alone is enough for both passes.',
-      diagnostics: {
-        vercelEnv: process.env.VERCEL_ENV || null,
-        has_stall_key: Boolean(stallApiKey),
-        has_main_key: Boolean(mainApiKey)
-      }
-    });
-    return;
-  }
-
   let body = {};
   try {
     body = await parseJsonBody(req);
   } catch (e) {
     sendJson(res, 400, { error: 'Invalid JSON body.', detail: String(e?.message || e) });
+    return;
+  }
+
+  let mode = String(body.mode || 'main').toLowerCase();
+  if (mode === 'hybrid') mode = 'dual';
+
+  const needsStallKey = mode === 'stall' || mode === 'detect' || mode === 'dual';
+  const needsMainKey = mode === 'main' || mode === 'segment' || mode === 'dual';
+
+  if (needsStallKey && !stallApiKey) {
+    sendJson(res, 500, {
+      error: 'Missing stall Roboflow API key.',
+      hint: 'This mode needs a key for the stall/detect model. Set ROBOFLOW_API_KEY or ROBOFLOW_STALL_API_KEY.',
+      diagnostics: { vercelEnv: process.env.VERCEL_ENV || null, mode }
+    });
+    return;
+  }
+  if (needsMainKey && !mainApiKey) {
+    sendJson(res, 500, {
+      error: 'Missing main Roboflow API key.',
+      hint: 'This mode needs a key for the main model. Set ROBOFLOW_API_KEY or ROBOFLOW_MAIN_API_KEY.',
+      diagnostics: { vercelEnv: process.env.VERCEL_ENV || null, mode }
+    });
     return;
   }
 
@@ -320,9 +355,6 @@ module.exports = async (req, res) => {
   const overlap = Number.isFinite(Number(body.overlap))
     ? Math.max(1, Math.min(99, Number(body.overlap)))
     : 30;
-
-  let mode = String(body.mode || 'dual').toLowerCase();
-  if (mode === 'hybrid') mode = 'dual';
 
   const parseRfBody = async (rfRes) => {
     const text = await rfRes.text();
@@ -347,7 +379,7 @@ module.exports = async (req, res) => {
    * application/json body must be valid JSON — use JSON.stringify(base64) for a JSON string value.
    * Order: documented form transports first, then Bearer, then JSON string bodies.
    */
-  const postImageToRoboflow = async (baseUrl, modelId, keyForRequest) => {
+  const postImageToRoboflow = async (baseUrl, modelId, keyForRequest, depth = 0) => {
     const path = buildModelPath(modelId);
     const qsWithKey = () => {
       const p = new URLSearchParams();
@@ -402,7 +434,7 @@ module.exports = async (req, res) => {
     if (hit) return hit;
 
     const t = last;
-    return {
+    const failed = {
       ok: false,
       status: t?.rfRes?.status || 502,
       payload: t?.payload,
@@ -410,6 +442,30 @@ module.exports = async (req, res) => {
       transport: 'failed',
       attempts: attempts.join(' → ')
     };
+    if (
+      depth === 0
+      && (failed.status === 401 || failed.status === 403)
+      && String(process.env.ROBOFLOW_SERVERLESS_FALLBACK || '1') !== '0'
+      && !String(baseUrl).includes('serverless.roboflow.com')
+    ) {
+      const fallback = await postImageToRoboflow(
+        'https://serverless.roboflow.com',
+        modelId,
+        keyForRequest,
+        depth + 1
+      );
+      if (fallback.ok) {
+        return {
+          ...fallback,
+          attempts: `${failed.attempts} → serverless:${fallback.transport || 'ok'}`
+        };
+      }
+      return {
+        ...fallback,
+        attempts: `${failed.attempts} | serverless:${fallback.attempts || 'failed'}`
+      };
+    }
+    return failed;
   };
 
   const runDetectStall = async (modelId) => postImageToRoboflow('https://detect.roboflow.com', modelId, stallApiKey);
@@ -466,6 +522,39 @@ module.exports = async (req, res) => {
     }
 
     if (mode === 'main') {
+      const mainDetectOnly =
+        ['1', 'true', 'yes'].includes(String(process.env.ROBOFLOW_MAIN_DETECT_ONLY || '').toLowerCase())
+        || body.main_detect_only === true;
+
+      if (mainDetectOnly) {
+        const det = await runDetectMain(mainModelId);
+        if (!det.ok) {
+          const st = det.status || 502;
+          sendJson(res, st, {
+            error: roboflowErrorMessage(det) || 'Roboflow main detection failed.',
+            hint: st === 403 ? hintFor403() : st === 401 ? hintFor401() : undefined,
+            source_det: sanitizeUrlForLog(det.url),
+            meta: { main_model_id: mainModelId, main_detect_only: true }
+          });
+          return;
+        }
+        const detPred = Array.isArray(det.payload?.predictions) ? det.payload.predictions : [];
+        const merged = detPred.filter((p) => isAreaClass(p.class) || isSymbolClass(p.class));
+        sendJson(res, 200, {
+          predictions: merged,
+          image: det.payload?.image || null,
+          meta: {
+            mode: 'main',
+            main_model_id: mainModelId,
+            main_detect_only: true,
+            detection_count: merged.length,
+            seg_ok: false,
+            det_ok: true
+          }
+        });
+        return;
+      }
+
       const [seg, det] = await Promise.all([
         runOutlineMain(mainModelId),
         runDetectMain(mainModelId)
