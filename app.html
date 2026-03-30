@@ -4438,7 +4438,7 @@ async function runRoboflowDetection(){
     });
     const data=await res.json();
     if(!res.ok){
-      const msg=[data?.error,data?.hint].filter(Boolean).join(' — ');
+      const msg=[data?.error,data?.stall_error,data?.seg_error,data?.det_error,data?.hint].filter(Boolean).join(' — ');
       throw new Error(msg||'Detection failed');
     }
 

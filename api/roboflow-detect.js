@@ -248,41 +248,62 @@ module.exports = async (req, res) => {
   let mode = String(body.mode || 'dual').toLowerCase();
   if (mode === 'hybrid') mode = 'dual';
 
-  const runDetect = async (modelId) => {
-    const url = `https://detect.roboflow.com/${modelId}?api_key=${encodeURIComponent(apiKey)}&confidence=${confidence}&overlap=${overlap}`;
-    const rfRes = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: imageBase64
-    });
-    let payload = null;
+  const safeJson = async (rfRes) => {
     try {
-      payload = await rfRes.json();
-    } catch (e) {
-      payload = null;
+      return await rfRes.json();
+    } catch {
+      return null;
     }
-    return { ok: rfRes.ok, status: rfRes.status, payload, url };
   };
 
-  const runOutline = async (modelId) => {
-    const url = `https://outline.roboflow.com/${modelId}?api_key=${encodeURIComponent(apiKey)}&confidence=${confidence}&overlap=${overlap}`;
-    const rfRes = await fetch(url, {
+  /** Roboflow hosted V1: raw base64 in body. Official Python examples use Content-Type: application/json; many older samples use x-www-form-urlencoded — try both. */
+  const isRoboflowSuccess = (rfRes, payload) => {
+    if (!rfRes || !rfRes.ok) return false;
+    if (!payload || typeof payload !== 'object') return false;
+    if (payload.error) return false;
+    return true;
+  };
+
+  const postImageToRoboflow = async (baseUrl, modelId) => {
+    const url = `${baseUrl}/${modelId}?api_key=${encodeURIComponent(apiKey)}&confidence=${confidence}&overlap=${overlap}`;
+    let rfRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: imageBase64
+    });
+    let payload = await safeJson(rfRes);
+    if (isRoboflowSuccess(rfRes, payload)) {
+      return { ok: true, status: rfRes.status, payload, url, transport: 'json' };
+    }
+    const firstErr = payload?.error || payload?.message || `HTTP ${rfRes.status}`;
+    rfRes = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: imageBase64
     });
-    let payload = null;
-    try {
-      payload = await rfRes.json();
-    } catch (e) {
-      payload = null;
+    payload = await safeJson(rfRes);
+    if (isRoboflowSuccess(rfRes, payload)) {
+      return { ok: true, status: rfRes.status, payload, url, transport: 'form' };
     }
-    return { ok: rfRes.ok, status: rfRes.status, payload, url };
+    const secondErr = payload?.error || payload?.message || `HTTP ${rfRes.status}`;
+    return {
+      ok: false,
+      status: rfRes.status,
+      payload,
+      url,
+      transport: 'form',
+      attempts: `json: ${firstErr}; form: ${secondErr}`
+    };
   };
+
+  const runDetect = async (modelId) => postImageToRoboflow('https://detect.roboflow.com', modelId);
+  const runOutline = async (modelId) => postImageToRoboflow('https://outline.roboflow.com', modelId);
 
   const roboflowErrorMessage = (result) => {
     const p = result?.payload;
-    return p?.error || p?.message || p?.detail || `HTTP ${result?.status}`;
+    const base = p?.error || p?.message || p?.detail || `HTTP ${result?.status}`;
+    if (result?.attempts) return `${base} (${result.attempts})`;
+    return base;
   };
 
   try {
