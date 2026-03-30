@@ -12,6 +12,17 @@ function pickFirstNonEmpty(values) {
   return '';
 }
 
+function sanitizeUrlForLog(url) {
+  if (!url || typeof url !== 'string') return '';
+  try {
+    const u = new URL(url);
+    u.searchParams.delete('api_key');
+    return u.toString();
+  } catch {
+    return url.replace(/([?&])api_key=[^&]*/g, '$1api_key=(redacted)');
+  }
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     sendJson(res, 405, { error: 'Method not allowed.' });
@@ -24,11 +35,19 @@ module.exports = async (req, res) => {
     process.env.ROBOFLOW_KEY,
     process.env.RF_API_KEY
   ]);
-  const modelId = pickFirstNonEmpty([
+  const modelIdRaw = pickFirstNonEmpty([
     process.env.ROBOFLOW_MODEL_ID,
     process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
     'my-first-project-ug0a7/4'
   ]);
+  /** If Deploy → API shows https://detect.roboflow.com/workspace-slug/project/version, set ROBOFLOW_WORKSPACE=workspace-slug and ROBOFLOW_MODEL_ID=project/version */
+  const buildModelPath = () => {
+    const id = String(modelIdRaw || '').trim().replace(/^\/+/, '');
+    const ws = String(process.env.ROBOFLOW_WORKSPACE || '').trim().replace(/^\/+|\/+$/g, '');
+    if (!ws) return id;
+    return `${ws}/${id}`;
+  };
+  const modelPath = buildModelPath();
   if (!apiKey) {
     sendJson(res, 500, {
       error: 'Missing Roboflow API key environment variable.',
@@ -70,7 +89,7 @@ module.exports = async (req, res) => {
 
   try {
     const runRequest = async (baseUrl) => {
-      const url = `${baseUrl}/${modelId}?api_key=${encodeURIComponent(apiKey)}&confidence=${confidence}&overlap=${overlap}`;
+      const url = `${baseUrl.replace(/\/+$/, '')}/${modelPath}?api_key=${encodeURIComponent(apiKey)}&confidence=${confidence}&overlap=${overlap}`;
       const rfRes = await fetch(url, {
         method: 'POST',
         headers: {
@@ -99,7 +118,23 @@ module.exports = async (req, res) => {
         runRequest('https://detect.roboflow.com')
       ]);
       if (!seg.ok && !det.ok) {
-        result = seg;
+        const st = seg.status || det.status || 502;
+        const segMsg = seg.payload?.error || seg.payload?.message || `HTTP ${seg.status}`;
+        const detMsg = det.payload?.error || det.payload?.message || `HTTP ${det.status}`;
+        const hint403 =
+          'Roboflow 403: your Private API key cannot run this model path, or the path is wrong. '
+          + 'In Roboflow open Deploy → copy the exact Hosted Inference URL: path segments after detect.roboflow.com/ go into ROBOFLOW_MODEL_ID (and ROBOFLOW_WORKSPACE if the URL includes a workspace slug). '
+          + 'Use the same workspace’s Private key. Redeploy after env changes.';
+        sendJson(res, st, {
+          error: segMsg || detMsg || 'Roboflow request failed.',
+          seg_error: segMsg,
+          det_error: detMsg,
+          hint: st === 403 ? hint403 : undefined,
+          source_seg: sanitizeUrlForLog(seg.url),
+          source_det: sanitizeUrlForLog(det.url),
+          model_path_used: modelPath
+        });
+        return;
       } else {
         const segPred = Array.isArray(seg.payload?.predictions) ? seg.payload.predictions : [];
         const detPred = Array.isArray(det.payload?.predictions) ? det.payload.predictions : [];
@@ -152,9 +187,14 @@ module.exports = async (req, res) => {
     }
 
     if (!result.ok) {
-      sendJson(res, result.status || 502, {
+      const st = result.status || 502;
+      const hint403 =
+        'Roboflow 403: key cannot access this model, or ROBOFLOW_MODEL_ID / ROBOFLOW_WORKSPACE does not match Deploy → API. Use the Private API key from that workspace. Redeploy after env changes.';
+      sendJson(res, st, {
         error: result.payload?.error || result.payload?.message || 'Roboflow request failed.',
-        source: result.url
+        hint: st === 403 ? hint403 : undefined,
+        source: sanitizeUrlForLog(result.url),
+        model_path_used: modelPath
       });
       return;
     }
