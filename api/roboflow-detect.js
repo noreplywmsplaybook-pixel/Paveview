@@ -175,15 +175,35 @@ function mergeDualPredictions(stallPreds, keepSeg, keepDet) {
   return [...mainNonStallNorm, ...mergedStalls];
 }
 
+function parseReqQuery(req) {
+  if (!req) return {};
+  if (req.query && typeof req.query === 'object' && !Array.isArray(req.query)) {
+    return req.query;
+  }
+  if (req.url && String(req.url).includes('?')) {
+    try {
+      const o = {};
+      new URL(String(req.url), 'http://localhost').searchParams.forEach((v, k) => {
+        o[k] = v;
+      });
+      return o;
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 /**
- * POST body can override env (same names as Vercel) when env is missing on the deployment.
- * Model IDs are not secret — only the API key is.
+ * Query string and POST body override env. Model IDs are not secret.
  */
-function resolveModelPaths(body) {
+function resolveModelPaths(body, req) {
   const b = body && typeof body === 'object' ? body : {};
+  const q = parseReqQuery(req);
   const mainModelIdRaw = pickFirstNonEmpty([
     b.main_model_id,
     b.roboflow_model_id,
+    q.main_model_id,
     process.env.ROBOFLOW_MODEL_ID,
     process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
     'my-first-project-ug0a7/4'
@@ -192,6 +212,10 @@ function resolveModelPaths(body) {
     b.car_model_id,
     b.stall_model_id,
     b.slot_model_id,
+    q.car_model_id,
+    q.carModel,
+    q.slot_model_id,
+    q.stall_model_id,
     process.env.ROBOFLOW_STALL_MODEL_ID,
     process.env.ROBOFLOW_CAR_MODEL_ID,
     process.env.ROBOFLOW_STALL_MODEL,
@@ -204,10 +228,11 @@ function resolveModelPaths(body) {
     ''
   ]);
 
-  const mainWs = pickFirstNonEmpty([b.main_workspace, process.env.ROBOFLOW_WORKSPACE, '']).replace(/^\/+|\/+$/g, '');
+  const mainWs = pickFirstNonEmpty([b.main_workspace, q.main_workspace, process.env.ROBOFLOW_WORKSPACE, '']).replace(/^\/+|\/+$/g, '');
   const stallWs = pickFirstNonEmpty([
     b.stall_workspace,
     b.slot_workspace,
+    q.stall_workspace,
     process.env.ROBOFLOW_STALL_WORKSPACE,
     process.env.ROBOFLOW_WORKSPACE,
     ''
@@ -252,7 +277,7 @@ module.exports = async (req, res) => {
     + 'Redeploy after env changes.';
 
   if (req.method === 'GET') {
-    const { mainPath, stallPath, stallModelIdRaw } = resolveModelPaths({});
+    const { mainPath, stallPath, stallModelIdRaw } = resolveModelPaths({}, req);
     const stallIdSeen = Boolean(
       pickFirstNonEmpty([
         process.env.ROBOFLOW_STALL_MODEL_ID,
@@ -305,13 +330,19 @@ module.exports = async (req, res) => {
 
   let body = {};
   try {
-    body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    if (Buffer.isBuffer(req.body)) {
+      body = JSON.parse(req.body.toString('utf8') || '{}');
+    } else if (typeof req.body === 'string') {
+      body = JSON.parse(req.body || '{}');
+    } else if (req.body && typeof req.body === 'object') {
+      body = req.body;
+    }
   } catch (e) {
     sendJson(res, 400, { error: 'Invalid JSON body.' });
     return;
   }
 
-  const { mainPath, stallPath, mainModelIdRaw, stallModelIdRaw } = resolveModelPaths(body);
+  const { mainPath, stallPath, mainModelIdRaw, stallModelIdRaw } = resolveModelPaths(body, req);
 
   const rawBase64 = String(body.imageBase64 || '').trim();
   const imageDataUrl = String(body.imageDataUrl || '').trim();
@@ -402,17 +433,55 @@ module.exports = async (req, res) => {
         sendJson(res, 500, { error: 'Dual mode requires main model env (ROBOFLOW_MODEL_ID, etc.).' });
         return;
       }
-      if (!stallKey || !stallPath) {
+      /** No slot model path: run main hybrid only so the app never hard-fails (slot pass skipped). */
+      if (!stallPath) {
+        const [seg, det] = await Promise.all([
+          runRequest('https://outline.roboflow.com', mainPath, mainKey),
+          runRequest('https://detect.roboflow.com', mainPath, mainKey)
+        ]);
+        if (!seg.ok && !det.ok) {
+          const st = seg.status || det.status || 502;
+          const segMsg = seg.payload?.error || seg.payload?.message || `HTTP ${seg.status}`;
+          const detMsg = det.payload?.error || det.payload?.message || `HTTP ${det.status}`;
+          sendJson(res, st, {
+            error: segMsg || detMsg || 'Roboflow request failed.',
+            seg_error: segMsg,
+            det_error: detMsg,
+            hint: st === 403 ? hint403 : undefined,
+            source_seg: sanitizeUrlForLog(seg.url),
+            source_det: sanitizeUrlForLog(det.url),
+            model_path_used: mainPath
+          });
+          return;
+        }
+        const segPred = seg.ok && Array.isArray(seg.payload?.predictions) ? seg.payload.predictions : [];
+        const detPred = det.ok && Array.isArray(det.payload?.predictions) ? det.payload.predictions : [];
+        const keepSeg = segPred.filter((p) => isAreaClass(p.class));
+        const keepDet = detPred.filter((p) => isSymbolClass(p.class));
+        const mergedPredictions = mergeDualPredictions([], keepSeg, keepDet);
+        const image = seg.payload?.image || det.payload?.image || null;
+        sendJson(res, 200, {
+          predictions: mergedPredictions,
+          image,
+          meta: {
+            mode: 'dual',
+            dual_degraded_no_slot_model: true,
+            stall_skip_reason: 'no_slot_model_path',
+            main_model_path: mainPath,
+            main_segmentation_count: keepSeg.length,
+            main_detection_count: keepDet.length,
+            seg_ok: seg.ok,
+            det_ok: det.ok,
+            merged_count: mergedPredictions.length,
+            warn: 'Car/slot model not configured — main hybrid only. Set ROBOFLOW_CAR_MODEL_ID in Vercel, add ?carModel=project/version to the app URL, or localStorage.setItem("pv_car_model_id","project/version")'
+          }
+        });
+        return;
+      }
+      if (!stallKey) {
         sendJson(res, 500, {
-          error: 'Dual mode requires the car/stall slot detector model path and API key.',
-          hint: `slotPath empty=${!stallPath}, slotKey empty=${!stallKey}. Add ROBOFLOW_CAR_MODEL_ID in Vercel (Preview + branch), redeploy, OR send JSON car_model_id: "your-project/2" in the request body.`,
-          env_slot_id_recognized: Boolean(pickFirstNonEmpty([
-            process.env.ROBOFLOW_STALL_MODEL_ID,
-            process.env.ROBOFLOW_CAR_MODEL_ID,
-            process.env.STALL_MODEL_ID,
-            process.env.CAR_MODEL_ID
-          ])),
-          body_had_car_model_id: Boolean(pickFirstNonEmpty([body.car_model_id, body.stall_model_id, body.slot_model_id]))
+          error: 'Dual mode requires an API key for the slot detector.',
+          hint: 'Set ROBOFLOW_API_KEY or ROBOFLOW_STALL_API_KEY.'
         });
         return;
       }

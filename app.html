@@ -1566,11 +1566,26 @@ function setAiDetectButtonState(state){
 let pageModalView='source'; // source | pdf | map
 let waybackByYear={...WAYBACK_FALLBACK_BY_YEAR}; // { [year]: {m, date, label} }
 let mapViewState={lat:37.4219999,lng:-122.0840575,zoom:20,mode:'google',year:''};
-/** New-Testing-Grounds: car/stall slot model `project/version` from Roboflow Deploy — use if Vercel env is missing for this preview. */
+/** New-Testing-Grounds: car detector → stall slots. Or use URL ?carModel=proj/2 , meta name="roboflow-car-model" , or localStorage pv_car_model_id */
 const PV_SLOT_CAR_MODEL_ID='';
 function roboflowSlotModelPayload(){
-  const id=String(typeof PV_SLOT_CAR_MODEL_ID!=='undefined'?PV_SLOT_CAR_MODEL_ID:'').trim();
+  const candidates=[
+    typeof PV_SLOT_CAR_MODEL_ID!=='undefined'?PV_SLOT_CAR_MODEL_ID:'',
+    typeof document!=='undefined'?document.querySelector('meta[name="roboflow-car-model"]')?.getAttribute('content'):null,
+    typeof window!=='undefined'&&window.location?new URLSearchParams(window.location.search).get('carModel'):null,
+    typeof localStorage!=='undefined'?localStorage.getItem('pv_car_model_id'):null
+  ];
+  let id='';
+  for(let i=0;i<candidates.length;i++){
+    const t=String(candidates[i]||'').trim();
+    if(t){id=t;break;}
+  }
   return id?{car_model_id:id}:{};
+}
+function roboflowDetectApiUrl(){
+  const slot=roboflowSlotModelPayload();
+  if(!slot.car_model_id)return'/api/roboflow-detect';
+  return'/api/roboflow-detect?'+new URLSearchParams({car_model_id:slot.car_model_id}).toString();
 }
 let mapInteraction={dragging:false,startX:0,startY:0,startLat:0,startLng:0,startWorld:null,startTx:0,startTy:0};
 let mapRenderReqId=0;
@@ -2642,7 +2657,7 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
         if(inferenceBudget<=0)return;
         inferenceBudget--;
         try{
-          const res=await fetch('/api/roboflow-detect',{
+          const res=await fetch(roboflowDetectApiUrl(),{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body:JSON.stringify({
@@ -4452,7 +4467,7 @@ async function runRoboflowDetection(){
     inferCanvas.height=mapPreviewCanvas.height;
     inferCanvas.getContext('2d').drawImage(inferSrc||mapPreviewCanvas,0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
     const payload={imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),mode:'dual',...roboflowSlotModelPayload()};
-    const res=await fetch('/api/roboflow-detect',{
+    const res=await fetch(roboflowDetectApiUrl(),{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify(payload),
@@ -4470,6 +4485,9 @@ async function runRoboflowDetection(){
 
     if(data?.meta?.stall_request_failed&&data?.meta?.warn){
       console.warn('Roboflow stall model:',data.meta.stall_error||'',data.meta.warn);
+    }
+    if(data?.meta?.dual_degraded_no_slot_model&&data?.meta?.warn){
+      console.warn(data.meta.warn);
     }
 
     const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
