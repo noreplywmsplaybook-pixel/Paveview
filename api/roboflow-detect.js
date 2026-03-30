@@ -175,23 +175,23 @@ function mergeDualPredictions(stallPreds, keepSeg, keepDet) {
   return [...mainNonStallNorm, ...mergedStalls];
 }
 
-module.exports = async (req, res) => {
-  const keyChain = [
-    process.env.ROBOFLOW_API_KEY,
-    process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY,
-    process.env.ROBOFLOW_KEY,
-    process.env.RF_API_KEY
-  ];
-  const stallKey = pickFirstNonEmpty([process.env.ROBOFLOW_STALL_API_KEY, ...keyChain]);
-  const mainKey = pickFirstNonEmpty([process.env.ROBOFLOW_MAIN_API_KEY, ...keyChain]);
-
+/**
+ * POST body can override env (same names as Vercel) when env is missing on the deployment.
+ * Model IDs are not secret — only the API key is.
+ */
+function resolveModelPaths(body) {
+  const b = body && typeof body === 'object' ? body : {};
   const mainModelIdRaw = pickFirstNonEmpty([
+    b.main_model_id,
+    b.roboflow_model_id,
     process.env.ROBOFLOW_MODEL_ID,
     process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
     'my-first-project-ug0a7/4'
   ]);
-  /** First pass is often a car/vehicle detector whose boxes = stall occupancy; class names may be "car", not "stall". */
   const stallModelIdRaw = pickFirstNonEmpty([
+    b.car_model_id,
+    b.stall_model_id,
+    b.slot_model_id,
     process.env.ROBOFLOW_STALL_MODEL_ID,
     process.env.ROBOFLOW_CAR_MODEL_ID,
     process.env.ROBOFLOW_STALL_MODEL,
@@ -204,8 +204,10 @@ module.exports = async (req, res) => {
     ''
   ]);
 
-  const mainWs = pickFirstNonEmpty([process.env.ROBOFLOW_WORKSPACE, '']).replace(/^\/+|\/+$/g, '');
+  const mainWs = pickFirstNonEmpty([b.main_workspace, process.env.ROBOFLOW_WORKSPACE, '']).replace(/^\/+|\/+$/g, '');
   const stallWs = pickFirstNonEmpty([
+    b.stall_workspace,
+    b.slot_workspace,
     process.env.ROBOFLOW_STALL_WORKSPACE,
     process.env.ROBOFLOW_WORKSPACE,
     ''
@@ -217,7 +219,6 @@ module.exports = async (req, res) => {
     if (id.startsWith(`${mainWs}/`) || id === mainWs) return id;
     return `${mainWs}/${id}`;
   };
-  /** If ROBOFLOW_STALL_MODEL_ID already includes the workspace prefix, do not prepend again. */
   const buildStallPath = () => {
     const id = String(stallModelIdRaw || '').trim().replace(/^\/+/, '');
     if (!id) return '';
@@ -226,8 +227,23 @@ module.exports = async (req, res) => {
     return `${stallWs}/${id}`;
   };
 
-  const mainPath = buildMainPath();
-  const stallPath = buildStallPath();
+  return {
+    mainModelIdRaw,
+    stallModelIdRaw,
+    mainPath: buildMainPath(),
+    stallPath: buildStallPath()
+  };
+}
+
+module.exports = async (req, res) => {
+  const keyChain = [
+    process.env.ROBOFLOW_API_KEY,
+    process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY,
+    process.env.ROBOFLOW_KEY,
+    process.env.RF_API_KEY
+  ];
+  const stallKey = pickFirstNonEmpty([process.env.ROBOFLOW_STALL_API_KEY, ...keyChain]);
+  const mainKey = pickFirstNonEmpty([process.env.ROBOFLOW_MAIN_API_KEY, ...keyChain]);
 
   const hint403 =
     'Roboflow 403: your Private API key cannot run this model path, or the path is wrong. '
@@ -236,6 +252,7 @@ module.exports = async (req, res) => {
     + 'Redeploy after env changes.';
 
   if (req.method === 'GET') {
+    const { mainPath, stallPath, stallModelIdRaw } = resolveModelPaths({});
     const stallIdSeen = Boolean(
       pickFirstNonEmpty([
         process.env.ROBOFLOW_STALL_MODEL_ID,
@@ -271,10 +288,11 @@ module.exports = async (req, res) => {
         'NEXT_PUBLIC_ROBOFLOW_CAR_MODEL_ID'
       ],
       hint: !stallPath
-        ? 'slot_detector_path empty: set ROBOFLOW_STALL_MODEL_ID or ROBOFLOW_CAR_MODEL_ID to project/version from Roboflow Deploy (car detectors count). Redeploy; ensure var is enabled for this Preview/Production.'
+        ? 'slot_detector_path empty: set ROBOFLOW_CAR_MODEL_ID in Vercel OR send car_model_id in POST JSON (same project/version as Deploy).'
         : (!stallIdSeen
-          ? 'No slot detector env var found — add ROBOFLOW_CAR_MODEL_ID or ROBOFLOW_STALL_MODEL_ID in Vercel, then redeploy.'
+          ? 'No slot env var — use Vercel ROBOFLOW_CAR_MODEL_ID or POST body car_model_id.'
           : null),
+      post_body_override: 'POST can include car_model_id, stall_model_id, slot_model_id when env is missing.',
       vercelEnv: process.env.VERCEL_ENV || null
     });
     return;
@@ -292,6 +310,8 @@ module.exports = async (req, res) => {
     sendJson(res, 400, { error: 'Invalid JSON body.' });
     return;
   }
+
+  const { mainPath, stallPath, mainModelIdRaw, stallModelIdRaw } = resolveModelPaths(body);
 
   const rawBase64 = String(body.imageBase64 || '').trim();
   const imageDataUrl = String(body.imageDataUrl || '').trim();
@@ -385,8 +405,14 @@ module.exports = async (req, res) => {
       if (!stallKey || !stallPath) {
         sendJson(res, 500, {
           error: 'Dual mode requires the car/stall slot detector model path and API key.',
-          hint: `slotPath empty=${!stallPath}, slotKey empty=${!stallKey}. Set ROBOFLOW_CAR_MODEL_ID or ROBOFLOW_STALL_MODEL_ID (e.g. my-cars/2). Also: CAR_MODEL_ID, VEHICLE_MODEL_ID. Redeploy so Vercel injects the variable.`,
-          env_slot_id_recognized: Boolean(stallModelIdRaw)
+          hint: `slotPath empty=${!stallPath}, slotKey empty=${!stallKey}. Add ROBOFLOW_CAR_MODEL_ID in Vercel (Preview + branch), redeploy, OR send JSON car_model_id: "your-project/2" in the request body.`,
+          env_slot_id_recognized: Boolean(pickFirstNonEmpty([
+            process.env.ROBOFLOW_STALL_MODEL_ID,
+            process.env.ROBOFLOW_CAR_MODEL_ID,
+            process.env.STALL_MODEL_ID,
+            process.env.CAR_MODEL_ID
+          ])),
+          body_had_car_model_id: Boolean(pickFirstNonEmpty([body.car_model_id, body.stall_model_id, body.slot_model_id]))
         });
         return;
       }

@@ -1566,6 +1566,12 @@ function setAiDetectButtonState(state){
 let pageModalView='source'; // source | pdf | map
 let waybackByYear={...WAYBACK_FALLBACK_BY_YEAR}; // { [year]: {m, date, label} }
 let mapViewState={lat:37.4219999,lng:-122.0840575,zoom:20,mode:'google',year:''};
+/** New-Testing-Grounds: car/stall slot model `project/version` from Roboflow Deploy — use if Vercel env is missing for this preview. */
+const PV_SLOT_CAR_MODEL_ID='';
+function roboflowSlotModelPayload(){
+  const id=String(typeof PV_SLOT_CAR_MODEL_ID!=='undefined'?PV_SLOT_CAR_MODEL_ID:'').trim();
+  return id?{car_model_id:id}:{};
+}
 let mapInteraction={dragging:false,startX:0,startY:0,startLat:0,startLng:0,startWorld:null,startTx:0,startTy:0};
 let mapRenderReqId=0;
 let mapDetections=[]; // [{x,y,width,height,class,confidence,points?}]
@@ -2643,7 +2649,8 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
               imageDataUrl,
               mode:'stall',
               confidence:pass.confidence,
-              overlap:pass.overlap
+              overlap:pass.overlap,
+              ...roboflowSlotModelPayload()
             })
           });
           const data=await res.json().catch(()=>({}));
@@ -4444,7 +4451,7 @@ async function runRoboflowDetection(){
     inferCanvas.width=mapPreviewCanvas.width;
     inferCanvas.height=mapPreviewCanvas.height;
     inferCanvas.getContext('2d').drawImage(inferSrc||mapPreviewCanvas,0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
-    const payload={imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),mode:'dual'};
+    const payload={imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),mode:'dual',...roboflowSlotModelPayload()};
     const res=await fetch('/api/roboflow-detect',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
