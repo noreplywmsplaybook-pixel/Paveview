@@ -199,12 +199,22 @@ module.exports = async (req, res) => {
     'my-first-project-ug0a7/6'
   ]);
 
+  /** Some deploy tabs show workspace/project/version — prepend workspace if ROBOFLOW_WORKSPACE is set. */
+  const buildModelPath = (modelId) => {
+    const id = String(modelId || '').trim().replace(/^\/+/, '');
+    const ws = String(process.env.ROBOFLOW_WORKSPACE || '').trim().replace(/^\/+|\/+$/g, '');
+    if (!ws) return id;
+    return `${ws}/${id}`;
+  };
+
   if (req.method === 'GET') {
+    const sameKey = Boolean(stallApiKey && mainApiKey && stallApiKey === mainApiKey);
     sendJson(res, 200, {
       ok: true,
       service: 'roboflow-detect',
       has_stall_key: Boolean(stallApiKey),
       has_main_key: Boolean(mainApiKey),
+      single_key_for_both: sameKey,
       dual_project_keys: Boolean(
         pickFirstNonEmpty([process.env.ROBOFLOW_STALL_API_KEY])
         && pickFirstNonEmpty([process.env.ROBOFLOW_MAIN_API_KEY])
@@ -212,9 +222,14 @@ module.exports = async (req, res) => {
       vercelEnv: process.env.VERCEL_ENV || null,
       stall_model_id: stallModelId,
       main_model_id: mainModelId,
+      stall_path: buildModelPath(stallModelId),
+      main_path: buildModelPath(mainModelId),
+      workspace_prefix: pickFirstNonEmpty([process.env.ROBOFLOW_WORKSPACE]) || null,
       hint: (!stallApiKey || !mainApiKey)
-        ? 'Set ROBOFLOW_STALL_API_KEY + ROBOFLOW_MAIN_API_KEY (one Private key per Roboflow project) or a single ROBOFLOW_API_KEY if one key can run both models. Scope Preview + Production in Vercel.'
-        : 'POST JSON with imageDataUrl or imageBase64. Stall requests use stall key; main outline/detect use main key.'
+        ? 'Set ROBOFLOW_API_KEY (Private key) for both passes, or separate ROBOFLOW_STALL_API_KEY / ROBOFLOW_MAIN_API_KEY if models live in different Roboflow workspaces. Enable Preview + Production in Vercel.'
+        : (sameKey
+          ? 'One key is used for stall + main. Roboflow must allow that key to run both model IDs (same workspace or shared access). If you get 403, the key cannot access one of the projects.'
+          : 'Stall and main use different API keys. POST with imageDataUrl or imageBase64.')
     });
     return;
   }
@@ -284,39 +299,71 @@ module.exports = async (req, res) => {
     return true;
   };
 
+  /**
+   * Hosted V1 supports api_key in query and/or Authorization: Bearer (recommended by Roboflow docs).
+   * Try query+json → query+form → bearer+json → bearer+form.
+   */
   const postImageToRoboflow = async (baseUrl, modelId, keyForRequest) => {
-    const url = `${baseUrl}/${modelId}?api_key=${encodeURIComponent(keyForRequest)}&confidence=${confidence}&overlap=${overlap}`;
-    let rfRes = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: imageBase64
+    const path = buildModelPath(modelId);
+    const qsWithKey = () => {
+      const p = new URLSearchParams();
+      p.set('api_key', keyForRequest);
+      p.set('confidence', String(confidence));
+      p.set('overlap', String(overlap));
+      return p.toString();
+    };
+    const qsNoKey = () => {
+      const p = new URLSearchParams();
+      p.set('confidence', String(confidence));
+      p.set('overlap', String(overlap));
+      return p.toString();
+    };
+    const base = `${baseUrl.replace(/\/+$/, '')}/${path}`;
+
+    const tryOnce = async (url, contentType, extraHeaders = {}) => {
+      const rfRes = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': contentType, ...extraHeaders },
+        body: imageBase64
+      });
+      const payload = await parseRfBody(rfRes);
+      return { rfRes, payload, url };
+    };
+
+    const attempts = [];
+    let last = null;
+
+    const run = async (label, url, ct, headers) => {
+      const t = await tryOnce(url, ct, headers);
+      last = t;
+      attempts.push(label);
+      if (isRoboflowSuccess(t.rfRes, t.payload)) {
+        return { ok: true, status: t.rfRes.status, payload: t.payload, url: t.url, transport: label };
+      }
+      return null;
+    };
+
+    let hit = await run('query+json', `${base}?${qsWithKey()}`, 'application/json', {});
+    if (hit) return hit;
+    hit = await run('query+form', `${base}?${qsWithKey()}`, 'application/x-www-form-urlencoded', {});
+    if (hit) return hit;
+    hit = await run('bearer+json', `${base}?${qsNoKey()}`, 'application/json', {
+      Authorization: `Bearer ${keyForRequest}`
     });
-    let payload = await parseRfBody(rfRes);
-    if (isRoboflowSuccess(rfRes, payload)) {
-      return { ok: true, status: rfRes.status, payload, url, transport: 'json' };
-    }
-    const firstStatus = rfRes.status;
-    const firstErr = payload?.error || payload?.message || `HTTP ${firstStatus}`;
-    rfRes = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: imageBase64
+    if (hit) return hit;
+    hit = await run('bearer+form', `${base}?${qsNoKey()}`, 'application/x-www-form-urlencoded', {
+      Authorization: `Bearer ${keyForRequest}`
     });
-    payload = await parseRfBody(rfRes);
-    if (isRoboflowSuccess(rfRes, payload)) {
-      return { ok: true, status: rfRes.status, payload, url, transport: 'form' };
-    }
-    const secondErr = payload?.error || payload?.message || `HTTP ${rfRes.status}`;
-    const shortAttempts = firstStatus === rfRes.status && String(firstErr) === String(secondErr)
-      ? `HTTP ${rfRes.status}`
-      : `json→${firstStatus}; form→${rfRes.status}`;
+    if (hit) return hit;
+
+    const t = last;
     return {
       ok: false,
-      status: rfRes.status,
-      payload,
-      url,
-      transport: 'form',
-      attempts: shortAttempts
+      status: t?.rfRes?.status || 502,
+      payload: t?.payload,
+      url: t?.url,
+      transport: 'failed',
+      attempts: attempts.join(' → ')
     };
   };
 
@@ -334,7 +381,7 @@ module.exports = async (req, res) => {
     return base;
   };
 
-  const hintFor403 = () => 'Roboflow 403: that model rejected this API key. If stall and main are different Roboflow projects, set two env vars: ROBOFLOW_STALL_API_KEY (Private key from the stall project’s workspace) and ROBOFLOW_MAIN_API_KEY (Private key from the main project’s workspace), plus ROBOFLOW_STALL_MODEL_ID / ROBOFLOW_MAIN_MODEL_ID. Redeploy. If both models share one workspace, ROBOFLOW_API_KEY alone is enough.';
+  const hintFor403 = () => 'Roboflow 403: key rejected or model path wrong. Confirm Private API key and model IDs from Deploy → API. If the URL shows a workspace slug before project/version, set ROBOFLOW_WORKSPACE. This server tries query api_key and Authorization Bearer. Redeploy after env changes.';
 
   try {
     if (mode === 'stall' || mode === 'detect') {
