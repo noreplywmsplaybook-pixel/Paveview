@@ -15,6 +15,18 @@ function pickFirstNonEmpty(values) {
   return '';
 }
 
+/** Strip api_key from Roboflow URLs before returning JSON to clients. */
+function sanitizeInferenceUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  try {
+    const u = new URL(url);
+    u.searchParams.delete('api_key');
+    return u.toString();
+  } catch (e) {
+    return String(url).replace(/([?&])api_key=[^&]*/gi, '$1').replace(/\?&/, '?').replace(/[?&]$/, '');
+  }
+}
+
 const ROBOFLOW_KEY_CANDIDATES = [
   'ROBOFLOW_API_KEY',
   'NEXT_PUBLIC_ROBOFLOW_API_KEY',
@@ -291,7 +303,7 @@ module.exports = async (req, res) => {
     if (!result.ok) {
       sendJson(res, result.status || 502, {
         error: result.payload?.error || result.payload?.message || 'Roboflow request failed.',
-        source: result.url
+        source: sanitizeInferenceUrl(result.url)
       });
       return;
     }
