@@ -4,13 +4,46 @@ function sendJson(res, statusCode, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function normalizeSecret(v) {
+  let t = String(v || '').trim();
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+    t = t.slice(1, -1).trim();
+  }
+  return t;
+}
+
 function pickFirstNonEmpty(values) {
   for (const v of values) {
-    const t = String(v || '').trim();
+    const t = normalizeSecret(v);
     if (t) return t;
   }
   return '';
 }
+
+/**
+ * Which env var supplied the key matters: ROBOFLOW_STALL_API_KEY / ROBOFLOW_MAIN_API_KEY
+ * take precedence over ROBOFLOW_API_KEY. A stale override in Vercel causes 401 even when ROBOFLOW_API_KEY is correct.
+ */
+function pickKeyWithSource(entries) {
+  for (const { name, value } of entries) {
+    const t = normalizeSecret(value);
+    if (t) return { key: t, source: name };
+  }
+  return { key: '', source: null };
+}
+
+function keyTailFingerprint(key) {
+  const k = String(key || '');
+  if (!k.length) return null;
+  return { length: k.length, tail: k.slice(-4) };
+}
+
+/** Server inference must use Private API keys. Do not use NEXT_PUBLIC_* here — it is often a publishable key and causes 401 Unauthorized. */
+const serverInferenceFallbackKeys = (env) => [
+  env.ROBOFLOW_API_KEY,
+  env.ROBOFLOW_KEY,
+  env.RF_API_KEY
+];
 
 function sanitizeUrlForLog(url) {
   if (!url || typeof url !== 'string') return '';
@@ -169,24 +202,23 @@ function mergeDualPredictions(stallPreds, keepSeg, keepDet) {
 }
 
 module.exports = async (req, res) => {
-  const fallbackKeys = [
-    process.env.ROBOFLOW_API_KEY,
-    process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY,
-    process.env.ROBOFLOW_KEY,
-    process.env.RF_API_KEY
+  const stallEntries = [
+    { name: 'ROBOFLOW_STALL_API_KEY', value: process.env.ROBOFLOW_STALL_API_KEY },
+    { name: 'ROBOFLOW_API_KEY', value: process.env.ROBOFLOW_API_KEY },
+    { name: 'ROBOFLOW_KEY', value: process.env.ROBOFLOW_KEY },
+    { name: 'RF_API_KEY', value: process.env.RF_API_KEY }
+  ];
+  const mainEntries = [
+    { name: 'ROBOFLOW_MAIN_API_KEY', value: process.env.ROBOFLOW_MAIN_API_KEY },
+    { name: 'ROBOFLOW_API_KEY', value: process.env.ROBOFLOW_API_KEY },
+    { name: 'ROBOFLOW_KEY', value: process.env.ROBOFLOW_KEY },
+    { name: 'RF_API_KEY', value: process.env.RF_API_KEY }
   ];
 
-  /** Stall project (first pass). Optional override when main is a different Roboflow project. */
-  const stallApiKey = pickFirstNonEmpty([
-    process.env.ROBOFLOW_STALL_API_KEY,
-    ...fallbackKeys
-  ]);
-
-  /** Main project (segmentation + detection hybrid). Optional override when stall is a different project. */
-  const mainApiKey = pickFirstNonEmpty([
-    process.env.ROBOFLOW_MAIN_API_KEY,
-    ...fallbackKeys
-  ]);
+  const stallPick = pickKeyWithSource(stallEntries);
+  const mainPick = pickKeyWithSource(mainEntries);
+  const stallApiKey = stallPick.key;
+  const mainApiKey = mainPick.key;
 
   const stallModelId = pickFirstNonEmpty([
     process.env.ROBOFLOW_STALL_MODEL_ID,
@@ -225,6 +257,17 @@ module.exports = async (req, res) => {
       stall_path: buildModelPath(stallModelId),
       main_path: buildModelPath(mainModelId),
       workspace_prefix: pickFirstNonEmpty([process.env.ROBOFLOW_WORKSPACE]) || null,
+      stall_key_from: stallPick.source,
+      main_key_from: mainPick.source,
+      stall_key_fingerprint: keyTailFingerprint(stallApiKey),
+      main_key_fingerprint: keyTailFingerprint(mainApiKey),
+      override_warning:
+        (stallPick.source && stallPick.source !== 'ROBOFLOW_API_KEY')
+        || (mainPick.source && mainPick.source !== 'ROBOFLOW_API_KEY')
+          ? 'ROBOFLOW_STALL_API_KEY / ROBOFLOW_MAIN_API_KEY override ROBOFLOW_API_KEY. If those vars are set to an old key, you will get 401 until you delete them or update them to match your current private key.'
+          : null,
+      key_env_note:
+        'This route reads ROBOFLOW_API_KEY, ROBOFLOW_STALL_API_KEY, ROBOFLOW_MAIN_API_KEY, ROBOFLOW_KEY, RF_API_KEY only. NEXT_PUBLIC_ROBOFLOW_API_KEY is ignored (often publishable; causes 401 if used server-side).',
       hint: (!stallApiKey || !mainApiKey)
         ? 'Set ROBOFLOW_API_KEY (Private key) for both passes, or separate ROBOFLOW_STALL_API_KEY / ROBOFLOW_MAIN_API_KEY if models live in different Roboflow workspaces. Enable Preview + Production in Vercel.'
         : (sameKey
@@ -300,8 +343,9 @@ module.exports = async (req, res) => {
   };
 
   /**
-   * Hosted V1 supports api_key in query and/or Authorization: Bearer (recommended by Roboflow docs).
-   * Try query+json → query+form → bearer+json → bearer+form.
+   * Hosted V1: raw base64 in body with application/x-www-form-urlencoded (Roboflow docs).
+   * application/json body must be valid JSON — use JSON.stringify(base64) for a JSON string value.
+   * Order: documented form transports first, then Bearer, then JSON string bodies.
    */
   const postImageToRoboflow = async (baseUrl, modelId, keyForRequest) => {
     const path = buildModelPath(modelId);
@@ -319,12 +363,13 @@ module.exports = async (req, res) => {
       return p.toString();
     };
     const base = `${baseUrl.replace(/\/+$/, '')}/${path}`;
+    const jsonBody = JSON.stringify(imageBase64);
 
-    const tryOnce = async (url, contentType, extraHeaders = {}) => {
+    const tryOnce = async (url, contentType, body, extraHeaders = {}) => {
       const rfRes = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': contentType, ...extraHeaders },
-        body: imageBase64
+        body
       });
       const payload = await parseRfBody(rfRes);
       return { rfRes, payload, url };
@@ -333,8 +378,8 @@ module.exports = async (req, res) => {
     const attempts = [];
     let last = null;
 
-    const run = async (label, url, ct, headers) => {
-      const t = await tryOnce(url, ct, headers);
+    const run = async (label, url, ct, body, headers = {}) => {
+      const t = await tryOnce(url, ct, body, headers);
       last = t;
       attempts.push(label);
       if (isRoboflowSuccess(t.rfRes, t.payload)) {
@@ -343,15 +388,15 @@ module.exports = async (req, res) => {
       return null;
     };
 
-    let hit = await run('query+json', `${base}?${qsWithKey()}`, 'application/json', {});
+    let hit = await run('query+form', `${base}?${qsWithKey()}`, 'application/x-www-form-urlencoded', imageBase64);
     if (hit) return hit;
-    hit = await run('query+form', `${base}?${qsWithKey()}`, 'application/x-www-form-urlencoded', {});
-    if (hit) return hit;
-    hit = await run('bearer+json', `${base}?${qsNoKey()}`, 'application/json', {
+    hit = await run('bearer+form', `${base}?${qsNoKey()}`, 'application/x-www-form-urlencoded', imageBase64, {
       Authorization: `Bearer ${keyForRequest}`
     });
     if (hit) return hit;
-    hit = await run('bearer+form', `${base}?${qsNoKey()}`, 'application/x-www-form-urlencoded', {
+    hit = await run('query+json', `${base}?${qsWithKey()}`, 'application/json', jsonBody);
+    if (hit) return hit;
+    hit = await run('bearer+json', `${base}?${qsNoKey()}`, 'application/json', jsonBody, {
       Authorization: `Bearer ${keyForRequest}`
     });
     if (hit) return hit;
@@ -374,12 +419,19 @@ module.exports = async (req, res) => {
   const roboflowErrorMessage = (result) => {
     const p = result?.payload;
     const base = p?.error || p?.message || p?.detail || `HTTP ${result?.status}`;
+    if (result?.status === 401 || String(base).toLowerCase().includes('unauthorized')) {
+      const suffix = result?.attempts ? ` [${result.attempts}]` : '';
+      return `Unauthorized (401)${suffix}`;
+    }
     if (result?.status === 403 || String(base).toLowerCase().includes('forbidden')) {
       return 'Forbidden (403)';
     }
     if (result?.attempts) return `${base} [${result.attempts}]`;
     return base;
   };
+
+  const hintFor401 = () =>
+    'Roboflow 401: wrong key reaching the server, or ROBOFLOW_STALL_API_KEY / ROBOFLOW_MAIN_API_KEY overriding ROBOFLOW_API_KEY with an old value. Open GET /api/roboflow-detect and check stall_key_from, main_key_from, and key fingerprints (last 4 chars) against your Roboflow private key. Remove split-key env vars if you only use ROBOFLOW_API_KEY. Redeploy after env changes.';
 
   const hintFor403 = () => 'Roboflow 403: key rejected or model path wrong. Confirm Private API key and model IDs from Deploy → API. If the URL shows a workspace slug before project/version, set ROBOFLOW_WORKSPACE. This server tries query api_key and Authorization Bearer. Redeploy after env changes.';
 
@@ -389,7 +441,7 @@ module.exports = async (req, res) => {
       if (!result.ok) {
         sendJson(res, result.status || 502, {
           error: roboflowErrorMessage(result) || 'Roboflow stall model request failed.',
-          hint: result.status === 403 ? hintFor403() : undefined,
+          hint: result.status === 403 ? hintFor403() : result.status === 401 ? hintFor401() : undefined,
           source: sanitizeUrlForLog(result.url),
           meta: { mode: 'stall', stall_model_id: stallModelId }
         });
@@ -419,8 +471,10 @@ module.exports = async (req, res) => {
         runDetectMain(mainModelId)
       ]);
       if (!seg.ok && !det.ok) {
-        sendJson(res, seg.status || det.status || 502, {
+        const st = seg.status || det.status || 502;
+        sendJson(res, st, {
           error: roboflowErrorMessage(seg) || roboflowErrorMessage(det) || 'Roboflow main model failed.',
+          hint: st === 403 ? hintFor403() : st === 401 ? hintFor401() : undefined,
           source_seg: sanitizeUrlForLog(seg.url),
           source_det: sanitizeUrlForLog(det.url),
           meta: { main_model_id: mainModelId }
@@ -451,8 +505,10 @@ module.exports = async (req, res) => {
     if (mode === 'segment') {
       const result = await runOutlineMain(mainModelId);
       if (!result.ok) {
-        sendJson(res, result.status || 502, {
+        const st = result.status || 502;
+        sendJson(res, st, {
           error: roboflowErrorMessage(result) || 'Roboflow segmentation failed.',
+          hint: st === 403 ? hintFor403() : st === 401 ? hintFor401() : undefined,
           source: sanitizeUrlForLog(result.url)
         });
         return;
@@ -477,6 +533,7 @@ module.exports = async (req, res) => {
       const e3 = roboflowErrorMessage(det);
       const allSame = e1 === e2 && e2 === e3;
       const any403 = stallRes.status === 403 || seg.status === 403 || det.status === 403;
+      const any401 = stallRes.status === 401 || seg.status === 401 || det.status === 401;
       sendJson(res, 502, {
         error: allSame
           ? `Roboflow rejected all requests: ${e1}`
@@ -484,7 +541,7 @@ module.exports = async (req, res) => {
         stall_error: allSame ? undefined : e1,
         seg_error: allSame ? undefined : e2,
         det_error: allSame ? undefined : e3,
-        hint: any403 ? hintFor403() : undefined,
+        hint: any403 ? hintFor403() : any401 ? hintFor401() : undefined,
         meta: {
           stall_model_id: stallModelId,
           main_model_id: mainModelId,
