@@ -101,16 +101,6 @@ module.exports = async (req, res) => {
   }
 
   const apiKey = roboflowApiKeyFromEnv();
-  const modelId = pickFirstNonEmpty([
-    process.env.ROBOFLOW_MODEL_ID,
-    process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
-    'my-first-project-ug0a7/4'
-  ]);
-  const carModelId = pickFirstNonEmpty([
-    process.env.ROBOFLOW_CAR_MODEL_ID,
-    process.env.NEXT_PUBLIC_ROBOFLOW_CAR_MODEL_ID,
-    'parking-lot-egjcr-an53v/1'
-  ]);
   if (!apiKey) {
     sendJson(res, 500, {
       error: 'Missing Roboflow API key environment variable.',
@@ -153,7 +143,30 @@ module.exports = async (req, res) => {
   const overlap = Number.isFinite(Number(body.overlap))
     ? Math.max(1, Math.min(99, Number(body.overlap)))
     : 30;
-  const mode = String(body.mode || 'hybrid').toLowerCase(); // hybrid | detect | segment
+  const modeFromEnv = pickFirstNonEmpty([
+    process.env.ROBOFLOW_INFERENCE_MODE,
+    process.env.ROBOFLOW_MODE,
+    process.env.NEXT_PUBLIC_ROBOFLOW_INFERENCE_MODE
+  ]).toLowerCase();
+  const modeFromBody = String(body.mode || 'hybrid').toLowerCase();
+  const mode =
+    modeFromEnv === 'hybrid' || modeFromEnv === 'detect' || modeFromEnv === 'segment'
+      ? modeFromEnv
+      : modeFromBody;
+
+  /** Primary model: explicit ROBOFLOW_MODEL_ID, else fall back to car model id (single-model Vercel setups). */
+  const primaryFromEnv = pickFirstNonEmpty([
+    process.env.ROBOFLOW_MODEL_ID,
+    process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
+    process.env.ROBOFLOW_PRIMARY_MODEL_ID,
+    process.env.NEXT_PUBLIC_ROBOFLOW_PRIMARY_MODEL_ID
+  ]);
+  const carFromEnv = pickFirstNonEmpty([
+    process.env.ROBOFLOW_CAR_MODEL_ID,
+    process.env.NEXT_PUBLIC_ROBOFLOW_CAR_MODEL_ID
+  ]);
+  const modelId = pickFirstNonEmpty([primaryFromEnv, carFromEnv, 'my-first-project-ug0a7/4']);
+  const carModelId = pickFirstNonEmpty([carFromEnv, 'parking-lot-egjcr-an53v/1']);
 
   try {
     const runRequest = async (baseUrl) => {
@@ -309,7 +322,7 @@ module.exports = async (req, res) => {
         /forbidden/i.test(errMsg) ||
         /forbidden/i.test(JSON.stringify(result.payload || {}))
       ) {
-        errMsg = `Roboflow Forbidden for model "${modelId}". Your API key is valid but cannot run this model. In Vercel set ROBOFLOW_MODEL_ID (and optionally ROBOFLOW_CAR_MODEL_ID) to IDs from your workspace: Roboflow → project → Deploy → API.`;
+        errMsg = `Roboflow Forbidden for model "${modelId}". Your API key is valid but cannot run this model. In Vercel: set ROBOFLOW_MODEL_ID to your main model (or leave it unset and use only ROBOFLOW_CAR_MODEL_ID — that value is used as the primary id when the primary slot is empty). For a detect-only model, set ROBOFLOW_INFERENCE_MODE=detect. Roboflow → Deploy → API for model ids.`;
       }
       sendJson(res, result.status || 502, {
         error: errMsg,
