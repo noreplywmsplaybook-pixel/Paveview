@@ -112,7 +112,7 @@ module.exports = async (req, res) => {
       process.env.ROBOFLOW_CAR_MODEL_ID,
       process.env.NEXT_PUBLIC_ROBOFLOW_CAR_MODEL_ID
     ]);
-    const resolvedModelId = pickFirstNonEmpty([primaryFromEnv, carFromEnv, 'my-first-project-ug0a7/4']);
+    const resolvedModelId = pickFirstNonEmpty([primaryFromEnv, carFromEnv]) || null;
     const modeFromEnv = normalizeInferenceModeLabel(
       pickFirstNonEmpty([
         process.env.ROBOFLOW_INFERENCE_MODE,
@@ -129,7 +129,8 @@ module.exports = async (req, res) => {
           vercelEnv: process.env.VERCEL_ENV || null,
           inferenceModeFromEnv: modeFromEnv || null,
           resolvedModelId,
-          resolvedCarModelId: pickFirstNonEmpty([carFromEnv, 'parking-lot-egjcr-an53v/1'])
+          resolvedCarModelId: carFromEnv || null,
+          modelIdConfigured: Boolean(resolvedModelId)
         }
       : { ok: true, roboflowConfigured: false, ...buildRoboflowEnvDiagnostics() };
     sendJson(res, 200, payload, { 'Cache-Control': 'no-store' });
@@ -215,8 +216,15 @@ module.exports = async (req, res) => {
     process.env.ROBOFLOW_CAR_MODEL_ID,
     process.env.NEXT_PUBLIC_ROBOFLOW_CAR_MODEL_ID
   ]);
-  const modelId = pickFirstNonEmpty([primaryFromEnv, carFromEnv, 'my-first-project-ug0a7/4']);
-  const carModelId = pickFirstNonEmpty([carFromEnv, 'parking-lot-egjcr-an53v/1']);
+  const modelId = pickFirstNonEmpty([primaryFromEnv, carFromEnv]);
+  if (!modelId) {
+    sendJson(res, 400, {
+      error:
+        'No Roboflow model id is set. In Vercel add ROBOFLOW_MODEL_ID with the value from YOUR Roboflow project (open your project → Deploy → API → copy the full model path, e.g. workspace/project-name/1). You can use only ROBOFLOW_CAR_MODEL_ID if you have a single model. Do not use example ids from documentation — they belong to another workspace and will always return Forbidden.'
+    });
+    return;
+  }
+  const carModelId = carFromEnv;
 
   /** Roboflow hosted API: form-urlencoded + raw base64 body + confidence/overlap 1–99 (long-standing behavior). */
   const runRoboflowHostedInference = async (baseUrl, mid) => {
@@ -381,7 +389,7 @@ module.exports = async (req, res) => {
         /forbidden/i.test(errMsg) ||
         /forbidden/i.test(JSON.stringify(result.payload || {}))
       ) {
-        errMsg = `Roboflow Forbidden for model "${modelId}". Your API key is valid but cannot run this model. In Vercel: set ROBOFLOW_MODEL_ID to your main model (or leave it unset and use only ROBOFLOW_CAR_MODEL_ID — that value is used as the primary id when the primary slot is empty). For a detect-only model, set ROBOFLOW_INFERENCE_MODE=detect. Roboflow → Deploy → API for model ids.`;
+        errMsg = `Forbidden for model "${modelId}". Your API key is valid but cannot run this model — it is not in your Roboflow workspace (common if you copied an example id like parking-lot-egjcr from docs). Fix: Roboflow → YOUR project → Deploy → API → copy the exact model id into ROBOFLOW_MODEL_ID in Vercel, redeploy.`;
       }
       sendJson(res, result.status || 502, {
         error: errMsg,

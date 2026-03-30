@@ -167,18 +167,25 @@ function orderBoundaryByAngle(boundary) {
 
 async function runRoboflowHybrid(imageBase64) {
   const apiKey = roboflowApiKeyFromEnv();
-  const modelId = pickFirstNonEmpty([
+  const primaryFromEnv = pickFirstNonEmpty([
     process.env.ROBOFLOW_MODEL_ID,
     process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
-    'my-first-project-ug0a7/4',
   ]);
-  const carModelId = pickFirstNonEmpty([
+  const carFromEnv = pickFirstNonEmpty([
     process.env.ROBOFLOW_CAR_MODEL_ID,
     process.env.NEXT_PUBLIC_ROBOFLOW_CAR_MODEL_ID,
-    'parking-lot-egjcr-an53v/1',
   ]);
+  const modelId = pickFirstNonEmpty([primaryFromEnv, carFromEnv]);
+  const carModelId = carFromEnv;
   if (!apiKey) {
     return { ok: false, error: 'Missing Roboflow API key.' };
+  }
+  if (!modelId) {
+    return {
+      ok: false,
+      error:
+        'Set ROBOFLOW_MODEL_ID or ROBOFLOW_CAR_MODEL_ID to your model from Roboflow Deploy → API (not an example id).',
+    };
   }
   const runRequest = async (baseUrl) => {
     const url = `${baseUrl}/${modelId}?api_key=${encodeURIComponent(apiKey)}&confidence=25&overlap=30`;
