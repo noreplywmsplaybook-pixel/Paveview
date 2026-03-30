@@ -15,6 +15,55 @@ function pickFirstNonEmpty(values) {
   return '';
 }
 
+/** Map common env / UI values to detect | segment | hybrid */
+function normalizeInferenceModeLabel(v) {
+  const s = String(v || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-');
+  if (!s) return '';
+  if (s === 'detection' || s === 'det' || s === 'object-detection' || s === 'object_detection') return 'detect';
+  if (s === 'segmentation' || s === 'seg' || s === 'instance' || s === 'instance-segmentation') return 'segment';
+  if (s === 'hybrid' || s === 'both') return 'hybrid';
+  return s;
+}
+
+/**
+ * Vercel sometimes leaves req.body unset; read JSON from the stream when needed.
+ */
+function readJsonBody(req) {
+  if (Buffer.isBuffer(req.body)) {
+    try {
+      return Promise.resolve(JSON.parse(req.body.toString('utf8')));
+    } catch (e) {
+      return Promise.resolve({});
+    }
+  }
+  if (req.body != null && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+    return Promise.resolve(req.body);
+  }
+  if (typeof req.body === 'string' && req.body.length) {
+    try {
+      return Promise.resolve(JSON.parse(req.body));
+    } catch (e) {
+      return Promise.resolve({});
+    }
+  }
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      try {
+        const raw = Buffer.concat(chunks).toString('utf8');
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch (e) {
+        resolve({});
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
 /** Strip api_key from Roboflow URLs before returning JSON to clients. */
 function sanitizeInferenceUrl(url) {
   if (!url || typeof url !== 'string') return '';
@@ -89,8 +138,35 @@ function buildRoboflowEnvDiagnostics() {
 module.exports = async (req, res) => {
   if (req.method === 'GET') {
     const configured = Boolean(roboflowApiKeyFromEnv());
+    const primaryFromEnv = pickFirstNonEmpty([
+      process.env.ROBOFLOW_MODEL_ID,
+      process.env.NEXT_PUBLIC_ROBOFLOW_MODEL_ID,
+      process.env.ROBOFLOW_PRIMARY_MODEL_ID,
+      process.env.NEXT_PUBLIC_ROBOFLOW_PRIMARY_MODEL_ID
+    ]);
+    const carFromEnv = pickFirstNonEmpty([
+      process.env.ROBOFLOW_CAR_MODEL_ID,
+      process.env.NEXT_PUBLIC_ROBOFLOW_CAR_MODEL_ID
+    ]);
+    const resolvedModelId = pickFirstNonEmpty([primaryFromEnv, carFromEnv, 'my-first-project-ug0a7/4']);
+    const modeFromEnv = normalizeInferenceModeLabel(
+      pickFirstNonEmpty([
+        process.env.ROBOFLOW_INFERENCE_MODE,
+        process.env.ROBOFLOW_MODE,
+        process.env.NEXT_PUBLIC_ROBOFLOW_INFERENCE_MODE,
+        process.env.ROBOFLOW_INFERENCE,
+        process.env.INFERENCE_MODE
+      ])
+    );
     const payload = configured
-      ? { ok: true, roboflowConfigured: true, vercelEnv: process.env.VERCEL_ENV || null }
+      ? {
+          ok: true,
+          roboflowConfigured: true,
+          vercelEnv: process.env.VERCEL_ENV || null,
+          inferenceModeFromEnv: modeFromEnv || null,
+          resolvedModelId,
+          resolvedCarModelId: pickFirstNonEmpty([carFromEnv, 'parking-lot-egjcr-an53v/1'])
+        }
       : { ok: true, roboflowConfigured: false, ...buildRoboflowEnvDiagnostics() };
     sendJson(res, 200, payload, { 'Cache-Control': 'no-store' });
     return;
@@ -123,7 +199,8 @@ module.exports = async (req, res) => {
 
   let body = {};
   try {
-    body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    body = await readJsonBody(req);
+    if (!body || typeof body !== 'object') body = {};
   } catch (e) {
     sendJson(res, 400, { error: 'Invalid JSON body.' });
     return;
@@ -143,16 +220,22 @@ module.exports = async (req, res) => {
   const overlap = Number.isFinite(Number(body.overlap))
     ? Math.max(1, Math.min(99, Number(body.overlap)))
     : 30;
-  const modeFromEnv = pickFirstNonEmpty([
-    process.env.ROBOFLOW_INFERENCE_MODE,
-    process.env.ROBOFLOW_MODE,
-    process.env.NEXT_PUBLIC_ROBOFLOW_INFERENCE_MODE
-  ]).toLowerCase();
-  const modeFromBody = String(body.mode || 'hybrid').toLowerCase();
+  const modeFromEnv = normalizeInferenceModeLabel(
+    pickFirstNonEmpty([
+      process.env.ROBOFLOW_INFERENCE_MODE,
+      process.env.ROBOFLOW_MODE,
+      process.env.NEXT_PUBLIC_ROBOFLOW_INFERENCE_MODE,
+      process.env.ROBOFLOW_INFERENCE,
+      process.env.INFERENCE_MODE
+    ])
+  );
+  const modeFromBody = normalizeInferenceModeLabel(body.mode || 'hybrid');
   const mode =
     modeFromEnv === 'hybrid' || modeFromEnv === 'detect' || modeFromEnv === 'segment'
       ? modeFromEnv
-      : modeFromBody;
+      : modeFromBody === 'hybrid' || modeFromBody === 'detect' || modeFromBody === 'segment'
+        ? modeFromBody
+        : 'hybrid';
 
   /** Primary model: explicit ROBOFLOW_MODEL_ID, else fall back to car model id (single-model Vercel setups). */
   const primaryFromEnv = pickFirstNonEmpty([
@@ -281,14 +364,23 @@ module.exports = async (req, res) => {
             || c.includes('arrow')
             || c.includes('stencil')
             || c.includes('crosswalk')
-            || c.includes('hatch');
+            || c.includes('hatch')
+            || c.includes('car')
+            || c.includes('vehicle')
+            || c.includes('parking');
         };
         const keepSeg = segPred.filter((p) => isAreaClass(p.class));
-        const keepDet = detPred.filter((p) => isSymbolClass(p.class));
+        let keepDet = detPred.filter((p) => isSymbolClass(p.class));
         // Do not merge detect-model area predictions: they are axis-aligned boxes only.
         // Lot/obstruction outlines must come from segmentation polygons.
         const areaFallbackFromDet = [];
         let merged = [...keepSeg, ...keepDet];
+        // If class filters removed everything but the detect endpoint returned boxes, keep raw detections.
+        let hybridFallbackAllDet = false;
+        if (!merged.length && detPred.length) {
+          merged = detPred.slice();
+          hybridFallbackAllDet = true;
+        }
         const carPred = await fetchCarModelPredictionsNormalized();
         merged = merged.concat(carPred);
         sendJson(res, 200, {
@@ -301,7 +393,8 @@ module.exports = async (req, res) => {
             detection_count: keepDet.length,
             car_model_count: carPred.length,
             seg_ok: seg.ok,
-            det_ok: det.ok
+            det_ok: det.ok,
+            hybrid_fallback_all_det: hybridFallbackAllDet
           }
         });
         return;

@@ -3871,6 +3871,7 @@ function confidenceThresholdForClass(cls,opts={}){
   const c=String(cls||'').toLowerCase();
   // Keep stall-like detections visible while filtering low-confidence noise.
   if(c.includes('stall'))return 0.22;
+  if(c.includes('car')||c.includes('vehicle'))return 0.2;
   if(c.includes('ada')||c.includes('handicap'))return 0.2;
   if(c.includes('arrow')||c.includes('stencil'))return 0.18;
   return 0.25;
