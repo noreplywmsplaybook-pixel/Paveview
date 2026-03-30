@@ -248,11 +248,13 @@ module.exports = async (req, res) => {
   let mode = String(body.mode || 'dual').toLowerCase();
   if (mode === 'hybrid') mode = 'dual';
 
-  const safeJson = async (rfRes) => {
+  const parseRfBody = async (rfRes) => {
+    const text = await rfRes.text();
+    if (!text) return null;
     try {
-      return await rfRes.json();
+      return JSON.parse(text);
     } catch {
-      return null;
+      return { error: text.trim().slice(0, 400) };
     }
   };
 
@@ -271,28 +273,32 @@ module.exports = async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: imageBase64
     });
-    let payload = await safeJson(rfRes);
+    let payload = await parseRfBody(rfRes);
     if (isRoboflowSuccess(rfRes, payload)) {
       return { ok: true, status: rfRes.status, payload, url, transport: 'json' };
     }
-    const firstErr = payload?.error || payload?.message || `HTTP ${rfRes.status}`;
+    const firstStatus = rfRes.status;
+    const firstErr = payload?.error || payload?.message || `HTTP ${firstStatus}`;
     rfRes = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: imageBase64
     });
-    payload = await safeJson(rfRes);
+    payload = await parseRfBody(rfRes);
     if (isRoboflowSuccess(rfRes, payload)) {
       return { ok: true, status: rfRes.status, payload, url, transport: 'form' };
     }
     const secondErr = payload?.error || payload?.message || `HTTP ${rfRes.status}`;
+    const shortAttempts = firstStatus === rfRes.status && String(firstErr) === String(secondErr)
+      ? `HTTP ${rfRes.status}`
+      : `json→${firstStatus}; form→${rfRes.status}`;
     return {
       ok: false,
       status: rfRes.status,
       payload,
       url,
       transport: 'form',
-      attempts: `json: ${firstErr}; form: ${secondErr}`
+      attempts: shortAttempts
     };
   };
 
@@ -302,9 +308,14 @@ module.exports = async (req, res) => {
   const roboflowErrorMessage = (result) => {
     const p = result?.payload;
     const base = p?.error || p?.message || p?.detail || `HTTP ${result?.status}`;
-    if (result?.attempts) return `${base} (${result.attempts})`;
+    if (result?.status === 403 || String(base).toLowerCase().includes('forbidden')) {
+      return 'Forbidden (403)';
+    }
+    if (result?.attempts) return `${base} [${result.attempts}]`;
     return base;
   };
+
+  const hintFor403 = () => 'Roboflow 403 means the server rejected your API key or model access. Fix: Roboflow app → your workspace → Settings → API Keys → copy the Private API key (not a Publishable key). In Vercel → Environment Variables → set ROBOFLOW_API_KEY for Preview and Production, redeploy. The key must belong to the same Roboflow account that owns projects for your model IDs. If stall and main models live in different workspaces, you need access to both under that key.';
 
   try {
     if (mode === 'stall' || mode === 'detect') {
@@ -312,6 +323,7 @@ module.exports = async (req, res) => {
       if (!result.ok) {
         sendJson(res, result.status || 502, {
           error: roboflowErrorMessage(result) || 'Roboflow stall model request failed.',
+          hint: result.status === 403 ? hintFor403() : undefined,
           source: sanitizeUrlForLog(result.url),
           meta: { mode: 'stall', stall_model_id: stallModelId }
         });
@@ -394,11 +406,19 @@ module.exports = async (req, res) => {
     ]);
 
     if (!stallRes.ok && !seg.ok && !det.ok) {
+      const e1 = roboflowErrorMessage(stallRes);
+      const e2 = roboflowErrorMessage(seg);
+      const e3 = roboflowErrorMessage(det);
+      const allSame = e1 === e2 && e2 === e3;
+      const any403 = stallRes.status === 403 || seg.status === 403 || det.status === 403;
       sendJson(res, 502, {
-        error: 'Roboflow failed on stall model and main model (segmentation + detection).',
-        stall_error: stallRes.ok ? null : roboflowErrorMessage(stallRes),
-        seg_error: seg.ok ? null : roboflowErrorMessage(seg),
-        det_error: det.ok ? null : roboflowErrorMessage(det),
+        error: allSame
+          ? `Roboflow rejected all requests: ${e1}`
+          : 'Roboflow failed on stall model and main model (segmentation + detection).',
+        stall_error: allSame ? undefined : e1,
+        seg_error: allSame ? undefined : e2,
+        det_error: allSame ? undefined : e3,
+        hint: any403 ? hintFor403() : undefined,
         meta: {
           stall_model_id: stallModelId,
           main_model_id: mainModelId,

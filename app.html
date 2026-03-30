@@ -4438,8 +4438,13 @@ async function runRoboflowDetection(){
     });
     const data=await res.json();
     if(!res.ok){
-      const msg=[data?.error,data?.stall_error,data?.seg_error,data?.det_error,data?.hint].filter(Boolean).join(' — ');
-      throw new Error(msg||'Detection failed');
+      let msg=data?.error||'';
+      if(data?.hint)msg=[msg,data.hint].filter(Boolean).join(' ');
+      else{
+        const extras=[...new Set([data?.stall_error,data?.seg_error,data?.det_error].filter(Boolean).map(String))];
+        if(extras.length)msg=[msg,extras.join(' ')].filter(Boolean).join(' ');
+      }
+      throw new Error(msg.trim()||'Detection failed');
     }
 
     const rawPredictions=Array.isArray(data?.predictions)?data.predictions:[];
