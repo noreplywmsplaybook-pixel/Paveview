@@ -79,9 +79,12 @@ function isStallLikeClass(cls) {
   const c = normalizedLower(cls);
   return (
     c.includes('stall')
+    || c.includes('slot')
     || c.includes('car')
     || c.includes('vehicle')
     || c.includes('automobile')
+    || (c.includes('parking') && c.includes('space'))
+    || (c.includes('parking') && c.includes('spot'))
     || c.includes('ada')
     || c.includes('handicap')
     || c.includes('accessible')
@@ -107,9 +110,12 @@ function isSymbolClass(cls) {
   const c = normalizedLower(cls);
   return (
     c.includes('stall')
+    || c.includes('slot')
     || c.includes('car')
     || c.includes('vehicle')
     || c.includes('automobile')
+    || (c.includes('parking') && c.includes('space'))
+    || (c.includes('parking') && c.includes('spot'))
     || c.includes('ada')
     || c.includes('handicap')
     || c.includes('accessible')
@@ -138,8 +144,10 @@ function mergeDualPredictions(stallPreds, keepSeg, keepDet) {
       _stallPass: 2
     }));
 
-  /** Stall-specialist first so duplicates tend to resolve toward the stall model when scores are close. */
-  const stallPool = [...stallFromPass1, ...mainStallLike];
+  /** Sort by confidence so overlapping duplicates resolve to the best score (50/50 car vs main — no pass bias). */
+  const stallPool = [...stallFromPass1, ...mainStallLike].sort(
+    (a, b) => (Number(b.confidence) || 0) - (Number(a.confidence) || 0)
+  );
   const mergedStalls = [];
   stallPool.forEach((p) => {
     const dupIdx = mergedStalls.findIndex((q) => {
@@ -154,17 +162,8 @@ function mergeDualPredictions(stallPreds, keepSeg, keepDet) {
     const dup = mergedStalls[dupIdx];
     const pc = Number(p.confidence) || 0;
     const qc = Number(dup.confidence) || 0;
-    const pPass = p._stallPass;
-    const qPass = dup._stallPass;
-    let replace = false;
-    if (pPass === 1 && qPass === 2) {
-      replace = pc + 0.03 >= qc;
-    } else if (pPass === 2 && qPass === 1) {
-      replace = pc > qc + 0.03;
-    } else {
-      replace = pc > qc;
-    }
-    if (replace) mergedStalls[dupIdx] = p;
+    // 50/50 across models: winner is strictly higher confidence (no car/main bias).
+    if (pc > qc) mergedStalls[dupIdx] = p;
   });
 
   const mainNonStallNorm = mainNonStall.map((p) => ({
@@ -486,7 +485,11 @@ module.exports = async (req, res) => {
         return;
       }
 
-      const stallRes = await runRequest('https://detect.roboflow.com', stallPath, stallKey);
+      let stallRes = await runRequest('https://detect.roboflow.com', stallPath, stallKey);
+      if (!stallRes.ok && (stallRes.status >= 500 || stallRes.status === 408 || stallRes.status === 429)) {
+        await new Promise((r) => setTimeout(r, 450));
+        stallRes = await runRequest('https://detect.roboflow.com', stallPath, stallKey);
+      }
       const [seg, det] = await Promise.all([
         runRequest('https://outline.roboflow.com', mainPath, mainKey),
         runRequest('https://detect.roboflow.com', mainPath, mainKey)
