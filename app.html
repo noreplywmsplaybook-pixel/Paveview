@@ -2641,7 +2641,7 @@ async function runLotStallZoomScan(rawCanvas,lotPoly,mapCtx={}){
             headers:{'Content-Type':'application/json'},
             body:JSON.stringify({
               imageDataUrl,
-              mode:'detect',
+              mode:'stall',
               confidence:pass.confidence,
               overlap:pass.overlap
             })
@@ -4430,7 +4430,7 @@ async function runRoboflowDetection(){
     inferCanvas.width=mapPreviewCanvas.width;
     inferCanvas.height=mapPreviewCanvas.height;
     inferCanvas.getContext('2d').drawImage(inferSrc||mapPreviewCanvas,0,0,mapPreviewCanvas.width,mapPreviewCanvas.height);
-    const payload={imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),mode:'hybrid'};
+    const payload={imageDataUrl:inferCanvas.toDataURL('image/jpeg',0.92),mode:'dual'};
     const res=await fetch('/api/roboflow-detect',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
