@@ -301,9 +301,20 @@ module.exports = async (req, res) => {
     }
 
     if (!result.ok) {
+      const rawErr = result.payload?.error || result.payload?.message || 'Roboflow request failed.';
+      let errMsg =
+        typeof rawErr === 'string' || typeof rawErr === 'number' ? String(rawErr) : 'Roboflow request failed.';
+      if (
+        result.status === 403 ||
+        /forbidden/i.test(errMsg) ||
+        /forbidden/i.test(JSON.stringify(result.payload || {}))
+      ) {
+        errMsg = `Roboflow Forbidden for model "${modelId}". Your API key is valid but cannot run this model. In Vercel set ROBOFLOW_MODEL_ID (and optionally ROBOFLOW_CAR_MODEL_ID) to IDs from your workspace: Roboflow → project → Deploy → API.`;
+      }
       sendJson(res, result.status || 502, {
-        error: result.payload?.error || result.payload?.message || 'Roboflow request failed.',
-        source: sanitizeInferenceUrl(result.url)
+        error: errMsg,
+        source: sanitizeInferenceUrl(result.url),
+        modelId
       });
       return;
     }
