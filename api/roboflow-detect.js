@@ -169,11 +169,23 @@ function mergeDualPredictions(stallPreds, keepSeg, keepDet) {
 }
 
 module.exports = async (req, res) => {
-  const apiKey = pickFirstNonEmpty([
+  const fallbackKeys = [
     process.env.ROBOFLOW_API_KEY,
     process.env.NEXT_PUBLIC_ROBOFLOW_API_KEY,
     process.env.ROBOFLOW_KEY,
     process.env.RF_API_KEY
+  ];
+
+  /** Stall project (first pass). Optional override when main is a different Roboflow project. */
+  const stallApiKey = pickFirstNonEmpty([
+    process.env.ROBOFLOW_STALL_API_KEY,
+    ...fallbackKeys
+  ]);
+
+  /** Main project (segmentation + detection hybrid). Optional override when stall is a different project. */
+  const mainApiKey = pickFirstNonEmpty([
+    process.env.ROBOFLOW_MAIN_API_KEY,
+    ...fallbackKeys
   ]);
 
   const stallModelId = pickFirstNonEmpty([
@@ -191,13 +203,18 @@ module.exports = async (req, res) => {
     sendJson(res, 200, {
       ok: true,
       service: 'roboflow-detect',
-      hasApiKey: Boolean(apiKey),
+      has_stall_key: Boolean(stallApiKey),
+      has_main_key: Boolean(mainApiKey),
+      dual_project_keys: Boolean(
+        pickFirstNonEmpty([process.env.ROBOFLOW_STALL_API_KEY])
+        && pickFirstNonEmpty([process.env.ROBOFLOW_MAIN_API_KEY])
+      ),
       vercelEnv: process.env.VERCEL_ENV || null,
       stall_model_id: stallModelId,
       main_model_id: mainModelId,
-      hint: apiKey
-        ? 'POST JSON with imageDataUrl or imageBase64. Keys are loaded.'
-        : 'Set ROBOFLOW_API_KEY for Preview AND Production in Vercel → Project → Settings → Environment Variables (preview deployments do not use Production-only secrets).'
+      hint: (!stallApiKey || !mainApiKey)
+        ? 'Set ROBOFLOW_STALL_API_KEY + ROBOFLOW_MAIN_API_KEY (one Private key per Roboflow project) or a single ROBOFLOW_API_KEY if one key can run both models. Scope Preview + Production in Vercel.'
+        : 'POST JSON with imageDataUrl or imageBase64. Stall requests use stall key; main outline/detect use main key.'
     });
     return;
   }
@@ -207,13 +224,14 @@ module.exports = async (req, res) => {
     return;
   }
 
-  if (!apiKey) {
+  if (!stallApiKey || !mainApiKey) {
     sendJson(res, 500, {
-      error: 'Missing Roboflow API key.',
-      hint: 'In Vercel, add ROBOFLOW_API_KEY to every environment you use (at least Preview + Production). Deleted keys affect all new deployments.',
+      error: 'Missing Roboflow API key(s).',
+      hint: 'Two separate projects: add ROBOFLOW_STALL_API_KEY (Private key from the stall project workspace) and ROBOFLOW_MAIN_API_KEY (Private key from the main project workspace). Optionally set ROBOFLOW_STALL_MODEL_ID and ROBOFLOW_MAIN_MODEL_ID. If both models are under one workspace, ROBOFLOW_API_KEY alone is enough for both passes.',
       diagnostics: {
         vercelEnv: process.env.VERCEL_ENV || null,
-        has_ROBOFLOW_API_KEY: Boolean(pickFirstNonEmpty([process.env.ROBOFLOW_API_KEY]))
+        has_stall_key: Boolean(stallApiKey),
+        has_main_key: Boolean(mainApiKey)
       }
     });
     return;
@@ -266,8 +284,8 @@ module.exports = async (req, res) => {
     return true;
   };
 
-  const postImageToRoboflow = async (baseUrl, modelId) => {
-    const url = `${baseUrl}/${modelId}?api_key=${encodeURIComponent(apiKey)}&confidence=${confidence}&overlap=${overlap}`;
+  const postImageToRoboflow = async (baseUrl, modelId, keyForRequest) => {
+    const url = `${baseUrl}/${modelId}?api_key=${encodeURIComponent(keyForRequest)}&confidence=${confidence}&overlap=${overlap}`;
     let rfRes = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -302,8 +320,9 @@ module.exports = async (req, res) => {
     };
   };
 
-  const runDetect = async (modelId) => postImageToRoboflow('https://detect.roboflow.com', modelId);
-  const runOutline = async (modelId) => postImageToRoboflow('https://outline.roboflow.com', modelId);
+  const runDetectStall = async (modelId) => postImageToRoboflow('https://detect.roboflow.com', modelId, stallApiKey);
+  const runDetectMain = async (modelId) => postImageToRoboflow('https://detect.roboflow.com', modelId, mainApiKey);
+  const runOutlineMain = async (modelId) => postImageToRoboflow('https://outline.roboflow.com', modelId, mainApiKey);
 
   const roboflowErrorMessage = (result) => {
     const p = result?.payload;
@@ -315,11 +334,11 @@ module.exports = async (req, res) => {
     return base;
   };
 
-  const hintFor403 = () => 'Roboflow 403 means the server rejected your API key or model access. Fix: Roboflow app → your workspace → Settings → API Keys → copy the Private API key (not a Publishable key). In Vercel → Environment Variables → set ROBOFLOW_API_KEY for Preview and Production, redeploy. The key must belong to the same Roboflow account that owns projects for your model IDs. If stall and main models live in different workspaces, you need access to both under that key.';
+  const hintFor403 = () => 'Roboflow 403: that model rejected this API key. If stall and main are different Roboflow projects, set two env vars: ROBOFLOW_STALL_API_KEY (Private key from the stall project’s workspace) and ROBOFLOW_MAIN_API_KEY (Private key from the main project’s workspace), plus ROBOFLOW_STALL_MODEL_ID / ROBOFLOW_MAIN_MODEL_ID. Redeploy. If both models share one workspace, ROBOFLOW_API_KEY alone is enough.';
 
   try {
     if (mode === 'stall' || mode === 'detect') {
-      const result = await runDetect(stallModelId);
+      const result = await runDetectStall(stallModelId);
       if (!result.ok) {
         sendJson(res, result.status || 502, {
           error: roboflowErrorMessage(result) || 'Roboflow stall model request failed.',
@@ -349,8 +368,8 @@ module.exports = async (req, res) => {
 
     if (mode === 'main') {
       const [seg, det] = await Promise.all([
-        runOutline(mainModelId),
-        runDetect(mainModelId)
+        runOutlineMain(mainModelId),
+        runDetectMain(mainModelId)
       ]);
       if (!seg.ok && !det.ok) {
         sendJson(res, seg.status || det.status || 502, {
@@ -383,7 +402,7 @@ module.exports = async (req, res) => {
     }
 
     if (mode === 'segment') {
-      const result = await runOutline(mainModelId);
+      const result = await runOutlineMain(mainModelId);
       if (!result.ok) {
         sendJson(res, result.status || 502, {
           error: roboflowErrorMessage(result) || 'Roboflow segmentation failed.',
@@ -395,14 +414,14 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const stallRes = await runDetect(stallModelId);
+    const stallRes = await runDetectStall(stallModelId);
     const stallPreds = stallRes.ok && Array.isArray(stallRes.payload?.predictions)
       ? stallRes.payload.predictions
       : [];
 
     const [seg, det] = await Promise.all([
-      runOutline(mainModelId),
-      runDetect(mainModelId)
+      runOutlineMain(mainModelId),
+      runDetectMain(mainModelId)
     ]);
 
     if (!stallRes.ok && !seg.ok && !det.ok) {
