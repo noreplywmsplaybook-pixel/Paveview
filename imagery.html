@@ -2596,6 +2596,29 @@ function polylineLength(pts) {
   return len;
 }
 
+function detectionAreaPx(det) {
+  if (!det) return 0;
+  if (det.points && det.points.length >= 3) return polygonArea(det.points);
+  return Math.max(0, (Number(det.width) || 0) * (Number(det.height) || 0));
+}
+
+function detectionCenter(det) {
+  if (det?.points && det.points.length) {
+    const sum = det.points.reduce((acc, p) => ({ x: acc.x + (Number(p.x) || 0), y: acc.y + (Number(p.y) || 0) }), { x: 0, y: 0 });
+    return { x: sum.x / det.points.length, y: sum.y / det.points.length };
+  }
+  return { x: Number(det?.x) || 0, y: Number(det?.y) || 0 };
+}
+
+function obstructionAreaInsidePerimeterPx(perim, obstructions) {
+  if (!perim?.points || perim.points.length < 3 || !Array.isArray(obstructions) || !obstructions.length) return 0;
+  return obstructions.reduce((sum, obs) => {
+    const ctr = detectionCenter(obs);
+    if (!pointInPolygon(ctr.x, ctr.y, perim.points)) return sum;
+    return sum + detectionAreaPx(obs);
+  }, 0);
+}
+
 function getPixelsPerFoot() {
   if (receiptPixelsPerFoot) return receiptPixelsPerFoot;
   if (stallTemplate && stallTemplate.spacing) {
@@ -2658,11 +2681,20 @@ function buildReceipt() {
   // -- LOT PERIMETER --
   const perim = reviewDetections.find(d => normalizeClass(d.class) === 'lot_perimeter');
   addSection('Lot Perimeter', '#ff6450');
+  const obs = reviewDetections.filter(d => normalizeClass(d.class) === 'obstruction');
   if (perim && perim.points && perim.points.length >= 3) {
     const areaPx = polygonArea(perim.points);
-    const sqft = pxToSqFt(areaPx);
-    addRow('Lot Area', sqft ? `${fmt(sqft)} sq ft` : `${fmt(areaPx)} px²`,
-      sqft ? `${(sqft/43560).toFixed(3)} acres` : 'No scale set', true);
+    const obsInsidePx = obstructionAreaInsidePerimeterPx(perim, obs);
+    const netAreaPx = Math.max(0, areaPx - obsInsidePx);
+    const sqft = pxToSqFt(netAreaPx);
+    addRow('Lot Area', sqft ? `${fmt(sqft)} sq ft` : `${fmt(netAreaPx)} px²`,
+      sqft ? `${(sqft/43560).toFixed(3)} acres net` : 'No scale set', true);
+    if (obsInsidePx > 0) {
+      const grossSqft = pxToSqFt(areaPx);
+      const obsSqft = pxToSqFt(obsInsidePx);
+      addRow('Gross Lot Area', grossSqft ? `${fmt(grossSqft)} sq ft` : `${fmt(areaPx)} px²`, 'Before obstruction subtraction');
+      addRow('Less Obstructions', obsSqft ? `-${fmt(obsSqft)} sq ft` : `-${fmt(obsInsidePx)} px²`, 'Obstructions inside perimeter');
+    }
     const perimPx = polylineLength([...perim.points, perim.points[0]]);
     const perimFt = pxToFt(perimPx);
     addRow('Perimeter Length', perimFt ? `${fmt(perimFt)} ln ft` : `${fmt(perimPx)} px`, null);
@@ -2678,7 +2710,6 @@ function buildReceipt() {
   addRow('Total Stall Striping', `${fmt(totalDots * stallLineFt)} ln ft`, `@ ${stallLineFt} ft per line`);
 
   // -- OBSTRUCTIONS --
-  const obs = reviewDetections.filter(d => normalizeClass(d.class) === 'obstruction');
   if (obs.length > 0) {
     addSection('Obstructions', '#dc3232');
     addRow('Count', `${obs.length}`, null, true);
@@ -2779,7 +2810,10 @@ async function continueImageryToProjectReports() {
     const perim = reviewDetections.find(d => normalizeClass(d.class) === 'lot_perimeter');
     const zones = [];
     if (perim && perim.points && perim.points.length >= 3) {
-      const sqft = ppf2 ? Math.round(polygonArea(perim.points) / ppf2) : 0;
+      const obsAll = reviewDetections.filter(d => normalizeClass(d.class) === 'obstruction');
+      const grossAreaPx = polygonArea(perim.points);
+      const obsInsidePx = obstructionAreaInsidePerimeterPx(perim, obsAll);
+      const sqft = ppf2 ? Math.round(Math.max(0, grossAreaPx - obsInsidePx) / ppf2) : 0;
       zones.push({
         name: 'Lot',
         color: '#d4a843',
