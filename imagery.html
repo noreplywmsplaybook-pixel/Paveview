@@ -2510,12 +2510,19 @@ function rdpSimplify(points, epsilon) {
 function simplifyDetectionForReview(det) {
   if (!det.points || det.points.length < 4) return det;
   const cls = normalizeClass(det.class);
-  const epsilon = cls === 'lot_perimeter' ? 4 : cls === 'obstruction' ? 3 : 2;
-  const MAX_PTS = { lot_perimeter:24, obstruction:16, hatching:12, default:12 };
+  const epsilon = cls === 'lot_perimeter' ? 7 : cls === 'obstruction' ? 3 : 2;
+  const MAX_PTS = { lot_perimeter:18, obstruction:16, hatching:12, default:12 };
   const max = MAX_PTS[cls] || MAX_PTS.default;
-  let pts = rdpSimplify(det.points, epsilon);
+  let pts = cls === 'lot_perimeter'
+    ? simplifyClosedPolygon(det.points, epsilon)
+    : rdpSimplify(det.points, epsilon);
   let eps = epsilon;
-  while (pts.length > max && eps < 50) { eps *= 1.5; pts = rdpSimplify(det.points, eps); }
+  while (pts.length > max && eps < 50) {
+    eps *= 1.5;
+    pts = cls === 'lot_perimeter'
+      ? simplifyClosedPolygon(det.points, eps)
+      : rdpSimplify(det.points, eps);
+  }
   return { ...det, points: pts };
 }
 
