@@ -2458,6 +2458,19 @@ function activePhases() {
 
 function currentPhase() { return activePhases()[reviewPhaseIdx]; }
 
+function focusReviewPhaseForClass(cls) {
+  const wanted = normalizeClass(cls);
+  const phases = activePhases();
+  const idx = phases.findIndex(ph => ph.id === wanted);
+  if (idx >= 0) reviewPhaseIdx = idx;
+}
+
+function focusNewReviewDetection(cls) {
+  focusReviewPhaseForClass(cls);
+  const list = phaseDetections();
+  reviewIdx = Math.max(0, list.length - 1);
+}
+
 function phaseInstructionText(ph) {
   if (!ph) return 'Review and Confirm';
   if (ph.id === 'missed') return 'Review and Confirm Anything Missed';
@@ -3282,7 +3295,7 @@ reviewCanvas.addEventListener('click', e => {
       reviewAddTypeWrap.style.display = 'none';
       reviewDrawHint.style.display = 'none';
       reviewCanvas.style.cursor = 'default';
-      reviewIdx = phaseDetections().length - 1;
+      focusNewReviewDetection('handicap');
       renderReviewFrame();
       return;
     }
@@ -3317,7 +3330,7 @@ function finalizeReviewPolygon() {
     reviewIsAdding=false; reviewNewPoly=[];
     reviewAddTypeWrap.style.display='none'; reviewDrawHint.style.display='none';
     reviewCanvas.style.cursor='default';
-    reviewIdx=phaseDetections().length-1;
+    focusNewReviewDetection(type);
     renderReviewFrame();
     return true;
   }
