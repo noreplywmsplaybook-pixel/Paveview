@@ -210,6 +210,7 @@
     <div class="logo">Pave<span>View</span></div>
     <div class="tag">Detection Platform</div>
     <div class="topbar-right">
+      <button id="saveImageryBtn" disabled style="background:#1a1e24;color:#f5c542;border:1px solid #2a2f36;padding:8px 12px;border-radius:6px;font-family:'DM Mono',monospace;font-size:10px;font-weight:700;cursor:pointer;">Save</button>
       <div class="status-dot" id="statusDot"></div>
       <div class="status-label" id="statusLabel">Idle</div>
     </div>
@@ -560,6 +561,9 @@ let uploadedB64   = null;
 let uploadedW     = 0;
 let uploadedH     = 0;
 let apiScale      = 1;
+let currentProjectId = '';
+let currentProjectName = '';
+let currentPlanPath = null;
 let showRowFill   = false;
 let lastResults   = null;
 let refBoxes      = [];
@@ -603,6 +607,7 @@ const stallHSlider    = document.getElementById('stallHSlider');
 const stallWVal       = document.getElementById('stallWVal');
 const stallHVal       = document.getElementById('stallHVal');
 const runBtn          = document.getElementById('runBtn');
+const saveImageryBtn  = document.getElementById('saveImageryBtn');
 const imageryJobSealcoat = document.getElementById('imagery-job-sealcoat');
 const imageryJobStriping = document.getElementById('imagery-job-striping');
 const imageryJobSummary = document.getElementById('imagery-job-summary');
@@ -657,6 +662,7 @@ function syncImageryStepFlow() {
   calibrateBtn.disabled = !hasImage;
   runBtn.disabled = !(hasImage && hasMeasuredWidth);
   drawRowBtn.disabled = !(hasImage && hasMeasuredWidth);
+  if (saveImageryBtn) saveImageryBtn.disabled = !hasImage;
   if (manualReviewBtn) manualReviewBtn.disabled = !(hasImage && hasMeasuredWidth);
 
   setStepLabelState(step1Label, hasImage && !hasMeasuredWidth, hasMeasuredWidth);
@@ -1092,22 +1098,26 @@ thumbClear.addEventListener('click', () => {
 function handleFile(file) {
   const reader = new FileReader();
   reader.onload = ev => {
-    const dataURL = ev.target.result;
+    loadUploadedImageFromUrl(ev.target.result);
+  };
+  reader.readAsDataURL(file);
+}
+
+function loadUploadedImageFromUrl(dataURL) {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       uploadedImage = img;
       uploadedW = img.naturalWidth;
       uploadedH = img.naturalHeight;
 
-      // Resize for API — Roboflow rejects images over ~1.5MB
-      // Cap longest side at 1500px for the API copy, keep original for canvas render
       const MAX_SIDE = 1500;
       const scale = Math.min(1, MAX_SIDE / Math.max(uploadedW, uploadedH));
       apiScale = scale;
       const apiW = Math.round(uploadedW * scale);
       const apiH = Math.round(uploadedH * scale);
       const apiCanvas = document.createElement('canvas');
-      apiCanvas.width  = apiW;
+      apiCanvas.width = apiW;
       apiCanvas.height = apiH;
       apiCanvas.getContext('2d').drawImage(img, 0, 0, apiW, apiH);
       uploadedB64 = apiCanvas.toDataURL('image/jpeg', 0.88).split(',')[1];
@@ -1117,13 +1127,13 @@ function handleFile(file) {
       uploadZone.style.display = 'none';
       emptyState.style.display = 'none';
       resetZoom();
-
       renderImage();
       syncImageryStepFlow();
+      resolve(img);
     };
+    img.onerror = () => reject(new Error('Could not load image.'));
     img.src = dataURL;
-  };
-  reader.readAsDataURL(file);
+  });
 }
 
 function clearImage() {
@@ -2895,161 +2905,171 @@ function imageryMarkerTypeFromMissedPoint(type) {
   return type;
 }
 
-async function continueImageryToProjectReports() {
-  const btn = document.getElementById('receiptExportBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-  try {
-    const _sb = window._sbClient;
-    if (!_sb) throw new Error('Not signed in.');
-    const { data: { session } } = await _sb.auth.getSession();
-    if (!session) throw new Error('Sign in required.');
+function currentImageryStage() {
+  if (document.getElementById('receiptModal')?.style.display === 'flex') return 'receipt';
+  if (reviewModal?.style.display === 'flex') return 'review';
+  return 'canvas';
+}
 
-    const ppf = getPixelsPerFoot();
-    const ppf2 = ppf ? ppf * ppf : null;
-    if (!uploadedImage || uploadedW < 8 || uploadedH < 8) throw new Error('No valid image.');
+function imageryProjectName() {
+  return currentProjectName || ('Imagery estimate · ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }));
+}
 
-    const perim = reviewDetections.find(d => normalizeClass(d.class) === 'lot_perimeter');
-    const zones = [];
-    if (perim && perim.points && perim.points.length >= 3) {
-      const obsAll = reviewDetections.filter(d => normalizeClass(d.class) === 'obstruction');
-      const grossAreaPx = polygonArea(perim.points);
-      const obsInsidePx = obstructionAreaInsidePerimeterPx(perim, obsAll);
-      const sqft = ppf2 ? Math.round(Math.max(0, grossAreaPx - obsInsidePx) / ppf2) : 0;
-      zones.push({
-        name: 'Lot',
-        color: '#d4a843',
-        pts: perim.points.map(p => ({ x: p.x, y: p.y })),
-        labelSize: 12,
-        sqft
-      });
-    }
-    reviewDetections.filter(d => normalizeClass(d.class) === 'obstruction').forEach((d, i) => {
-      if (!d.points || d.points.length < 3) return;
-      const sq = ppf2 ? Math.round(polygonArea(d.points) / ppf2) : 0;
-      zones.push({
-        name: 'Obstruction ' + (i + 1),
-        color: '#6b7280',
-        obstruct: true,
-        pts: d.points.map(p => ({ x: p.x, y: p.y })),
-        labelSize: 10,
-        sqft: sq
-      });
+function buildImageryProjectSnapshot() {
+  const ppf = getPixelsPerFoot();
+  const ppf2 = ppf ? ppf * ppf : null;
+  const perim = reviewDetections.find(d => normalizeClass(d.class) === 'lot_perimeter');
+  const zones = [];
+  if (perim && perim.points && perim.points.length >= 3) {
+    const obsAll = reviewDetections.filter(d => normalizeClass(d.class) === 'obstruction');
+    const grossAreaPx = polygonArea(perim.points);
+    const obsInsidePx = obstructionAreaInsidePerimeterPx(perim, obsAll);
+    const sqft = ppf2 ? Math.round(Math.max(0, grossAreaPx - obsInsidePx) / ppf2) : 0;
+    zones.push({
+      name: 'Lot',
+      color: '#d4a843',
+      pts: perim.points.map(p => ({ x: p.x, y: p.y })),
+      labelSize: 12,
+      sqft
     });
-
-    const closed = zones.filter(z => !z.obstruct);
-    let totalSqft = closed.reduce((s, z) => s + (z.sqft || 0), 0);
-
-    const linearSegs = [];
-    allRows.forEach((row, ri) => {
-      if (!row || row.length < 2) return;
-      linearSegs.push({
-        id: 'row-' + ri,
-        label: 'Row ' + (ri + 1),
-        pts: row.map(p => ({ x: p.x, y: p.y }))
-      });
+  }
+  reviewDetections.filter(d => normalizeClass(d.class) === 'obstruction').forEach((d, i) => {
+    if (!d.points || d.points.length < 3) return;
+    const sq = ppf2 ? Math.round(polygonArea(d.points) / ppf2) : 0;
+    zones.push({
+      name: 'Obstruction ' + (i + 1),
+      color: '#6b7280',
+      obstruct: true,
+      pts: d.points.map(p => ({ x: p.x, y: p.y })),
+      labelSize: 10,
+      sqft: sq
     });
-    missedFireLines.forEach((fl, i) => {
-      if (!fl.points || fl.points.length < 2) return;
-      linearSegs.push({
-        id: 'fire-' + i,
-        label: 'Fire lane',
-        pts: fl.points.map(p => ({ x: p.x, y: p.y }))
-      });
+  });
+
+  const closed = zones.filter(z => !z.obstruct);
+  let totalSqft = closed.reduce((s, z) => s + (z.sqft || 0), 0);
+
+  const linearSegs = [];
+  allRows.forEach((row, ri) => {
+    if (!row || row.length < 2) return;
+    linearSegs.push({ id: 'row-' + ri, label: 'Row ' + (ri + 1), pts: row.map(p => ({ x: p.x, y: p.y })) });
+  });
+  missedFireLines.forEach((fl, i) => {
+    if (!fl.points || fl.points.length < 2) return;
+    linearSegs.push({ id: 'fire-' + i, label: 'Fire lane', pts: fl.points.map(p => ({ x: p.x, y: p.y })) });
+  });
+
+  const hatchZones = [];
+  reviewDetections.filter(d => normalizeClass(d.class) === 'hatching').forEach(d => {
+    if (!d.points || d.points.length < 3) return;
+    hatchZones.push({ type: 'crosswalk', pts: d.points.map(p => ({ x: p.x, y: p.y })) });
+  });
+
+  const markers = [];
+  let stallIdx = 0;
+  allRows.forEach(row => {
+    row.forEach(pt => { markers.push({ type: 'stall', x: pt.x, y: pt.y, label: String(++stallIdx) }); });
+  });
+  reviewDetections.filter(d => normalizeClass(d.class) === 'handicap').forEach((d, i) => {
+    const c = imageryDetectionCenter(d);
+    markers.push({ type: 'ada', x: c.x, y: c.y, label: 'ADA ' + (i + 1) });
+  });
+  reviewDetections.filter(d => normalizeClass(d.class) === 'stencil').forEach((d, i) => {
+    const c = imageryDetectionCenter(d);
+    markers.push({ type: 'stencil', x: c.x, y: c.y, label: d.label || d.text || ('Stencil ' + (i + 1)) });
+  });
+  reviewDetections.filter(d => normalizeClass(d.class) === 'arrow').forEach((d, i) => {
+    const c = imageryDetectionCenter(d);
+    markers.push({ type: 'arrow', x: c.x, y: c.y, label: 'Arrow ' + (i + 1) });
+  });
+  missedPoints.forEach((p, i) => {
+    markers.push({
+      type: imageryMarkerTypeFromMissedPoint(p.type),
+      x: p.x,
+      y: p.y,
+      label: p.type === 'bollard_sign' ? ('Sign ' + (i + 1)) : ''
     });
+  });
+  missedStencils.forEach((s, i) => {
+    markers.push({ type: 'stencil', x: s.x, y: s.y, label: s.text || ('Stencil ' + (i + 1)) });
+  });
 
-    const hatchZones = [];
-    reviewDetections.filter(d => normalizeClass(d.class) === 'hatching').forEach(d => {
-      if (!d.points || d.points.length < 3) return;
-      hatchZones.push({ type: 'crosswalk', pts: d.points.map(p => ({ x: p.x, y: p.y })) });
-    });
+  const pr = JSON.parse(localStorage.getItem('paveview_pricing') || '{}');
+  const depth = pr.depth ?? 3, comp = pr.comp ?? 1.05, base = pr.base ?? 6;
+  const pa = pr.pa ?? 85, pb = pr.pb ?? 22, pl = pr.pl ?? 1.25;
+  const plin = pr.plin ?? 3, pstripe = pr.pstripe ?? 8, pada = pr.pada ?? 25, pcross = pr.pcross ?? 2.5;
+  const sealerGal = pr.sealerGal ?? 4.5, sealerCov = pr.sealerCov ?? 80, sealerCoats = pr.sealerCoats ?? 2;
+  const pseal = pr.pseal ?? 0.18, pcrack = pr.pcrack ?? 2.5;
 
-    const markers = [];
-    let stallIdx = 0;
-    allRows.forEach(row => {
-      row.forEach(pt => { markers.push({ type: 'stall', x: pt.x, y: pt.y, label: String(++stallIdx) }); });
-    });
-    reviewDetections.filter(d => normalizeClass(d.class) === 'handicap').forEach((d, i) => {
-      const c = imageryDetectionCenter(d);
-      markers.push({ type: 'ada', x: c.x, y: c.y, label: 'ADA ' + (i + 1) });
-    });
-    reviewDetections.filter(d => normalizeClass(d.class) === 'stencil').forEach((d, i) => {
-      const c = imageryDetectionCenter(d);
-      markers.push({ type: 'stencil', x: c.x, y: c.y, label: d.label || d.text || ('Stencil ' + (i + 1)) });
-    });
-    reviewDetections.filter(d => normalizeClass(d.class) === 'arrow').forEach((d, i) => {
-      const c = imageryDetectionCenter(d);
-      markers.push({ type: 'arrow', x: c.x, y: c.y, label: 'Arrow ' + (i + 1) });
-    });
-    missedPoints.forEach((p, i) => {
-      markers.push({
-        type: imageryMarkerTypeFromMissedPoint(p.type),
-        x: p.x,
-        y: p.y,
-        label: p.type === 'bollard_sign' ? ('Sign ' + (i + 1)) : ''
-      });
-    });
-    missedStencils.forEach((s, i) => {
-      markers.push({ type: 'stencil', x: s.x, y: s.y, label: s.text || ('Stencil ' + (i + 1)) });
-    });
+  const sc = ppf ? 1 / ppf : 40 / 70;
+  let linearFt = 0;
+  linearSegs.forEach(seg => {
+    const pts = seg.pts || [];
+    for (let i = 1; i < pts.length; i++) linearFt += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y) * sc;
+  });
 
-    const pr = JSON.parse(localStorage.getItem('paveview_pricing') || '{}');
-    const depth = pr.depth ?? 3, comp = pr.comp ?? 1.05, base = pr.base ?? 6;
-    const pa = pr.pa ?? 85, pb = pr.pb ?? 22, pl = pr.pl ?? 1.25;
-    const plin = pr.plin ?? 3, pstripe = pr.pstripe ?? 8, pada = pr.pada ?? 25, pcross = pr.pcross ?? 2.5;
-    const sealerGal = pr.sealerGal ?? 4.5, sealerCov = pr.sealerCov ?? 80, sealerCoats = pr.sealerCoats ?? 2;
-    const pseal = pr.pseal ?? 0.18, pcrack = pr.pcrack ?? 2.5;
+  let crosswalkSqft = 0;
+  hatchZones.forEach(h => { crosswalkSqft += polygonArea(h.pts) * sc * sc; });
 
-    const sc = ppf ? 1 / ppf : 40 / 70;
-    let linearFt = 0;
-    linearSegs.forEach(seg => {
-      const pts = seg.pts || [];
-      for (let i = 1; i < pts.length; i++) linearFt += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y) * sc;
-    });
+  const stallC = markers.filter(m => m.type === 'stall').length;
+  const adaC = markers.filter(m => m.type === 'ada').length;
+  const stallLineFt = parseFloat(document.getElementById('receiptStallLineFt')?.value) || 18;
+  const stripingLineFt = stallC * stallLineFt;
 
-    let crosswalkSqft = 0;
-    hatchZones.forEach(h => { crosswalkSqft += polygonArea(h.pts) * sc * sc; });
+  const tons = closed.reduce((t, z) => {
+    const a = z.sqft || polygonArea(z.pts) * sc * sc;
+    return t + (a * (depth / 12) * 145 / 2000 * comp);
+  }, 0);
+  const baseTons = closed.reduce((t, z) => {
+    const a = z.sqft || polygonArea(z.pts) * sc * sc;
+    return t + (a * (base / 12) * 110 / 2000);
+  }, 0);
+  const pavingCost = tons * pa + baseTons * pb + totalSqft * pl;
+  const sealerGallons = totalSqft * Math.max(1, sealerCoats) / Math.max(1, sealerCov);
+  const sealcoatCost = totalSqft * pseal + linearFt * pcrack + sealerGallons * sealerGal;
+  const stripingCost = stallC * pstripe + adaC * pada + linearFt * plin + crosswalkSqft * pcross;
 
-    const stallC = markers.filter(m => m.type === 'stall').length;
-    const adaC = markers.filter(m => m.type === 'ada').length;
-    const stallLineFt = parseFloat(document.getElementById('receiptStallLineFt')?.value) || 18;
-    const stripingLineFt = stallC * stallLineFt;
+  const selectedJobTypes = getSelectedImageryJobTypes();
+  const jobType = selectedJobTypes.length === 2 ? 'both' : selectedJobTypes[0];
+  let totalCost = 0;
+  if (selectedJobTypes.includes('sealcoat')) totalCost += sealcoatCost;
+  if (selectedJobTypes.includes('striping')) totalCost += stripingCost;
 
-    const tons = closed.reduce((t, z) => {
-      const a = z.sqft || polygonArea(z.pts) * sc * sc;
-      return t + (a * (depth / 12) * 145 / 2000 * comp);
-    }, 0);
-    const baseTons = closed.reduce((t, z) => {
-      const a = z.sqft || polygonArea(z.pts) * sc * sc;
-      return t + (a * (base / 12) * 110 / 2000);
-    }, 0);
-    const pavingCost = tons * pa + baseTons * pb + totalSqft * pl;
-    const sealerGallons = totalSqft * Math.max(1, sealerCoats) / Math.max(1, sealerCov);
-    const sealcoatCost = totalSqft * pseal + linearFt * pcrack + sealerGallons * sealerGal;
-    const stripingCost = stallC * pstripe + adaC * pada + linearFt * plin + crosswalkSqft * pcross;
+  const planId = 'plan-' + Date.now();
+  const planSlice = {
+    id: planId,
+    label: 'Site imagery',
+    imgW: uploadedW,
+    imgH: uploadedH,
+    zones: JSON.parse(JSON.stringify(zones)),
+    markers: JSON.parse(JSON.stringify(markers)),
+    measurements: [],
+    linearSegs: JSON.parse(JSON.stringify(linearSegs)),
+    hatchZones: JSON.parse(JSON.stringify(hatchZones))
+  };
 
-    const selectedJobTypes = getSelectedImageryJobTypes();
-    const jobType = selectedJobTypes.length === 2 ? 'both' : selectedJobTypes[0];
-    let totalCost = 0;
-    if (selectedJobTypes.includes('sealcoat')) totalCost += sealcoatCost;
-    if (selectedJobTypes.includes('striping')) totalCost += stripingCost;
+  const imageryState = {
+    lastResults: JSON.parse(JSON.stringify(lastResults || null)),
+    reviewDetections: JSON.parse(JSON.stringify(reviewDetections || [])),
+    allRows: JSON.parse(JSON.stringify(allRows || [])),
+    rowDots: JSON.parse(JSON.stringify(rowDots || [])),
+    rowDirUx,
+    rowDirUy,
+    missedFireLines: JSON.parse(JSON.stringify(missedFireLines || [])),
+    missedPoints: JSON.parse(JSON.stringify(missedPoints || [])),
+    missedStencils: JSON.parse(JSON.stringify(missedStencils || [])),
+    stallTemplate: JSON.parse(JSON.stringify(stallTemplate || null)),
+    receiptPixelsPerFoot,
+    receiptStallFt: parseFloat(document.getElementById('receiptStallFt')?.value) || 9,
+    receiptStallLineFt: stallLineFt,
+    stage: currentImageryStage(),
+    manualReviewMode,
+    reviewPhaseIdx
+  };
 
-    const planId = 'plan-' + Date.now();
-    const plansArr = [{ id: planId, label: 'Site imagery', imgW: uploadedW, imgH: uploadedH }];
-    const planSlice = {
-      id: planId,
-      label: 'Site imagery',
-      imgW: uploadedW,
-      imgH: uploadedH,
-      zones: JSON.parse(JSON.stringify(zones)),
-      markers: JSON.parse(JSON.stringify(markers)),
-      measurements: [],
-      linearSegs: JSON.parse(JSON.stringify(linearSegs)),
-      hatchZones: JSON.parse(JSON.stringify(hatchZones))
-    };
-
-    const projectName = 'Imagery estimate · ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-    const projectData = {
+  return {
+    projectName: imageryProjectName(),
+    projectData: {
       status: 'estimating',
       totalSqft: Math.round(totalSqft),
       totalCost: Math.round(totalCost),
@@ -3071,53 +3091,186 @@ async function continueImageryToProjectReports() {
       sealerGal, sealerCov, sealerCoats,
       source: 'imagery_estimate',
       stripingLineFt,
-      receiptStallLineFt: stallLineFt
-    };
+      receiptStallLineFt: stallLineFt,
+      imageryState
+    }
+  };
+}
 
-    let planPath = null;
-    try {
-      const uc = document.createElement('canvas');
-      uc.width = uploadedW;
-      uc.height = uploadedH;
-      uc.getContext('2d').drawImage(uploadedImage, 0, 0);
-      const blob = await new Promise(res => uc.toBlob(res, 'image/jpeg', 0.85));
-      const fname = session.user.id + '/' + Date.now() + '.jpg';
-      const { error: upErr } = await _sb.storage.from('project-plans').upload(fname, blob, { contentType: 'image/jpeg', upsert: true });
-      if (!upErr) planPath = fname;
-    } catch (e) { console.warn('Plan upload:', e); }
+async function uploadImageryPlan(session) {
+  if (!uploadedImage || uploadedW < 8 || uploadedH < 8) return currentPlanPath || null;
+  try {
+    const uc = document.createElement('canvas');
+    uc.width = uploadedW;
+    uc.height = uploadedH;
+    uc.getContext('2d').drawImage(uploadedImage, 0, 0);
+    const blob = await new Promise(res => uc.toBlob(res, 'image/jpeg', 0.85));
+    const fname = session.user.id + '/' + Date.now() + '.jpg';
+    const { error: upErr } = await _sbClient.storage.from('project-plans').upload(fname, blob, { contentType: 'image/jpeg', upsert: true });
+    if (!upErr) {
+      currentPlanPath = fname;
+      return fname;
+    }
+  } catch (e) {
+    console.warn('Plan upload:', e);
+  }
+  return currentPlanPath || null;
+}
 
-    const dataStr = JSON.stringify({ ...projectData, planPath });
+async function persistImageryProject(opts) {
+  const options = opts || {};
+  const btn = options.button || null;
+  const idleText = options.idleText || 'Save';
+  const workingText = options.workingText || 'Saving...';
+  const doneText = options.doneText || 'Saved';
+  if (btn) { btn.disabled = true; btn.textContent = workingText; }
+  try {
+    const _sb = window._sbClient;
+    if (!_sb) throw new Error('Not signed in.');
+    const { data: { session } } = await _sb.auth.getSession();
+    if (!session) throw new Error('Sign in required.');
+    if (!uploadedImage || uploadedW < 8 || uploadedH < 8) throw new Error('No valid image.');
+
+    const snapshot = buildImageryProjectSnapshot();
+    const planPath = await uploadImageryPlan(session);
+    const dataStr = JSON.stringify({ ...snapshot.projectData, planPath });
     const saveResp = await fetch('/api/save-project', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
-      body: JSON.stringify({ name: projectName, data: dataStr })
+      body: JSON.stringify({ projectId: currentProjectId || null, name: snapshot.projectName, data: dataStr })
     });
     const savePayload = await saveResp.json().catch(() => ({}));
     if (!saveResp.ok) {
       if (saveResp.status === 402 || saveResp.status === 429) {
         alert(savePayload?.error || 'Monthly proposal limit reached.');
         window.location.href = '/#pricing';
-        return;
+        return null;
       }
       throw new Error(savePayload?.error || 'Save failed.');
     }
     const savedId = savePayload?.project_id || savePayload?.projectId;
     if (!savedId) throw new Error('No project id returned.');
-
-    try {
-      localStorage.removeItem('paveview_proj_status_' + savedId);
-    } catch (_e) {}
-
-    document.getElementById('receiptModal').style.display = 'none';
-    window.location.href = 'project.html?id=' + savedId;
+    currentProjectId = savedId;
+    currentProjectName = snapshot.projectName;
+    try { localStorage.removeItem('paveview_proj_status_' + savedId); } catch (_e) {}
+    if (btn) {
+      btn.textContent = doneText;
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = idleText;
+      }, 1500);
+    }
+    return savedId;
   } catch (e) {
     console.error(e);
     alert(e.message || 'Could not save project.');
-    if (btn) { btn.disabled = false; btn.textContent = 'Continue to Report Generation →'; }
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = idleText;
+    }
+    return null;
+  }
+}
+
+async function continueImageryToProjectReports() {
+  const savedId = await persistImageryProject({
+    button: document.getElementById('receiptExportBtn'),
+    idleText: 'Continue to Report Generation →',
+    workingText: 'Saving...',
+    doneText: 'Saved'
+  });
+  if (savedId) {
+    document.getElementById('receiptModal').style.display = 'none';
+    window.location.href = 'project.html?id=' + savedId;
   }
 }
 
 document.getElementById('receiptExportBtn')?.addEventListener('click', () => { continueImageryToProjectReports(); });
+saveImageryBtn?.addEventListener('click', async () => {
+  await persistImageryProject({
+    button: saveImageryBtn,
+    idleText: 'Save',
+    workingText: 'Saving...',
+    doneText: 'Saved ✓'
+  });
+});
+
+async function loadImageryProjectFromUrl() {
+  const pid = new URLSearchParams(window.location.search).get('project');
+  if (!pid || !window._sbClient) return;
+  try {
+    const { data: { session } } = await window._sbClient.auth.getSession();
+    if (!session) return;
+    const { data: proj, error } = await window._sbClient.from('projects').select('*').eq('id', pid).eq('user_id', session.user.id).single();
+    if (error || !proj) throw new Error(error?.message || 'Project not found.');
+    currentProjectId = String(proj.id || '');
+    currentProjectName = proj.name || imageryProjectName();
+    const pd = typeof proj.data === 'string' ? JSON.parse(proj.data) : (proj.data || {});
+    currentPlanPath = pd.planPath || null;
+    if (Array.isArray(pd.jobTypes) && pd.jobTypes.length) {
+      if (imageryJobSealcoat) imageryJobSealcoat.checked = pd.jobTypes.includes('sealcoat');
+      if (imageryJobStriping) imageryJobStriping.checked = pd.jobTypes.includes('striping');
+      syncImageryJobTypes();
+    }
+    if (pd.receiptStallLineFt) {
+      const el = document.getElementById('receiptStallLineFt');
+      if (el) el.value = pd.receiptStallLineFt;
+    }
+
+    if (pd.planPath) {
+      const { data: fileData, error: dlErr } = await window._sbClient.storage.from('project-plans').download(pd.planPath);
+      if (dlErr || !fileData) throw new Error(dlErr?.message || 'Could not load imagery plan.');
+      const dataUrl = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = () => reject(new Error('Could not read imagery plan.'));
+        fr.readAsDataURL(fileData);
+      });
+      await loadUploadedImageFromUrl(dataUrl);
+    }
+
+    const state = pd.imageryState || {};
+    lastResults = state.lastResults || null;
+    reviewDetections = Array.isArray(state.reviewDetections) ? state.reviewDetections : [];
+    allRows = Array.isArray(state.allRows) ? state.allRows : [];
+    rowDots = Array.isArray(state.rowDots) ? state.rowDots : [];
+    rowDirUx = Number(state.rowDirUx) || 0;
+    rowDirUy = Number(state.rowDirUy) || 0;
+    missedFireLines = Array.isArray(state.missedFireLines) ? state.missedFireLines : [];
+    missedPoints = Array.isArray(state.missedPoints) ? state.missedPoints : [];
+    missedStencils = Array.isArray(state.missedStencils) ? state.missedStencils : [];
+    stallTemplate = state.stallTemplate || null;
+    receiptPixelsPerFoot = state.receiptPixelsPerFoot || null;
+    manualReviewMode = !!state.manualReviewMode;
+    reviewPhaseIdx = Number.isFinite(state.reviewPhaseIdx) ? state.reviewPhaseIdx : 0;
+    if (state.receiptStallFt) {
+      const el = document.getElementById('receiptStallFt');
+      if (el) el.value = state.receiptStallFt;
+    }
+    if (state.receiptStallLineFt) {
+      const el = document.getElementById('receiptStallLineFt');
+      if (el) el.value = state.receiptStallLineFt;
+    }
+
+    redrawAll();
+    undoRowBtn.disabled = allRows.length === 0;
+    clearRefBtn.disabled = allRows.length === 0 && !lastResults;
+    reviewBtn.disabled = !(lastResults || reviewDetections.length);
+    document.getElementById('legendPanel').style.display = (lastResults || reviewDetections.length) ? 'block' : 'none';
+    if (lastResults) {
+      updateStats(!!lastResults.perimeterPred, lastResults.nonStalls || [], lastResults.elapsed || 0);
+    }
+    syncImageryStepFlow();
+    setStatus('done');
+
+    if (state.stage === 'receipt') {
+      showReceipt();
+    }
+  } catch (e) {
+    console.warn('Imagery project load failed:', e);
+    alert('Could not load saved imagery project: ' + e.message);
+  }
+}
 
 // -- PHASE NAVIGATION ---------------------------------------------------------
 function enterPhase() {
@@ -3636,7 +3789,7 @@ document.getElementById('missedStencilType')?.addEventListener('change', functio
 
 document.getElementById('missedConfirmBtn')?.addEventListener('click', closeReview);
 
-function checkReviewBtn() { reviewBtn.disabled = !lastResults; }
+function checkReviewBtn() { reviewBtn.disabled = !(lastResults || reviewDetections.length); }
 
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -3666,6 +3819,7 @@ function checkReviewBtn() { reviewBtn.disabled = !lastResults; }
       const{data:p}=await sb.from('purchases').select('id,product,status,amount_paid,created_at').eq('user_id',session.user.id).eq('status','active').order('created_at',{ascending:false}).limit(20);
       if(!p||!p.find(hasActiveAccess)){window.location.replace('index.html');return;}
       await sb.from('profiles').upsert({id:session.user.id,email:session.user.email||null,updated_at:new Date().toISOString()},{onConflict:'id'});
+      await loadImageryProjectFromUrl();
       const ac=document.getElementById('auth-check');
       if(ac)ac.remove();
     }catch(e){
