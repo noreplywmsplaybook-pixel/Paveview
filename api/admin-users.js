@@ -278,7 +278,7 @@ async function handlePatch(req, res, serviceRoleKey) {
         method: 'PATCH',
         serviceRoleKey,
         prefer: 'return=representation',
-        body: { status: 'revoked', updated_at: new Date().toISOString() }
+        body: { status: 'revoked' }
       }
     );
     if (!revoke.ok) {
@@ -306,7 +306,7 @@ async function handlePatch(req, res, serviceRoleKey) {
         method: 'PATCH',
         serviceRoleKey,
         prefer: 'return=representation',
-        body: { status: 'active', updated_at: new Date().toISOString() }
+        body: { status: 'active' }
       }
     );
     if (!restore.ok) {
@@ -354,7 +354,7 @@ async function handlePatch(req, res, serviceRoleKey) {
       {
         method: 'PATCH',
         serviceRoleKey,
-        body: { status: 'revoked', updated_at: new Date().toISOString() }
+        body: { status: 'revoked' }
       }
     );
     if (!revoke.ok) {
