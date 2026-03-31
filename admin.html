@@ -1056,6 +1056,19 @@ function accountTypeOptions(selected) {
   return types.map(type => `<option value="${type}" ${type===selected?'selected':''}>${accountTypeLabel(type)}</option>`).join('');
 }
 
+function currentBillingType(customer) {
+  const p = customer?.purchase;
+  if (!p || !isPurchaseAccessActive(p) || isTrialPurchase(p)) return 'free';
+  return Number(p.amount_paid || 0) > 0 ? 'paid' : 'free';
+}
+
+function billingTypeOptions(selected) {
+  return [
+    `<option value="paid" ${selected==='paid'?'selected':''}>Paid</option>`,
+    `<option value="free" ${selected==='free'?'selected':''}>Complimentary</option>`
+  ].join('');
+}
+
 function isCustomerActive(customer) {
   return !!(customer?.purchase && isPurchaseAccessActive(customer.purchase));
 }
@@ -1378,13 +1391,17 @@ function renderCustomerRows(customers, tbodyId) {
       : '<span style="color:#555">No activity</span>';
     const profileFlag = c.missing_profile ? '<div style="font-size:10px;color:#f5c842">profile missing</div>' : '';
     const selectedType = currentAccountType(c);
+    const selectedBilling = currentBillingType(c);
     return `<tr>
       <td>${c.full_name || '—'}${profileFlag}</td>
       <td class="mono">${c.email || '—'}</td>
       <td>${status}</td>
       <td>
-        <select id="acct-type-${c.id}" class="search-inp" style="width:180px">
+        <select id="acct-type-${c.id}" class="search-inp" style="width:170px;margin-bottom:6px">
           ${accountTypeOptions(selectedType)}
+        </select>
+        <select id="acct-billing-${c.id}" class="search-inp" style="width:170px">
+          ${billingTypeOptions(selectedBilling)}
         </select>
       </td>
       <td class="mono">${c.project_count || 0}</td>
@@ -1605,13 +1622,15 @@ async function grantTrialAccess(userId, email) {
 
 async function applyAccountType(userId, name) {
   const sel = document.getElementById(`acct-type-${userId}`);
+  const billingSel = document.getElementById(`acct-billing-${userId}`);
   if (!sel) return;
   const accountType = sel.value;
+  const billingType = billingSel ? billingSel.value : 'paid';
   try {
     const resp = await fetch(ADMIN_API_URL, {
       method: 'PATCH',
       headers: adminAuthHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ action: 'set_account_type', userId, accountType })
+      body: JSON.stringify({ action: 'set_account_type', userId, accountType, billingType })
     });
     const payload = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(payload.error || `Account update failed (${resp.status})`);

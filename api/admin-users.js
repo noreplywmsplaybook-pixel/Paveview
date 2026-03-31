@@ -325,6 +325,7 @@ async function handlePatch(req, res, serviceRoleKey) {
   if (action === 'set_account_type') {
     const userId = String(body.userId || '').trim();
     const accountType = String(body.accountType || '').trim();
+    const billingType = String(body.billingType || 'paid').trim().toLowerCase();
     if (!userId) {
       sendJson(res, 400, { error: 'userId is required.' });
       return;
@@ -341,6 +342,10 @@ async function handlePatch(req, res, serviceRoleKey) {
     };
     if (!Object.prototype.hasOwnProperty.call(PRODUCT_MAP, accountType)) {
       sendJson(res, 400, { error: 'Invalid accountType.' });
+      return;
+    }
+    if (!['paid', 'free'].includes(billingType)) {
+      sendJson(res, 400, { error: 'Invalid billingType.' });
       return;
     }
 
@@ -363,13 +368,14 @@ async function handlePatch(req, res, serviceRoleKey) {
     }
 
     const target = PRODUCT_MAP[accountType];
+    const amountPaid = accountType === 'trial_24h' ? 0 : (billingType === 'free' ? 0 : target.amount_paid);
     const insert = await supabaseFetch('/rest/v1/purchases', {
       method: 'POST',
       serviceRoleKey,
       body: [{
         user_id: userId,
         product: target.product,
-        amount_paid: target.amount_paid,
+        amount_paid: amountPaid,
         status: 'active'
       }]
     });
@@ -377,7 +383,7 @@ async function handlePatch(req, res, serviceRoleKey) {
       sendJson(res, insert.status || 500, { error: insert.payload?.message || 'Failed to set new account type.' });
       return;
     }
-    sendJson(res, 200, { ok: true, userId, accountType });
+    sendJson(res, 200, { ok: true, userId, accountType, billingType, amount_paid: amountPaid });
     return;
   }
 
