@@ -529,6 +529,25 @@
   </div>
 </div>
 
+<div id="stallLineHelpModal" style="display:none;position:fixed;inset:0;z-index:210;background:rgba(0,0,0,0.82);align-items:center;justify-content:center;font-family:'DM Mono',monospace;">
+  <div style="width:min(920px,92vw);max-height:92vh;overflow:auto;background:#0f1114;border:1px solid #2a2f36;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,0.45);">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #1e2328;">
+      <div>
+        <div style="font-size:10px;letter-spacing:2px;color:#5a6270;text-transform:uppercase;">Stall Line Guide</div>
+        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:#f5c542;">How To Draw Stall Lines</div>
+      </div>
+      <button id="stallLineHelpClose" style="background:transparent;color:#7a8390;border:1px solid #2a2f36;padding:8px 10px;border-radius:6px;font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;">Close</button>
+    </div>
+    <div style="padding:18px;">
+      <img src="assets/stall-line-help.png" alt="How to add stall lines" style="display:block;width:100%;height:auto;border-radius:8px;border:1px solid #1e2328;background:#0d0f11;">
+      <div style="margin-top:12px;font-size:11px;color:#7a8390;line-height:1.7;">Start on the inside of the first stall line and end on the last stall line. After you continue, this guide will not show again.</div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;padding:0 18px 18px;">
+      <button id="stallLineHelpContinue" style="background:linear-gradient(135deg,#f5c542,#e6a817);color:#000;border:none;padding:10px 18px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;">Continue</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // -- CONFIG ------------------------------------------------------------------
 const MAIN_MODEL   = 'my-first-project-ug0a7/4';
@@ -617,6 +636,9 @@ const drawRowBtn      = document.getElementById('drawRowBtn');
 const manualReviewBtn = document.getElementById('manualReviewBtn');
 const undoRowBtn      = document.getElementById('undoRowBtn');
 const clearRefBtn     = document.getElementById('clearRefBtn');
+const stallLineHelpModal = document.getElementById('stallLineHelpModal');
+const stallLineHelpClose = document.getElementById('stallLineHelpClose');
+const stallLineHelpContinue = document.getElementById('stallLineHelpContinue');
 const step1Label      = document.getElementById('step1Label');
 const step2Label      = document.getElementById('step2Label');
 const mainCanvas      = document.getElementById('mainCanvas');
@@ -653,6 +675,8 @@ function setStepLabelState(el, active, done) {
   if (!el) return;
   el.style.color = active ? '#f5c542' : done ? '#4caf50' : '#5a6270';
 }
+
+const STALL_LINE_HELP_KEY = 'paveview_imagery_stall_line_help_seen_v1';
 
 function syncImageryStepFlow() {
   const hasImage = !!uploadedImage;
@@ -740,25 +764,51 @@ function drawCalibBoxes() {
   });
 }
 
+function hasSeenStallLineHelp() {
+  try { return localStorage.getItem(STALL_LINE_HELP_KEY) === '1'; }
+  catch (_e) { return false; }
+}
+
+function markStallLineHelpSeen() {
+  try { localStorage.setItem(STALL_LINE_HELP_KEY, '1'); }
+  catch (_e) {}
+}
+
+function startRowMode() {
+  isRowMode = true;
+  exitCalibrateUi();
+  rowDots = []; rowDirUx = 0; rowDirUy = 0;
+  drawRowBtn.textContent = 'Stop Drawing';
+  drawRowBtn.style.color = '#ff6450';
+  drawRowBtn.style.borderColor = '#ff6450';
+  mainCanvas.classList.add('draw-mode');
+  redrawAll();
+}
+
+function stopRowMode() {
+  isRowMode = false;
+  rowDots = []; rowDirUx = 0; rowDirUy = 0;
+  drawRowBtn.textContent = 'Draw Stall Line';
+  drawRowBtn.style.color = '#f5c542';
+  drawRowBtn.style.borderColor = '#f5c542';
+  mainCanvas.classList.remove('draw-mode');
+  redrawAll();
+}
+
+function closeStallLineHelp() {
+  if (stallLineHelpModal) stallLineHelpModal.style.display = 'none';
+}
+
 drawRowBtn.addEventListener('click', () => {
   console.log('[PaveView] drawRowBtn clicked, isRowMode was:', isRowMode, 'disabled:', drawRowBtn.disabled);
-  isRowMode = !isRowMode;
-  if (isRowMode) {
-    exitCalibrateUi();
-    rowDots = []; rowDirUx = 0; rowDirUy = 0;
-    drawRowBtn.textContent = 'Stop Drawing';
-    drawRowBtn.style.color = '#ff6450';
-    drawRowBtn.style.borderColor = '#ff6450';
-    mainCanvas.classList.add('draw-mode');
-    redrawAll();
+  if (!isRowMode) {
+    if (!hasSeenStallLineHelp()) {
+      if (stallLineHelpModal) stallLineHelpModal.style.display = 'flex';
+      return;
+    }
+    startRowMode();
   } else {
-    // Turn off — discard any in-progress dots
-    rowDots = []; rowDirUx = 0; rowDirUy = 0;
-    drawRowBtn.textContent = 'Draw Stall Line';
-    drawRowBtn.style.color = '#f5c542';
-    drawRowBtn.style.borderColor = '#f5c542';
-    mainCanvas.classList.remove('draw-mode');
-    redrawAll();
+    stopRowMode();
   }
 });
 
@@ -771,12 +821,7 @@ undoRowBtn.addEventListener('click', () => {
 clearRefBtn.addEventListener('click', () => {
   allRows = []; rowDots = []; rowDirUx = 0; rowDirUy = 0;
   undoRowBtn.disabled = true; clearRefBtn.disabled = true;
-  isRowMode = false;
-  drawRowBtn.textContent = 'Draw Stall Line';
-  drawRowBtn.style.color = '#f5c542';
-  drawRowBtn.style.borderColor = '#f5c542';
-  mainCanvas.classList.remove('draw-mode');
-  redrawAll();
+  stopRowMode();
 });
 
 // Place one dot per click.
@@ -3673,6 +3718,15 @@ reviewCanvas.addEventListener('dblclick', e => {
 reviewBtn.addEventListener('click', () => {
   try { openReview(); }
   catch(e) { console.error('[PaveView] openReview failed:', e); alert('Review error: ' + e.message); }
+});
+stallLineHelpClose?.addEventListener('click', closeStallLineHelp);
+stallLineHelpModal?.addEventListener('click', e => {
+  if (e.target === stallLineHelpModal) closeStallLineHelp();
+});
+stallLineHelpContinue?.addEventListener('click', () => {
+  markStallLineHelpSeen();
+  closeStallLineHelp();
+  startRowMode();
 });
 manualReviewBtn?.addEventListener('click', () => {
   try { openReview({ manualOnly: true }); }
