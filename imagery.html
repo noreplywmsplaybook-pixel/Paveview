@@ -3055,7 +3055,6 @@ function renderReviewFrame() {
     reviewCtx.strokeStyle = polyColor; reviewCtx.lineWidth = 2; reviewCtx.setLineDash([4,3]);
     reviewCtx.beginPath(); reviewCtx.moveTo(reviewNewPoly[0].x, reviewNewPoly[0].y);
     for (let i=1;i<reviewNewPoly.length;i++) reviewCtx.lineTo(reviewNewPoly[i].x, reviewNewPoly[i].y);
-    if (reviewNewPoly.length > 2) reviewCtx.lineTo(reviewNewPoly[0].x, reviewNewPoly[0].y);
     reviewCtx.stroke(); reviewCtx.setLineDash([]);
     reviewNewPoly.forEach((p,i) => {
       reviewCtx.beginPath(); reviewCtx.arc(p.x, p.y, i===0?6:4, 0, Math.PI*2);
