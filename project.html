@@ -922,18 +922,6 @@ function toggleThemeProj(){
   maybeOpenProjectDebugFromUrl();
   // Load map image
   if(projectData.planPath){loadMapImage(projectData.planPath);}
-  const _fromImageryReport=new URLSearchParams(window.location.search).get('report')==='1';
-  if(_fromImageryReport){
-    setTimeout(()=>{
-      try{
-        setStatus('awarded');
-        switchReport('client-a');
-        const u=new URL(window.location.href);
-        u.searchParams.delete('report');
-        history.replaceState({},'',u.pathname+(u.search||''));
-      }catch(_e){}
-    },80);
-  }
 })();
 
 // ── STATUS ──
@@ -1284,7 +1272,18 @@ function loadSavedDetails(){
   if(typeof d.reportSurfacesSyncedAt==='string') reportSurfacesSyncedAt=d.reportSurfacesSyncedAt;
   loadThemesIntoProject();
   const statusKey=(()=>{try{return localStorage.getItem('paveview_proj_status_'+projectId)||'';}catch(e){return'';}})();
-  setStatus(statusKey||d.status||'estimating');
+  const validStatuses=new Set(['estimating','awarded','in_progress','complete','cancelled']);
+  const normSt=s=>String(s||'').toLowerCase();
+  const hadPriorLocal=Object.keys(d).length>0;
+  const blobSt=projectData&&projectData.status!=null&&projectData.status!==''?normSt(projectData.status):'';
+  let initialStatus='estimating';
+  if(hadPriorLocal){
+    if(statusKey&&validStatuses.has(normSt(statusKey)))initialStatus=normSt(statusKey);
+    else if(d.status&&validStatuses.has(normSt(d.status)))initialStatus=normSt(d.status);
+  }else{
+    if(blobSt&&validStatuses.has(blobSt))initialStatus=blobSt;
+  }
+  setStatus(initialStatus);
   populateEqPicker();
   ['client','foreman','contractor'].forEach(t=>renderCustomPageEditor(t));
   if(confirmed) showConfirmedState();

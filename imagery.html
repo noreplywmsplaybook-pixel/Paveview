@@ -599,18 +599,31 @@ calibrateBtn.addEventListener('click', () => {
   isCalibrateMode = !isCalibrateMode;
   if (isCalibrateMode) {
     isRowMode = false;
+    rowDots = []; rowDirUx = 0; rowDirUy = 0;
+    drawRowBtn.textContent = 'Draw Stall Line';
+    drawRowBtn.style.color = '#f5c542'; drawRowBtn.style.borderColor = '#f5c542';
+    mainCanvas.classList.remove('draw-mode');
     dotPoints = [];
     calibrateBtn.textContent = 'Cancel';
     calibrateBtn.style.color = '#ff6450'; calibrateBtn.style.borderColor = '#ff6450';
     setTemplateBtn.style.display = 'none';
     mainCanvas.classList.add('draw-mode');
   } else {
-    calibrateBtn.textContent = 'Measure Stall Width';
-    calibrateBtn.style.color = '#c084fc'; calibrateBtn.style.borderColor = '#c084fc';
+    exitCalibrateUi();
     mainCanvas.classList.remove('draw-mode');
     redrawAll();
   }
 });
+
+function exitCalibrateUi(opts) {
+  const keepPartialDots = opts && opts.keepPartialDots;
+  isCalibrateMode = false;
+  calibrateBtn.textContent = 'Measure Stall Width';
+  calibrateBtn.style.color = '#c084fc'; calibrateBtn.style.borderColor = '#c084fc';
+  setTemplateBtn.style.display = 'none';
+  dragCalibIdx = -1; dragCalibOff = null;
+  if (!keepPartialDots) dotPoints = [];
+}
 
 setTemplateBtn.addEventListener('click', () => {
   if (dotPoints.length < 2) return;
@@ -620,10 +633,9 @@ setTemplateBtn.addEventListener('click', () => {
   stallTemplate = { w: spacing, h: spacing * 1.8, spacing };
   stallWSlider.value = Math.round(spacing); stallWVal.textContent = Math.round(spacing) + 'px';
 
-  isCalibrateMode = false;
+  exitCalibrateUi();
   calibrateBtn.textContent = `Width: ${Math.round(spacing)}px ✓`;
   calibrateBtn.style.color = '#c084fc'; calibrateBtn.style.borderColor = '#c084fc';
-  setTemplateBtn.style.display = 'none';
   mainCanvas.classList.remove('draw-mode');
   redrawAll();
   console.log(`[PaveView] Stall width: ${Math.round(spacing)}px`);
@@ -665,11 +677,13 @@ drawRowBtn.addEventListener('click', () => {
   console.log('[PaveView] drawRowBtn clicked, isRowMode was:', isRowMode, 'disabled:', drawRowBtn.disabled);
   isRowMode = !isRowMode;
   if (isRowMode) {
+    exitCalibrateUi();
     rowDots = []; rowDirUx = 0; rowDirUy = 0;
     drawRowBtn.textContent = 'Stop Drawing';
     drawRowBtn.style.color = '#ff6450';
     drawRowBtn.style.borderColor = '#ff6450';
     mainCanvas.classList.add('draw-mode');
+    redrawAll();
   } else {
     // Turn off — discard any in-progress dots
     rowDots = []; rowDirUx = 0; rowDirUy = 0;
@@ -695,7 +709,7 @@ clearRefBtn.addEventListener('click', () => {
   drawRowBtn.style.color = '#f5c542';
   drawRowBtn.style.borderColor = '#f5c542';
   mainCanvas.classList.remove('draw-mode');
-  if (uploadedImage) restoreBaseImage();
+  redrawAll();
 });
 
 // Place one dot per click.
@@ -742,7 +756,11 @@ function drawRowStalls() {
 }
 
 function redrawAll() {
-  restoreBaseImage();
+  if (lastResults) {
+    drawDetections(lastResults.perimeterPred, lastResults.nonStalls);
+  } else if (uploadedImage) {
+    restoreBaseImage();
+  }
   drawRowStalls();
   if (isCalibrateMode || dotPoints.length > 0) drawCalibBoxes();
 }
@@ -806,7 +824,7 @@ function hitTestRow(px, py) {
   for (let i = allRows.length - 1; i >= 0; i--) {
     const r = { stalls: allRows[i], x1: allRows[i][0]?.x, y1: allRows[i][0]?.y, x2: allRows[i][allRows[i].length-1]?.x, y2: allRows[i][allRows[i].length-1]?.y };
     if (!r.stalls.length) continue;
-    const h = r.stalls[0].stallH;
+    const h = r.stalls[0].stallH ?? (stallTemplate ? stallTemplate.spacing : Number(stallWSlider.value) || 24);
     const dx = r.x2 - r.x1, dy = r.y2 - r.y1;
     const len = Math.sqrt(dx*dx + dy*dy);
     if (len < 1) continue;
@@ -2551,15 +2569,6 @@ function imageryDetectionCenter(d) {
   return { x: Number(d.x) || 0, y: Number(d.y) || 0 };
 }
 
-function seedImageryProjectLocalState(projectId) {
-  try {
-    const key = 'paveview_proj_details_' + projectId;
-    const prev = JSON.parse(localStorage.getItem(key) || '{}');
-    localStorage.setItem(key, JSON.stringify({ ...prev, status: 'awarded' }));
-  } catch (e) {}
-  localStorage.setItem('paveview_proj_status_' + projectId, 'awarded');
-}
-
 async function continueImageryToProjectReports() {
   const btn = document.getElementById('receiptExportBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
@@ -2691,6 +2700,7 @@ async function continueImageryToProjectReports() {
     const projectName = 'Imagery estimate · ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
     const projectData = {
+      status: 'estimating',
       totalSqft: Math.round(totalSqft),
       totalCost: Math.round(totalCost),
       stallCount: stallC,
@@ -2744,9 +2754,12 @@ async function continueImageryToProjectReports() {
     const savedId = savePayload?.project_id || savePayload?.projectId;
     if (!savedId) throw new Error('No project id returned.');
 
-    seedImageryProjectLocalState(savedId);
+    try {
+      localStorage.removeItem('paveview_proj_status_' + savedId);
+    } catch (_e) {}
+
     document.getElementById('receiptModal').style.display = 'none';
-    window.location.href = 'project.html?id=' + savedId + '&report=1';
+    window.location.href = 'project.html?id=' + savedId;
   } catch (e) {
     console.error(e);
     alert(e.message || 'Could not save project.');
