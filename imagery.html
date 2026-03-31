@@ -254,6 +254,8 @@
       <button class="run-btn" id="drawRowBtn" disabled style="background:var(--surface);color:#f5c542;border:1.5px solid var(--accent);">Draw Stall Line</button>
     </div>
 
+    <button class="run-btn" id="manualReviewBtn" disabled style="margin-top:8px;background:var(--surface);color:#4fc3f7;border:1.5px solid #4fc3f7;">Measure Manually</button>
+
     <button class="run-btn" id="undoRowBtn" disabled style="margin-top:4px;background:var(--surface);color:var(--muted);border:1.5px solid var(--muted);font-size:11px;padding:8px;">Undo Last Row</button>
 
     <button class="run-btn" id="clearRefBtn" disabled style="margin-top:4px;background:var(--surface);color:var(--muted);border:1.5px solid var(--muted);font-size:11px;padding:8px;">Clear All</button>
@@ -598,6 +600,7 @@ const imageryJobSummary = document.getElementById('imagery-job-summary');
 const calibrateBtn    = document.getElementById('calibrateBtn');
 const setTemplateBtn  = document.getElementById('setTemplateBtn');
 const drawRowBtn      = document.getElementById('drawRowBtn');
+const manualReviewBtn = document.getElementById('manualReviewBtn');
 const undoRowBtn      = document.getElementById('undoRowBtn');
 const clearRefBtn     = document.getElementById('clearRefBtn');
 const step1Label      = document.getElementById('step1Label');
@@ -646,6 +649,7 @@ function syncImageryStepFlow() {
   calibrateBtn.disabled = !hasImage;
   runBtn.disabled = !(hasImage && hasMeasuredWidth);
   drawRowBtn.disabled = !(hasImage && hasMeasuredWidth && hasDetections);
+  if (manualReviewBtn) manualReviewBtn.disabled = !(hasImage && hasMeasuredWidth);
 
   setStepLabelState(step1Label, hasImage && !hasMeasuredWidth, hasMeasuredWidth);
   setStepLabelState(step2Label, hasMeasuredWidth && !hasDetections, hasDetections);
@@ -2602,12 +2606,13 @@ function simplifyDetectionForReview(det) {
   return { ...det, points: pts };
 }
 
-function openReview() {
-  if (!lastResults) return;
+function openReview(opts) {
+  const manualOnly = !!(opts && opts.manualOnly);
+  if (!lastResults && !manualOnly) return;
   reviewDetections = [];
-  const nr = lastResults.nonStalls || [];
+  const nr = lastResults?.nonStalls || [];
   for (const p of nr) reviewDetections.push(simplifyDetectionForReview({ ...p, _approved: true }));
-  if (lastResults.perimeterPred)
+  if (lastResults?.perimeterPred)
     reviewDetections.unshift(simplifyDetectionForReview({ ...lastResults.perimeterPred, _approved: true }));
 
   reviewPhaseIdx = 0;
@@ -2624,6 +2629,14 @@ function openReview() {
 
   reviewModal.style.display = 'flex';
   enterPhase();
+  if (manualOnly) {
+    reviewIsAdding = true;
+    reviewAddTypeWrap.style.display = 'flex';
+    reviewDrawHint.textContent = 'Click to place points · Click first point or press Enter to close';
+    reviewDrawHint.style.display = 'block';
+    reviewCanvas.style.cursor = 'crosshair';
+    renderReviewFrame();
+  }
 }
 
 function closeReview() {
@@ -3471,6 +3484,10 @@ reviewCanvas.addEventListener('dblclick', e => {
 reviewBtn.addEventListener('click', () => {
   try { openReview(); }
   catch(e) { console.error('[PaveView] openReview failed:', e); alert('Review error: ' + e.message); }
+});
+manualReviewBtn?.addEventListener('click', () => {
+  try { openReview({ manualOnly: true }); }
+  catch(e) { console.error('[PaveView] manual review failed:', e); alert('Manual review error: ' + e.message); }
 });
 reviewDoneBtn.addEventListener('click', closeReview);
 
