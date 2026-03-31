@@ -2075,7 +2075,27 @@ function reconstructAllRows(stalls, perimeterPoints) {
 
 // -- MAIN RUN ------------------------------------------------------------------
 runBtn.addEventListener('click', async () => {
-  if (!uploadedB64) return;
+  if (!uploadedB64) {
+    // Recover from stale UI state by rebuilding the API payload from the loaded image.
+    if (uploadedImage && uploadedW > 0 && uploadedH > 0) {
+      try {
+        const MAX_SIDE = 1500;
+        const scale = Math.min(1, MAX_SIDE / Math.max(uploadedW, uploadedH));
+        apiScale = scale;
+        const apiW = Math.round(uploadedW * scale);
+        const apiH = Math.round(uploadedH * scale);
+        const apiCanvas = document.createElement('canvas');
+        apiCanvas.width = apiW;
+        apiCanvas.height = apiH;
+        apiCanvas.getContext('2d').drawImage(uploadedImage, 0, 0, apiW, apiH);
+        uploadedB64 = apiCanvas.toDataURL('image/jpeg', 0.88).split(',')[1];
+      } catch (_e) {}
+    }
+  }
+  if (!uploadedB64) {
+    alert('Please upload an image before running Detect Zones.');
+    return;
+  }
 
   const confidenceMain = parseInt(confSliderMain.value);
   const t0 = performance.now();
