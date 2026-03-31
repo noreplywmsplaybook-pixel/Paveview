@@ -1344,6 +1344,21 @@ function pointInPolygon(px, py, poly) {
   return inside;
 }
 
+function tileTouchesPolygon(tx, ty, tw, th, poly) {
+  if (!poly || poly.length < 3) return true;
+  const cx = tx + tw / 2;
+  const cy = ty + th / 2;
+  if (pointInPolygon(cx, cy, poly)) return true;
+  const corners = [
+    { x: tx, y: ty },
+    { x: tx + tw, y: ty },
+    { x: tx + tw, y: ty + th },
+    { x: tx, y: ty + th }
+  ];
+  if (corners.some(p => pointInPolygon(p.x, p.y, poly))) return true;
+  return poly.some(p => p.x >= tx && p.x <= tx + tw && p.y >= ty && p.y <= ty + th);
+}
+
 // -- PERIMETER OBSTRUCTION CLIPPING -------------------------------------------
 // For each obstruction that overlaps or touches the perimeter polygon,
 // find where the obstruction bbox intersects the perimeter and cut straight
@@ -2193,6 +2208,7 @@ runBtn.addEventListener('click', async () => {
           if (tw < 64 || th < 64) continue;
           // Skip tile if entirely outside perimeter bounding box
           if (tx > perimBB.x2 || tx+tw < perimBB.x1 || ty > perimBB.y2 || ty+th < perimBB.y1) continue;
+          if (!tileTouchesPolygon(tx, ty, tw, th, perimeterPoints)) continue;
           tiles.push({ tx, ty, tw, th });
         }
       }
@@ -2212,6 +2228,7 @@ runBtn.addEventListener('click', async () => {
 
       // Process tiles in parallel batches
       const tiledPreds = [];
+      let emptyBatchRuns = 0;
       for (let i = 0; i < tiles.length; i += CONCURRENCY) {
         const batch = tiles.slice(i, i + CONCURRENCY);
         spinnerMsg.textContent = `Tiling ${i}/${tiles.length}...`;
@@ -2236,7 +2253,17 @@ runBtn.addEventListener('click', async () => {
           } catch { return []; }
         }));
 
-        batchResults.forEach(preds => tiledPreds.push(...preds));
+        let batchAdded = 0;
+        batchResults.forEach(preds => {
+          tiledPreds.push(...preds);
+          batchAdded += preds.length;
+        });
+        if (batchAdded === 0) emptyBatchRuns += 1;
+        else emptyBatchRuns = 0;
+        if (emptyBatchRuns >= 2 && i + CONCURRENCY < tiles.length) {
+          console.log('[PaveView] Early-stopping tiled pass after consecutive empty batches');
+          break;
+        }
       }
 
       // Tighter NMS for handicap — they stack badly
@@ -2390,6 +2417,18 @@ function phaseInstructionText(ph) {
   if (!ph) return 'Review and Confirm';
   if (ph.id === 'missed') return 'Review and Confirm Anything Missed';
   return 'Review and Confirm ' + ph.label;
+}
+
+function buildReviewPointDetection(type, pos) {
+  return {
+    class: type,
+    confidence: null,
+    _approved: true,
+    x: pos.x,
+    y: pos.y,
+    width: 18,
+    height: 18
+  };
 }
 
 function phaseDetections() {
@@ -2979,6 +3018,17 @@ function renderReviewFrame() {
 }
 
 function drawReviewZone(d, color, lw) {
+  const cls = normalizeClass(d.class);
+  if ((!d.points || d.points.length < 3) && cls === 'handicap') {
+    reviewCtx.beginPath();
+    reviewCtx.arc(d.x, d.y, 9, 0, Math.PI * 2);
+    reviewCtx.fillStyle = color;
+    reviewCtx.fill();
+    reviewCtx.strokeStyle = color.replace(/[\d.]+\)$/, '1)');
+    reviewCtx.lineWidth = lw;
+    reviewCtx.stroke();
+    return;
+  }
   reviewCtx.fillStyle = color;
   reviewCtx.strokeStyle = color.replace(/[\d.]+\)$/, '1)');
   reviewCtx.lineWidth = lw;
@@ -3174,6 +3224,17 @@ reviewCanvas.addEventListener('click', e => {
     return;
   }
   if (reviewIsAdding||reviewIsRedrawing) {
+    if (reviewIsAdding && reviewAddType.value === 'handicap') {
+      reviewDetections.push(buildReviewPointDetection('handicap', pos));
+      reviewIsAdding = false;
+      reviewNewPoly = [];
+      reviewAddTypeWrap.style.display = 'none';
+      reviewDrawHint.style.display = 'none';
+      reviewCanvas.style.cursor = 'default';
+      reviewIdx = phaseDetections().length - 1;
+      renderReviewFrame();
+      return;
+    }
     const CLOSE_HIT = 14;
     if (reviewNewPoly.length >= 3) {
       const start = reviewNewPoly[0];
@@ -3279,9 +3340,17 @@ reviewCancelRedraw.addEventListener('click', () => {
 reviewAddBtn.addEventListener('click', () => {
   reviewIsAdding=true; reviewNewPoly=[];
   reviewAddTypeWrap.style.display='flex';
-  reviewDrawHint.textContent='Click to place points · Click first point or press Enter to close';
+  reviewDrawHint.textContent = reviewAddType.value === 'handicap'
+    ? 'Click once to place a handicap marker'
+    : 'Click to place points · Click first point or press Enter to close';
   reviewDrawHint.style.display='block';
   reviewCanvas.style.cursor='crosshair';
+});
+reviewAddType.addEventListener('change', () => {
+  if (!reviewIsAdding) return;
+  reviewDrawHint.textContent = reviewAddType.value === 'handicap'
+    ? 'Click once to place a handicap marker'
+    : 'Click to place points · Click first point or press Enter to close';
 });
 reviewCancelAdd.addEventListener('click', () => {
   reviewIsAdding=false; reviewNewPoly=[];
