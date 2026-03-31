@@ -136,6 +136,8 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--bdr);padding:2px
 </head>
 <body>
 
+<div id="auth-check" style="position:fixed;inset:0;background:#141416;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:'JetBrains Mono',monospace;font-size:11px;color:#888;">Checking access…</div>
+
 <div id="top">
   <span class="logo">PAVEVIEW</span>
   <div class="sep"></div>
@@ -287,6 +289,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--bdr);padding:2px
 </div>
 <button class="rb-dbg-fab" onclick="toggleBuilderDebug()">Debug</button>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 var LS = 'paveview_report_themes'; // legacy
 var LS_REPORTS = 'paveview_report_templates';
@@ -1105,6 +1108,37 @@ async function init() {
 }
 
 init();
+
+(function(){
+  const SB_URL='https://rqgyqqyxlwjpbdkapvpz.supabase.co';
+  const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
+  const TRIAL_DURATION_MS=24*60*60*1000;
+  function isTrialPurchase(p){
+    const product=String(p?.product||'').toLowerCase();
+    const hasExplicitFreeAmount=p?.amount_paid!==null&&p?.amount_paid!==undefined&&Number(p?.amount_paid)===0;
+    return product.includes('trial')||hasExplicitFreeAmount;
+  }
+  function hasActiveAccess(p){
+    if(!p||p.status!=='active')return false;
+    if(!isTrialPurchase(p))return true;
+    const createdAt=new Date(p.created_at||0).getTime();
+    if(!createdAt)return false;
+    return(Date.now()-createdAt)<TRIAL_DURATION_MS;
+  }
+  (async function(){
+    try{
+      const sb=supabase.createClient(SB_URL,SB_KEY);
+      const{data:{session}}=await sb.auth.getSession();
+      if(!session){window.location.replace('login.html');return;}
+      const{data:p}=await sb.from('purchases').select('id,product,status,amount_paid,created_at').eq('user_id',session.user.id).eq('status','active').order('created_at',{ascending:false}).limit(20);
+      if(!p||!p.find(hasActiveAccess)){window.location.replace('index.html');return;}
+      const ac=document.getElementById('auth-check');
+      if(ac)ac.remove();
+    }catch(e){
+      window.location.replace('login.html');
+    }
+  })();
+})();
 </script>
 </body>
 </html>

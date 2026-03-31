@@ -10,7 +10,15 @@ function sendJson(res, statusCode, payload) {
 function getEnv() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
-  return { url, serviceRoleKey };
+  const adminUserIds = String(process.env.ADMIN_USER_IDS || process.env.ADMIN_USER_ID || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const adminEmails = String(process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
+    .split(',')
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+  return { url, serviceRoleKey, adminUserIds, adminEmails };
 }
 
 async function supabaseFetch(path, { method = 'GET', serviceRoleKey, body, prefer } = {}) {
@@ -35,6 +43,35 @@ async function supabaseFetch(path, { method = 'GET', serviceRoleKey, body, prefe
     payload = null;
   }
   return { ok: resp.ok, status: resp.status, payload };
+}
+
+function parseBearerToken(req) {
+  const authHeader = req.headers?.authorization || req.headers?.Authorization || '';
+  if (!authHeader || typeof authHeader !== 'string') return '';
+  if (!authHeader.toLowerCase().startsWith('bearer ')) return '';
+  return authHeader.slice(7).trim();
+}
+
+async function fetchUserByAccessToken(accessToken, { url, serviceRoleKey }) {
+  if (!accessToken) return null;
+  const resp = await fetch(`${url}/auth/v1/user`, {
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+  if (!resp.ok) return null;
+  try {
+    return await resp.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+function isAuthorizedAdmin(user, { adminUserIds, adminEmails }) {
+  if (!user?.id) return false;
+  const email = String(user.email || '').trim().toLowerCase();
+  return adminUserIds.includes(String(user.id)) || (!!email && adminEmails.includes(email));
 }
 
 async function fetchAuthUsers(serviceRoleKey) {
@@ -343,9 +380,20 @@ async function handlePatch(req, res, serviceRoleKey) {
 }
 
 module.exports = async (req, res) => {
-  const { serviceRoleKey } = getEnv();
+  const { serviceRoleKey, url, adminUserIds, adminEmails } = getEnv();
   if (!serviceRoleKey) {
     sendJson(res, 500, { error: 'Missing SUPABASE_SERVICE_ROLE_KEY environment variable.' });
+    return;
+  }
+
+  const accessToken = parseBearerToken(req);
+  const sessionUser = await fetchUserByAccessToken(accessToken, { url, serviceRoleKey });
+  if (!sessionUser?.id) {
+    sendJson(res, 401, { error: 'Unauthorized.' });
+    return;
+  }
+  if (!isAuthorizedAdmin(sessionUser, { adminUserIds, adminEmails })) {
+    sendJson(res, 403, { error: 'Admin access required.' });
     return;
   }
 
