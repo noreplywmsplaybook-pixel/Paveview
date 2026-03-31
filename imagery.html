@@ -503,7 +503,7 @@
 
 <script>
 // -- CONFIG ------------------------------------------------------------------
-const MAIN_MODEL   = 'my-first-project-ug0a7/6';
+const MAIN_MODEL   = 'my-first-project-ug0a7/4';
 const STALL_MODEL  = 'parking-lot-egjcr-an53v/1';   // car-based gap fill
 const LANE_MODEL   = 'parking-lot-it5ls-vpsdl/1';   // primary — rotated stall spaces
 const PARK_MODEL   = 'parking-dataset-tbypu-vjh7q/1'; // parking=empty stall, car=occupied stall
@@ -1173,9 +1173,9 @@ async function runRoboflow(modelPath, b64, confidence, modelType = 'detect') {
     });
     const retryData = await retry.json().catch(() => ({}));
     if (retry.ok) return retryData;
-    throw new Error(retryData?.error || `Roboflow detect fallback failed (HTTP ${retry.status})`);
+    throw new Error([retryData?.error, retryData?.hint, `HTTP ${retry.status}`].filter(Boolean).join(' · '));
   }
-  throw new Error(data?.error || `Roboflow ${modelPath || 'default'} → HTTP ${resp.status}`);
+  throw new Error([data?.error, data?.hint, `HTTP ${resp.status}`].filter(Boolean).join(' · '));
 }
 
 // Hybrid call for main model — outline.roboflow.com for polygons (perimeter/zones),
@@ -1209,9 +1209,9 @@ async function runRoboflowHybrid(modelPath, b64, confidence) {
     });
     const retryData = await retry.json().catch(() => ({}));
     if (retry.ok) return retryData;
-    throw new Error(retryData?.error || `Roboflow hybrid fallback failed (HTTP ${retry.status})`);
+    throw new Error([retryData?.error, retryData?.hint, `HTTP ${retry.status}`].filter(Boolean).join(' · '));
   }
-  throw new Error(data?.error || `Roboflow ${modelPath || 'default'} → HTTP ${resp.status}`);
+  throw new Error([data?.error, data?.hint, `HTTP ${resp.status}`].filter(Boolean).join(' · '));
 }
 
 // -- IOU / NMS ----------------------------------------------------------------
@@ -2131,6 +2131,7 @@ runBtn.addEventListener('click', async () => {
   try {
     spinnerMsg.textContent = 'Detecting zones...';
     let perimeterPred = null, perimeterPoints = null, mainNonStallsFiltered = [];
+    let mainModelError = null;
     try {
       const mainResult = await runRoboflowHybrid(MAIN_MODEL, uploadedB64, confidenceMain);
       console.log('[PaveView] Raw predictions sample:', JSON.stringify((mainResult.predictions||[]).slice(0,3), null, 2));
@@ -2145,8 +2146,14 @@ runBtn.addEventListener('click', async () => {
         .filter(p => normalizeClass(p.class) !== 'lot_perimeter' && !STALL_CLASSES.has(normalizeClass(p.class)));
       mainNonStallsFiltered = mainNonStalls;
     } catch (e) {
+      mainModelError = e;
       console.warn('Main model failed:', e.message);
-      setStatus('running', 'Zone detection failed — check credits');
+      setStatus('error', 'Zone detection auth failed');
+    }
+    if (mainModelError) {
+      const msg = String(mainModelError?.message || '');
+      if (msg) alert(`Detect Zones failed: ${msg}`);
+      return;
     }
 
     // -- TILED PASS for small features (hatching, arrows, handicap) ------------
