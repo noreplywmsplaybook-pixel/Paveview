@@ -503,7 +503,6 @@
 
 <script>
 // -- CONFIG ------------------------------------------------------------------
-const API_KEY      = 'xCbdGNy3dZ7miXCkkSj0';
 const MAIN_MODEL   = 'my-first-project-ug0a7/6';
 const STALL_MODEL  = 'parking-lot-egjcr-an53v/1';   // car-based gap fill
 const LANE_MODEL   = 'parking-lot-it5ls-vpsdl/1';   // primary — rotated stall spaces
@@ -1146,48 +1145,73 @@ function scaleUpPred(p) {
   };
 }
 async function runRoboflow(modelPath, b64, confidence, modelType = 'detect') {
-  // No overlap param for stall model — Roboflow's server-side NMS at 30% overlap
-  // suppresses adjacent stalls. We handle dedup ourselves.
-  const url = `https://detect.roboflow.com/${modelPath}?api_key=${API_KEY}&confidence=${confidence}`;
-  const resp = await fetch(url, {
+  const payload = {
+    imageBase64: b64,
+    mode: modelType === 'segment' ? 'segment' : 'detect',
+    confidence,
+    overlap: modelType === 'segment' ? 80 : 30
+  };
+  if (modelPath) payload.main_model_id = modelPath;
+  const resp = await fetch('/api/roboflow-detect', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: b64,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
   });
-  if (!resp.ok) throw new Error(`Roboflow ${modelPath} → HTTP ${resp.status}`);
-  return resp.json();
+  const data = await resp.json().catch(() => ({}));
+  if (resp.ok) return data;
+  // If a hardcoded model path is forbidden, retry with server-default model.
+  if (resp.status === 403 && modelPath) {
+    const retry = await fetch('/api/roboflow-detect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageBase64: b64,
+        mode: payload.mode,
+        confidence: payload.confidence,
+        overlap: payload.overlap
+      })
+    });
+    const retryData = await retry.json().catch(() => ({}));
+    if (retry.ok) return retryData;
+    throw new Error(retryData?.error || `Roboflow detect fallback failed (HTTP ${retry.status})`);
+  }
+  throw new Error(data?.error || `Roboflow ${modelPath || 'default'} → HTTP ${resp.status}`);
 }
 
 // Hybrid call for main model — outline.roboflow.com for polygons (perimeter/zones),
 // detect.roboflow.com for stalls/symbols — exactly matching PaveView's backend
 async function runRoboflowHybrid(modelPath, b64, confidence) {
-  // Try outline.roboflow.com first for full polygon segmentation
-  // Fall back to detect.roboflow.com if CORS blocks it
-  const outlineUrl = `https://outline.roboflow.com/${modelPath}?api_key=${API_KEY}&confidence=${confidence}&overlap=80`;
-  const detectUrl  = `https://detect.roboflow.com/${modelPath}?api_key=${API_KEY}&confidence=${confidence}&overlap=80`;
-
-  const opts = {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: b64,
+  const payload = {
+    imageBase64: b64,
+    mode: 'hybrid',
+    confidence,
+    overlap: 80
   };
-
-  try {
-    const resp = await fetch(outlineUrl, opts);
-    if (resp.ok) {
-      const data = await resp.json();
-      console.log('[PaveView] outline.roboflow.com OK — polygon data available');
-      return data;
-    }
-  } catch (e) {
-    console.warn('[PaveView] outline.roboflow.com blocked, falling back to detect:', e.message);
+  if (modelPath) payload.main_model_id = modelPath;
+  const resp = await fetch('/api/roboflow-detect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (resp.ok) return data;
+  // If hardcoded model is forbidden, retry with server default main model.
+  if (resp.status === 403 && modelPath) {
+    const retry = await fetch('/api/roboflow-detect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageBase64: b64,
+        mode: 'hybrid',
+        confidence,
+        overlap: 80
+      })
+    });
+    const retryData = await retry.json().catch(() => ({}));
+    if (retry.ok) return retryData;
+    throw new Error(retryData?.error || `Roboflow hybrid fallback failed (HTTP ${retry.status})`);
   }
-
-  // Fallback to detect endpoint (returns bboxes only, no polygon points)
-  const resp = await fetch(detectUrl, opts);
-  if (!resp.ok) throw new Error(`Roboflow ${modelPath} → HTTP ${resp.status}`);
-  console.warn('[PaveView] Using detect.roboflow.com — no polygon shapes, bboxes only');
-  return resp.json();
+  throw new Error(data?.error || `Roboflow ${modelPath || 'default'} → HTTP ${resp.status}`);
 }
 
 // -- IOU / NMS ----------------------------------------------------------------
