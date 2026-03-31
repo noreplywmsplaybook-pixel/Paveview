@@ -2097,6 +2097,23 @@ function reconstructAllRows(stalls, perimeterPoints) {
   return nmsArray(allPoints);
 }
 
+function getImageryTilePassConfig(perimeterPoints) {
+  const bb = perimeterPoints ? perimeterBBox(perimeterPoints) : null;
+  const spanW = Math.max(1, Math.round(bb ? (bb.x2 - bb.x1) : uploadedW));
+  const spanH = Math.max(1, Math.round(bb ? (bb.y2 - bb.y1) : uploadedH));
+  const area = spanW * spanH;
+  if (area <= 700000) {
+    return { tile: 700, overlap: 0.14, concurrency: 4, maxTiles: 4 };
+  }
+  if (area <= 1600000) {
+    return { tile: 720, overlap: 0.16, concurrency: 4, maxTiles: 6 };
+  }
+  if (area <= 3200000) {
+    return { tile: 760, overlap: 0.18, concurrency: 4, maxTiles: 8 };
+  }
+  return { tile: 820, overlap: 0.18, concurrency: 5, maxTiles: 10 };
+}
+
 // -- MAIN RUN ------------------------------------------------------------------
 runBtn.addEventListener('click', async () => {
   if (!uploadedB64) {
@@ -2160,10 +2177,11 @@ runBtn.addEventListener('click', async () => {
     const SMALL_FEATURE_CLASSES = new Set(['hatching','arrow','handicap','stencil']);
     try {
       spinnerMsg.textContent = 'Tiling for small features...';
-      const TILE    = 640;
-      const OVERLAP = 0.20;
+      const tileCfg = getImageryTilePassConfig(perimeterPoints);
+      const TILE    = tileCfg.tile;
+      const OVERLAP = tileCfg.overlap;
       const STEP    = Math.round(TILE * (1 - OVERLAP));
-      const CONCURRENCY = 3; // Roboflow handles 3 concurrent well without throttling
+      const CONCURRENCY = tileCfg.concurrency;
 
       // Build tile list — skip tiles with no overlap with perimeter bbox
       const perimBB = perimeterPoints ? perimeterBBox(perimeterPoints) : { x1:0, y1:0, x2:uploadedW, y2:uploadedH };
@@ -2177,6 +2195,19 @@ runBtn.addEventListener('click', async () => {
           if (tx > perimBB.x2 || tx+tw < perimBB.x1 || ty > perimBB.y2 || ty+th < perimBB.y1) continue;
           tiles.push({ tx, ty, tw, th });
         }
+      }
+      if (tiles.length > tileCfg.maxTiles) {
+        const cx = (perimBB.x1 + perimBB.x2) / 2;
+        const cy = (perimBB.y1 + perimBB.y2) / 2;
+        tiles.sort((a, b) => {
+          const acx = a.tx + a.tw / 2, acy = a.ty + a.th / 2;
+          const bcx = b.tx + b.tw / 2, bcy = b.ty + b.th / 2;
+          return Math.hypot(acx - cx, acy - cy) - Math.hypot(bcx - cx, bcy - cy);
+        });
+        tiles.length = tileCfg.maxTiles;
+      }
+      if (!tiles.length) {
+        spinnerMsg.textContent = 'Rendering...';
       }
 
       // Process tiles in parallel batches

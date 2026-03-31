@@ -838,7 +838,7 @@ select.sc-inp{cursor:pointer;width:40px}
 <div id="plan-tabs" style="background:var(--surface2);border-bottom:1px solid var(--border);height:30px;display:flex;align-items:center;padding:0 8px;gap:0;overflow-x:auto;flex-shrink:0">
   <div id="plan-tab-list" style="display:flex;gap:0;align-items:center;flex:1;overflow-x:auto"></div>
   <button id="btn-add-plan" title="Add another file" style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 10px;border:1px solid var(--accent);background:var(--accent-bg);color:var(--accent);cursor:pointer;flex-shrink:0;position:relative;transition:all .15s;font-weight:600">+ Add File</button>
-  <input type="file" id="import-file-input" accept=".pdf,image/*" style="display:none">
+  <input type="file" id="import-file-input" accept=".pdf,application/pdf" style="display:none">
 </div>
 
 <!-- MAIN -->
@@ -850,12 +850,12 @@ select.sc-inp{cursor:pointer;width:40px}
 
     <!-- Upload -->
     <div class="sb-sec" style="padding:6px 6px">
-      <div class="upload-btn-collapsed" title="Import PDF or map imagery" id="btn-open-import-collapsed">
+      <div class="upload-btn-collapsed" title="Import PDF" id="btn-open-import-collapsed">
         ▦
       </div>
       <div class="upload-zone-full" id="btn-open-import-full">
         <div class="uz-icon">▦</div>
-        <div class="uz-text"><strong>Import plan</strong><br>PDF/image or maps imagery</div>
+        <div class="uz-text"><strong>Import plan</strong><br>Upload PDF plan</div>
       </div>
     </div>
 
@@ -891,7 +891,7 @@ select.sc-inp{cursor:pointer;width:40px}
     <div id="drop-overlay" style="cursor:pointer">
       <div class="do-icon">▦</div>
       <div class="do-title">PaveView Takeoff</div>
-      <div class="do-sub">Import PDF/image or maps imagery to begin</div>
+      <div class="do-sub">Import PDF plan to begin</div>
     </div>
     <div id="cwrap">
       <canvas id="bgc"></canvas>
@@ -1042,15 +1042,11 @@ select.sc-inp{cursor:pointer;width:40px}
       <div class="import-source" id="import-source-panel">
         <div class="import-grid">
           <button class="import-choice" id="btn-import-source-file">
-            <div class="t">Upload PDF / Image</div>
-            <div class="d">Select plan sheets from a PDF, or upload a single image file.</div>
-          </button>
-          <button class="import-choice" id="btn-import-source-map">
-            <div class="t">Maps Imagery</div>
-            <div class="d">Search an address or use lat/lng, then capture satellite imagery as a takeoff plan.</div>
+            <div class="t">Upload PDF</div>
+            <div class="d">Select one or more plan sheets from a PDF file.</div>
           </button>
         </div>
-        <div class="import-hint">Tip: drag-and-drop PDF/image directly onto the canvas at any time.</div>
+        <div class="import-hint">Tip: drag-and-drop a PDF directly onto the canvas at any time.</div>
       </div>
       <div id="import-map-panel">
         <div class="map-row">
