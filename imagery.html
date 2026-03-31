@@ -250,7 +250,6 @@
     </div>
 
     <div>
-      <div class="section-label" id="step3Label">Step 3</div>
       <button class="run-btn" id="drawRowBtn" disabled style="background:var(--surface);color:#f5c542;border:1.5px solid var(--accent);">Draw Stall Line</button>
     </div>
 
@@ -418,7 +417,6 @@
             <button class="manual-build-btn" data-type="hatching" style="background:#1a1e24;color:#f5c542;border:1px solid #2a2f36;padding:7px 6px;border-radius:5px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Create Hatch / ADA</button>
             <button class="manual-build-btn" data-type="stencil" style="background:#1a1e24;color:#d4a800;border:1px solid #2a2f36;padding:7px 6px;border-radius:5px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Create Stencil Zone</button>
           </div>
-          <button id="manualBuildRowBtn" style="margin-top:8px;width:100%;background:#0d0f11;color:#4fc3f7;border:1px solid #1a2f3a;padding:8px;border-radius:5px;font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;">Draw Stall Lines</button>
         </div>
 
         <!-- Stencils -->
@@ -616,7 +614,6 @@ const undoRowBtn      = document.getElementById('undoRowBtn');
 const clearRefBtn     = document.getElementById('clearRefBtn');
 const step1Label      = document.getElementById('step1Label');
 const step2Label      = document.getElementById('step2Label');
-const step3Label      = document.getElementById('step3Label');
 const mainCanvas      = document.getElementById('mainCanvas');
 const spinnerOverlay  = document.getElementById('spinnerOverlay');
 const spinnerMsg      = document.getElementById('spinnerMsg');
@@ -659,12 +656,11 @@ function syncImageryStepFlow() {
 
   calibrateBtn.disabled = !hasImage;
   runBtn.disabled = !(hasImage && hasMeasuredWidth);
-  drawRowBtn.disabled = !(hasImage && hasMeasuredWidth && hasDetections);
+  drawRowBtn.disabled = !(hasImage && hasMeasuredWidth);
   if (manualReviewBtn) manualReviewBtn.disabled = !(hasImage && hasMeasuredWidth);
 
   setStepLabelState(step1Label, hasImage && !hasMeasuredWidth, hasMeasuredWidth);
   setStepLabelState(step2Label, hasMeasuredWidth && !hasDetections, hasDetections);
-  setStepLabelState(step3Label, hasDetections, false);
 }
 
 
@@ -3544,18 +3540,6 @@ manualReviewBtn?.addEventListener('click', () => {
 });
 document.querySelectorAll('.manual-build-btn').forEach(btn => {
   btn.addEventListener('click', () => beginReviewAddType(btn.dataset.type));
-});
-document.getElementById('manualBuildRowBtn')?.addEventListener('click', () => {
-  reviewModal.style.display = 'none';
-  isRowMode = true;
-  rowDots = [];
-  rowDirUx = 0;
-  rowDirUy = 0;
-  drawRowBtn.textContent = 'Stop Drawing';
-  drawRowBtn.style.color = '#ff6450';
-  drawRowBtn.style.borderColor = '#ff6450';
-  mainCanvas.classList.add('draw-mode');
-  redrawAll();
 });
 reviewDoneBtn.addEventListener('click', closeReview);
 
