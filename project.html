@@ -1050,7 +1050,7 @@ function mapDrawToCanvas(canvas,opts){
     ctx.fillStyle=z.color||'#d4a843';ctx.fillText(z.name,cx2,cy2);
   });
   (projectData.markers||[]).forEach(m=>{
-    const col={stall:'#f5c842',ada:'#3b82f6',bollard:'#f97316',stopblock:'#ef4444',stencil:'#a855f7'}[m.type]||'#fff';
+    const col={stall:'#f5c842',ada:'#3b82f6',bollard:'#f97316',stopblock:'#ef4444',stencil:'#a855f7','bollard-sign':'#f97316',arrow:'#e8d080','speed-bump':'#4caf50'}[m.type]||'#fff';
     const r=Math.max(4,6/zoom)*uiScale;
     ctx.beginPath();ctx.arc(m.x,m.y,r,0,Math.PI*2);ctx.fillStyle=col;ctx.fill();
     ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=(1/zoom)*uiScale;ctx.stroke();
@@ -2935,6 +2935,8 @@ function getSiteInventory(){
   const stopblks = markers.filter(m=>m.type==='stopblock').length;
   const stencils = markers.filter(m=>m.type==='stencil');
   const signs    = markers.filter(m=>m.type==='bollard-sign');
+  const arrows   = markers.filter(m=>m.type==='arrow').length;
+  const speedBumps = markers.filter(m=>m.type==='speed-bump').length;
 
   // Stencil breakdown by label
   const stencilMap = {};
@@ -2978,7 +2980,7 @@ function getSiteInventory(){
     return {label: seg.label||'Linear', ft: Math.round(ft)};
   });
 
-  return {stalls,ada,bollards,stopblks,stencilMap,signMap,crosswalkSqft,adaHatchSqft,linearFt,linearItems,measurements};
+  return {stalls,ada,bollards,stopblks,stencilMap,signMap,arrows,speedBumps,crosswalkSqft,adaHatchSqft,linearFt,linearItems,measurements};
 }
 
 // Build inventory rows HTML for scope table
@@ -3004,6 +3006,12 @@ function inventoryRows(showPricing,calc){
   }
   if(inv.stopblks > 0){
     rows += `<tr><td>Parking Stop Blocks</td><td class="num">${inv.stopblks}</td><td class="num">ea</td><td class="num">—</td></tr>`;
+  }
+  if(inv.arrows > 0){
+    rows += `<tr><td>Directional Arrows</td><td class="num">${inv.arrows}</td><td class="num">ea</td><td class="num">—</td></tr>`;
+  }
+  if(inv.speedBumps > 0){
+    rows += `<tr><td>Speed Bumps</td><td class="num">${inv.speedBumps}</td><td class="num">ea</td><td class="num">—</td></tr>`;
   }
   if(inv.crosswalkSqft > 0){
     const cost=inv.crosswalkSqft*(c.pcross||2.5);

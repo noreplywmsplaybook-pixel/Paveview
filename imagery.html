@@ -2892,6 +2892,13 @@ function imageryDetectionCenter(d) {
   return { x: Number(d.x) || 0, y: Number(d.y) || 0 };
 }
 
+function imageryMarkerTypeFromMissedPoint(type) {
+  if (type === 'stop_block') return 'stopblock';
+  if (type === 'bollard_sign') return 'bollard-sign';
+  if (type === 'speed_bump') return 'speed-bump';
+  return type;
+}
+
 async function continueImageryToProjectReports() {
   const btn = document.getElementById('receiptExportBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
@@ -2968,6 +2975,25 @@ async function continueImageryToProjectReports() {
     reviewDetections.filter(d => normalizeClass(d.class) === 'handicap').forEach((d, i) => {
       const c = imageryDetectionCenter(d);
       markers.push({ type: 'ada', x: c.x, y: c.y, label: 'ADA ' + (i + 1) });
+    });
+    reviewDetections.filter(d => normalizeClass(d.class) === 'stencil').forEach((d, i) => {
+      const c = imageryDetectionCenter(d);
+      markers.push({ type: 'stencil', x: c.x, y: c.y, label: d.label || d.text || ('Stencil ' + (i + 1)) });
+    });
+    reviewDetections.filter(d => normalizeClass(d.class) === 'arrow').forEach((d, i) => {
+      const c = imageryDetectionCenter(d);
+      markers.push({ type: 'arrow', x: c.x, y: c.y, label: 'Arrow ' + (i + 1) });
+    });
+    missedPoints.forEach((p, i) => {
+      markers.push({
+        type: imageryMarkerTypeFromMissedPoint(p.type),
+        x: p.x,
+        y: p.y,
+        label: p.type === 'bollard_sign' ? ('Sign ' + (i + 1)) : ''
+      });
+    });
+    missedStencils.forEach((s, i) => {
+      markers.push({ type: 'stencil', x: s.x, y: s.y, label: s.text || ('Stencil ' + (i + 1)) });
     });
 
     const pr = JSON.parse(localStorage.getItem('paveview_pricing') || '{}');
