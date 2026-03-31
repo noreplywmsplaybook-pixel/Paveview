@@ -410,6 +410,17 @@
           <div style="font-size:10px;color:#5a6270;line-height:1.6;">Add any features the model didn't catch.</div>
         </div>
 
+        <div id="manualBuildPanel" style="display:none;padding:10px 14px;border-bottom:1px solid #1e2328;">
+          <div style="font-size:9px;letter-spacing:2px;color:#3a4048;text-transform:uppercase;margin-bottom:8px;">Manual Build</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <button class="manual-build-btn" data-type="lot_perimeter" style="background:#1a0d0a;color:#ff6450;border:1px solid #3a1a1a;padding:7px 6px;border-radius:5px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Create Lot Perimeter</button>
+            <button class="manual-build-btn" data-type="obstruction" style="background:#1a0a0a;color:#dc3232;border:1px solid #3a1a1a;padding:7px 6px;border-radius:5px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Create Obstruction</button>
+            <button class="manual-build-btn" data-type="hatching" style="background:#1a1e24;color:#f5c542;border:1px solid #2a2f36;padding:7px 6px;border-radius:5px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Create Hatch / ADA</button>
+            <button class="manual-build-btn" data-type="stencil" style="background:#1a1e24;color:#d4a800;border:1px solid #2a2f36;padding:7px 6px;border-radius:5px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Create Stencil Zone</button>
+          </div>
+          <button id="manualBuildRowBtn" style="margin-top:8px;width:100%;background:#0d0f11;color:#4fc3f7;border:1px solid #1a2f3a;padding:8px;border-radius:5px;font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;">Draw Stall Lines</button>
+        </div>
+
         <!-- Stencils -->
         <div style="padding:10px 14px;border-bottom:1px solid #1e2328;">
           <div style="font-size:9px;letter-spacing:2px;color:#3a4048;text-transform:uppercase;margin-bottom:8px;">Stencils</div>
@@ -2488,6 +2499,7 @@ let reviewPhaseIdx   = 0;
 let reviewDetections = [];
 let reviewIdx        = 0;
 let reviewImgSnap    = null;
+let manualReviewMode = false;
 let reviewDragVtx    = null;
 let reviewIsAdding   = false;
 let reviewIsRedrawing= false;
@@ -2517,6 +2529,7 @@ const POINT_COLORS = {
 };
 
 function activePhases() {
+  if (manualReviewMode) return REVIEW_PHASES.slice();
   return REVIEW_PHASES.filter(ph => {
     if (ph.id === 'missed') return true; // always show missed
     return reviewDetections.some(d => normalizeClass(d.class) === ph.id);
@@ -2608,6 +2621,7 @@ function simplifyDetectionForReview(det) {
 
 function openReview(opts) {
   const manualOnly = !!(opts && opts.manualOnly);
+  manualReviewMode = manualOnly;
   if (!lastResults && !manualOnly) return;
   reviewDetections = [];
   const nr = lastResults?.nonStalls || [];
@@ -2630,17 +2644,13 @@ function openReview(opts) {
   reviewModal.style.display = 'flex';
   enterPhase();
   if (manualOnly) {
-    reviewIsAdding = true;
-    reviewAddTypeWrap.style.display = 'flex';
-    reviewDrawHint.textContent = 'Click to place points · Click first point or press Enter to close';
-    reviewDrawHint.style.display = 'block';
-    reviewCanvas.style.cursor = 'crosshair';
     renderReviewFrame();
   }
 }
 
 function closeReview() {
   reviewModal.style.display = 'none';
+  manualReviewMode = false;
   reviewIsAdding = false; reviewIsRedrawing = false; reviewNewPoly = [];
   cancelMissedDraw();
   if (lastResults) {
@@ -3108,6 +3118,8 @@ function enterPhase() {
   reviewDetPanel.style.display   = isMissed ? 'none' : 'flex';
   reviewMissedPanel.style.display= isMissed ? 'flex' : 'none';
   document.getElementById('reviewLeftPanel').style.display = isMissed ? 'none' : 'flex';
+  const manualBuildPanel = document.getElementById('manualBuildPanel');
+  if (manualBuildPanel) manualBuildPanel.style.display = (isMissed && manualReviewMode) ? 'block' : 'none';
 
   reviewPhaseBackBtn.disabled = reviewPhaseIdx === 0;
   reviewPhaseNextBtn.textContent = reviewPhaseIdx === activePhases().length - 1 ? 'Finish →' : 'Next Phase →';
@@ -3461,6 +3473,21 @@ function finalizeReviewPolygon() {
   return false;
 }
 
+function beginReviewAddType(type) {
+  reviewAddType.value = type;
+  focusReviewPhaseForClass(type);
+  enterPhase();
+  reviewIsAdding = true;
+  reviewNewPoly = [];
+  reviewAddTypeWrap.style.display = 'flex';
+  reviewDrawHint.textContent = type === 'handicap'
+    ? 'Click once to place a handicap marker'
+    : 'Click to place points · Click first point or press Enter to close';
+  reviewDrawHint.style.display = 'block';
+  reviewCanvas.style.cursor = 'crosshair';
+  renderReviewFrame();
+}
+
 window.addEventListener('keydown', e => {
   if (reviewModal.style.display !== 'flex') return;
   if (!(reviewIsAdding || reviewIsRedrawing)) return;
@@ -3488,6 +3515,21 @@ reviewBtn.addEventListener('click', () => {
 manualReviewBtn?.addEventListener('click', () => {
   try { openReview({ manualOnly: true }); }
   catch(e) { console.error('[PaveView] manual review failed:', e); alert('Manual review error: ' + e.message); }
+});
+document.querySelectorAll('.manual-build-btn').forEach(btn => {
+  btn.addEventListener('click', () => beginReviewAddType(btn.dataset.type));
+});
+document.getElementById('manualBuildRowBtn')?.addEventListener('click', () => {
+  reviewModal.style.display = 'none';
+  isRowMode = true;
+  rowDots = [];
+  rowDirUx = 0;
+  rowDirUy = 0;
+  drawRowBtn.textContent = 'Stop Drawing';
+  drawRowBtn.style.color = '#ff6450';
+  drawRowBtn.style.borderColor = '#ff6450';
+  mainCanvas.classList.add('draw-mode');
+  redrawAll();
 });
 reviewDoneBtn.addEventListener('click', closeReview);
 
