@@ -890,7 +890,10 @@ function toggleThemeProj(){
   document.getElementById('ph-type').textContent=selectedHeaderTypes.map(t=>typeLabels[t]||'Paving').join(', ');
   document.getElementById('ph-stalls').textContent=(projectData.stallCount||0)+(projectData.adaCount||0)||'—';
   document.getElementById('ph-date').textContent=new Date(proj.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-  document.getElementById('btn-edit-takeoff').onclick=()=>window.location.href='app.html?project='+projectId;
+  document.getElementById('btn-edit-takeoff').onclick=()=>{
+    const src=String(projectData?.source||'');
+    window.location.href=(src==='imagery_estimate')?('imagery.html?project='+projectId):('app.html?project='+projectId);
+  };
   document.getElementById('btn-delete').onclick=deleteProject;
   // Pre-fill pricing from projectData
   const projectPricingMap={
@@ -919,6 +922,18 @@ function toggleThemeProj(){
   maybeOpenProjectDebugFromUrl();
   // Load map image
   if(projectData.planPath){loadMapImage(projectData.planPath);}
+  const _fromImageryReport=new URLSearchParams(window.location.search).get('report')==='1';
+  if(_fromImageryReport){
+    setTimeout(()=>{
+      try{
+        setStatus('awarded');
+        switchReport('client-a');
+        const u=new URL(window.location.href);
+        u.searchParams.delete('report');
+        history.replaceState({},'',u.pathname+(u.search||''));
+      }catch(_e){}
+    },80);
+  }
 })();
 
 // ── STATUS ──

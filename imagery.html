@@ -202,6 +202,7 @@
 </style>
 </head>
 <body>
+<div id="auth-check" style="position:fixed;inset:0;background:#0d0f11;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:'DM Mono',monospace;font-size:11px;color:#7a8390;">Checking session…</div>
 <div class="shell">
 
   <!-- TOPBAR -->
@@ -2536,9 +2537,224 @@ document.getElementById('receiptManualBtn')?.addEventListener('click', () => {
   if (px > 0 && ft > 0) { receiptPixelsPerFoot = px / ft; buildReceipt(); }
 });
 document.getElementById('receiptStallLineRecalc')?.addEventListener('click', buildReceipt);
-document.getElementById('receiptExportBtn')?.addEventListener('click', () => {
-  window.open('https://paveview.io/report', '_blank');
-});
+
+function imageryDetectionCenter(d) {
+  if (d.points && d.points.length) {
+    let sx = 0, sy = 0, n = 0;
+    for (const p of d.points) {
+      const x = p.x !== undefined ? p.x : p[0];
+      const y = p.y !== undefined ? p.y : p[1];
+      if (Number.isFinite(x) && Number.isFinite(y)) { sx += x; sy += y; n++; }
+    }
+    if (n) return { x: sx / n, y: sy / n };
+  }
+  return { x: Number(d.x) || 0, y: Number(d.y) || 0 };
+}
+
+function seedImageryProjectLocalState(projectId) {
+  try {
+    const key = 'paveview_proj_details_' + projectId;
+    const prev = JSON.parse(localStorage.getItem(key) || '{}');
+    localStorage.setItem(key, JSON.stringify({ ...prev, status: 'awarded' }));
+  } catch (e) {}
+  localStorage.setItem('paveview_proj_status_' + projectId, 'awarded');
+}
+
+async function continueImageryToProjectReports() {
+  const btn = document.getElementById('receiptExportBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const _sb = window._sbClient;
+    if (!_sb) throw new Error('Not signed in.');
+    const { data: { session } } = await _sb.auth.getSession();
+    if (!session) throw new Error('Sign in required.');
+
+    const ppf = getPixelsPerFoot();
+    const ppf2 = ppf ? ppf * ppf : null;
+    if (!uploadedImage || uploadedW < 8 || uploadedH < 8) throw new Error('No valid image.');
+
+    const perim = reviewDetections.find(d => normalizeClass(d.class) === 'lot_perimeter');
+    const zones = [];
+    if (perim && perim.points && perim.points.length >= 3) {
+      const sqft = ppf2 ? Math.round(polygonArea(perim.points) / ppf2) : 0;
+      zones.push({
+        name: 'Lot',
+        color: '#d4a843',
+        pts: perim.points.map(p => ({ x: p.x, y: p.y })),
+        labelSize: 12,
+        sqft
+      });
+    }
+    reviewDetections.filter(d => normalizeClass(d.class) === 'obstruction').forEach((d, i) => {
+      if (!d.points || d.points.length < 3) return;
+      const sq = ppf2 ? Math.round(polygonArea(d.points) / ppf2) : 0;
+      zones.push({
+        name: 'Obstruction ' + (i + 1),
+        color: '#6b7280',
+        obstruct: true,
+        pts: d.points.map(p => ({ x: p.x, y: p.y })),
+        labelSize: 10,
+        sqft: sq
+      });
+    });
+
+    const closed = zones.filter(z => !z.obstruct);
+    let totalSqft = closed.reduce((s, z) => s + (z.sqft || 0), 0);
+
+    const linearSegs = [];
+    allRows.forEach((row, ri) => {
+      if (!row || row.length < 2) return;
+      linearSegs.push({
+        id: 'row-' + ri,
+        label: 'Row ' + (ri + 1),
+        pts: row.map(p => ({ x: p.x, y: p.y }))
+      });
+    });
+    missedFireLines.forEach((fl, i) => {
+      if (!fl.points || fl.points.length < 2) return;
+      linearSegs.push({
+        id: 'fire-' + i,
+        label: 'Fire lane',
+        pts: fl.points.map(p => ({ x: p.x, y: p.y }))
+      });
+    });
+
+    const hatchZones = [];
+    reviewDetections.filter(d => normalizeClass(d.class) === 'hatching').forEach(d => {
+      if (!d.points || d.points.length < 3) return;
+      hatchZones.push({ type: 'crosswalk', pts: d.points.map(p => ({ x: p.x, y: p.y })) });
+    });
+
+    const markers = [];
+    let stallIdx = 0;
+    allRows.forEach(row => {
+      row.forEach(pt => { markers.push({ type: 'stall', x: pt.x, y: pt.y, label: String(++stallIdx) }); });
+    });
+    reviewDetections.filter(d => normalizeClass(d.class) === 'handicap').forEach((d, i) => {
+      const c = imageryDetectionCenter(d);
+      markers.push({ type: 'ada', x: c.x, y: c.y, label: 'ADA ' + (i + 1) });
+    });
+
+    const pr = JSON.parse(localStorage.getItem('paveview_pricing') || '{}');
+    const depth = pr.depth ?? 3, comp = pr.comp ?? 1.05, base = pr.base ?? 6;
+    const pa = pr.pa ?? 85, pb = pr.pb ?? 22, pl = pr.pl ?? 1.25;
+    const plin = pr.plin ?? 3, pstripe = pr.pstripe ?? 8, pada = pr.pada ?? 25, pcross = pr.pcross ?? 2.5;
+    const sealerGal = pr.sealerGal ?? 4.5, sealerCov = pr.sealerCov ?? 80, sealerCoats = pr.sealerCoats ?? 2;
+    const pseal = pr.pseal ?? 0.18, pcrack = pr.pcrack ?? 2.5;
+
+    const sc = ppf ? 1 / ppf : 40 / 70;
+    let linearFt = 0;
+    linearSegs.forEach(seg => {
+      const pts = seg.pts || [];
+      for (let i = 1; i < pts.length; i++) linearFt += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y) * sc;
+    });
+
+    let crosswalkSqft = 0;
+    hatchZones.forEach(h => { crosswalkSqft += polygonArea(h.pts) * sc * sc; });
+
+    const stallC = markers.filter(m => m.type === 'stall').length;
+    const adaC = markers.filter(m => m.type === 'ada').length;
+    const stallLineFt = parseFloat(document.getElementById('receiptStallLineFt')?.value) || 18;
+    const stripingLineFt = stallC * stallLineFt;
+
+    const tons = closed.reduce((t, z) => {
+      const a = z.sqft || polygonArea(z.pts) * sc * sc;
+      return t + (a * (depth / 12) * 145 / 2000 * comp);
+    }, 0);
+    const baseTons = closed.reduce((t, z) => {
+      const a = z.sqft || polygonArea(z.pts) * sc * sc;
+      return t + (a * (base / 12) * 110 / 2000);
+    }, 0);
+    const pavingCost = tons * pa + baseTons * pb + totalSqft * pl;
+    const sealerGallons = totalSqft * Math.max(1, sealerCoats) / Math.max(1, sealerCov);
+    const sealcoatCost = totalSqft * pseal + linearFt * pcrack + sealerGallons * sealerGal;
+    const stripingCost = stallC * pstripe + adaC * pada + linearFt * plin + crosswalkSqft * pcross;
+
+    const selectedJobTypes = ['paving', 'striping'];
+    let totalCost = pavingCost + stripingCost;
+    const jobType = 'both';
+
+    const planId = 'plan-' + Date.now();
+    const plansArr = [{ id: planId, label: 'Site imagery', imgW: uploadedW, imgH: uploadedH }];
+    const planSlice = {
+      id: planId,
+      label: 'Site imagery',
+      imgW: uploadedW,
+      imgH: uploadedH,
+      zones: JSON.parse(JSON.stringify(zones)),
+      markers: JSON.parse(JSON.stringify(markers)),
+      measurements: [],
+      linearSegs: JSON.parse(JSON.stringify(linearSegs)),
+      hatchZones: JSON.parse(JSON.stringify(hatchZones))
+    };
+
+    const projectName = 'Imagery estimate · ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    const projectData = {
+      totalSqft: Math.round(totalSqft),
+      totalCost: Math.round(totalCost),
+      stallCount: stallC,
+      adaCount: adaC,
+      jobType,
+      jobTypes: selectedJobTypes,
+      scalePx: ppf || 70,
+      scaleFt: ppf ? 1 : 40,
+      scaleUnit: 'ft',
+      zones: planSlice.zones,
+      markers: planSlice.markers,
+      measurements: [],
+      linearSegs: planSlice.linearSegs,
+      hatchZones: planSlice.hatchZones,
+      plans: [planSlice],
+      currentPlanIdx: 0,
+      depth, comp, base, pa, pb, pl, plin, pseal, pcrack, pstripe, pada, pcross,
+      sealerGal, sealerCov, sealerCoats,
+      source: 'imagery_estimate',
+      stripingLineFt,
+      receiptStallLineFt: stallLineFt
+    };
+
+    let planPath = null;
+    try {
+      const uc = document.createElement('canvas');
+      uc.width = uploadedW;
+      uc.height = uploadedH;
+      uc.getContext('2d').drawImage(uploadedImage, 0, 0);
+      const blob = await new Promise(res => uc.toBlob(res, 'image/jpeg', 0.85));
+      const fname = session.user.id + '/' + Date.now() + '.jpg';
+      const { error: upErr } = await _sb.storage.from('project-plans').upload(fname, blob, { contentType: 'image/jpeg', upsert: true });
+      if (!upErr) planPath = fname;
+    } catch (e) { console.warn('Plan upload:', e); }
+
+    const dataStr = JSON.stringify({ ...projectData, planPath });
+    const saveResp = await fetch('/api/save-project', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
+      body: JSON.stringify({ name: projectName, data: dataStr })
+    });
+    const savePayload = await saveResp.json().catch(() => ({}));
+    if (!saveResp.ok) {
+      if (saveResp.status === 402 || saveResp.status === 429) {
+        alert(savePayload?.error || 'Monthly proposal limit reached.');
+        window.location.href = '/#pricing';
+        return;
+      }
+      throw new Error(savePayload?.error || 'Save failed.');
+    }
+    const savedId = savePayload?.project_id || savePayload?.projectId;
+    if (!savedId) throw new Error('No project id returned.');
+
+    seedImageryProjectLocalState(savedId);
+    document.getElementById('receiptModal').style.display = 'none';
+    window.location.href = 'project.html?id=' + savedId + '&report=1';
+  } catch (e) {
+    console.error(e);
+    alert(e.message || 'Could not save project.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Continue to Report Generation →'; }
+  }
+}
+
+document.getElementById('receiptExportBtn')?.addEventListener('click', () => { continueImageryToProjectReports(); });
 
 // -- PHASE NAVIGATION ---------------------------------------------------------
 function enterPhase() {
@@ -2973,6 +3189,42 @@ document.getElementById('missedConfirmBtn')?.addEventListener('click', closeRevi
 
 function checkReviewBtn() { reviewBtn.disabled = !lastResults; }
 
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+  const SB_URL='https://rqgyqqyxlwjpbdkapvpz.supabase.co';
+  const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
+  const TRIAL_DURATION_MS=24*60*60*1000;
+  function isTrialPurchase(p){
+    const product=String(p?.product||'').toLowerCase();
+    const hasExplicitFreeAmount=p?.amount_paid!==null&&p?.amount_paid!==undefined&&Number(p?.amount_paid)===0;
+    return product.includes('trial')||hasExplicitFreeAmount;
+  }
+  function hasActiveAccess(p){
+    if(!p||p.status!=='active')return false;
+    if(!isTrialPurchase(p))return true;
+    const createdAt=new Date(p.created_at||0).getTime();
+    if(!createdAt)return false;
+    return(Date.now()-createdAt)<TRIAL_DURATION_MS;
+  }
+  (async function(){
+    try{
+      const sb=supabase.createClient(SB_URL,SB_KEY);
+      window._sbClient=sb;
+      const{data:{session}}=await sb.auth.getSession();
+      if(!session){window.location.replace('login.html');return;}
+      const{data:p}=await sb.from('purchases').select('id,product,status,amount_paid,created_at').eq('user_id',session.user.id).eq('status','active').order('created_at',{ascending:false}).limit(20);
+      if(!p||!p.find(hasActiveAccess)){window.location.replace('index.html');return;}
+      await sb.from('profiles').upsert({id:session.user.id,email:session.user.email||null,updated_at:new Date().toISOString()},{onConflict:'id'});
+      const ac=document.getElementById('auth-check');
+      if(ac)ac.remove();
+    }catch(e){
+      console.warn('imagery auth:',e);
+      window.location.replace('login.html');
+    }
+  })();
+})();
 </script>
 </body>
 </html>
