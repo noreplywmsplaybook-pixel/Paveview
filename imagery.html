@@ -231,12 +231,29 @@
       </div>
     </div>
 
-    <button class="run-btn" id="runBtn" disabled>Detect Zones</button>
+    <div>
+      <div class="section-label">Job Type</div>
+      <select id="imageryJobType" style="width:100%;background:#0d0f11;color:#fff;border:1px solid #2a2f36;border-radius:6px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:11px;">
+        <option value="sealcoat">Sealcoating</option>
+        <option value="striping">Line Striping</option>
+      </select>
+    </div>
 
-    <button class="run-btn" id="calibrateBtn" disabled style="margin-top:8px;background:var(--surface);color:#c084fc;border:1.5px solid #c084fc;">Measure Stall Width</button>
-    <button class="run-btn" id="setTemplateBtn" disabled style="margin-top:4px;background:var(--surface);color:#c084fc;border:1.5px solid #c084fc;font-size:11px;padding:8px;display:none;">Use This Spacing</button>
+    <div>
+      <div class="section-label" id="step1Label">Step 1</div>
+      <button class="run-btn" id="calibrateBtn" disabled style="background:var(--surface);color:#c084fc;border:1.5px solid #c084fc;">Measure Stall Width</button>
+      <button class="run-btn" id="setTemplateBtn" disabled style="margin-top:4px;background:var(--surface);color:#c084fc;border:1.5px solid #c084fc;font-size:11px;padding:8px;display:none;">Use This Spacing</button>
+    </div>
 
-    <button class="run-btn" id="drawRowBtn" disabled style="margin-top:8px;background:var(--surface);color:#f5c542;border:1.5px solid var(--accent);">Draw Stall Line</button>
+    <div>
+      <div class="section-label" id="step2Label">Step 2</div>
+      <button class="run-btn" id="runBtn" disabled>Detect Zones</button>
+    </div>
+
+    <div>
+      <div class="section-label" id="step3Label">Step 3</div>
+      <button class="run-btn" id="drawRowBtn" disabled style="background:var(--surface);color:#f5c542;border:1.5px solid var(--accent);">Draw Stall Line</button>
+    </div>
 
     <button class="run-btn" id="undoRowBtn" disabled style="margin-top:4px;background:var(--surface);color:var(--muted);border:1.5px solid var(--muted);font-size:11px;padding:8px;">Undo Last Row</button>
 
@@ -576,11 +593,15 @@ const stallHSlider    = document.getElementById('stallHSlider');
 const stallWVal       = document.getElementById('stallWVal');
 const stallHVal       = document.getElementById('stallHVal');
 const runBtn          = document.getElementById('runBtn');
+const imageryJobTypeSel = document.getElementById('imageryJobType');
 const calibrateBtn    = document.getElementById('calibrateBtn');
 const setTemplateBtn  = document.getElementById('setTemplateBtn');
 const drawRowBtn      = document.getElementById('drawRowBtn');
 const undoRowBtn      = document.getElementById('undoRowBtn');
 const clearRefBtn     = document.getElementById('clearRefBtn');
+const step1Label      = document.getElementById('step1Label');
+const step2Label      = document.getElementById('step2Label');
+const step3Label      = document.getElementById('step3Label');
 const mainCanvas      = document.getElementById('mainCanvas');
 const spinnerOverlay  = document.getElementById('spinnerOverlay');
 const spinnerMsg      = document.getElementById('spinnerMsg');
@@ -590,6 +611,38 @@ const statsBar        = document.getElementById('statsBar');
 const emptyState      = document.getElementById('emptyState');
 const classList       = document.getElementById('classList');
 const ctx             = mainCanvas.getContext('2d');
+
+function getSelectedImageryJobType() {
+  const v = String(imageryJobTypeSel?.value || 'sealcoat').toLowerCase();
+  return v === 'striping' ? 'striping' : 'sealcoat';
+}
+
+function getSelectedImageryJobTypes() {
+  return [getSelectedImageryJobType()];
+}
+
+function imageryJobTypeLabel(v) {
+  return v === 'striping' ? 'Line Striping' : 'Sealcoating';
+}
+
+function setStepLabelState(el, active, done) {
+  if (!el) return;
+  el.style.color = active ? '#f5c542' : done ? '#4caf50' : '#5a6270';
+}
+
+function syncImageryStepFlow() {
+  const hasImage = !!uploadedImage;
+  const hasMeasuredWidth = !!(stallTemplate && stallTemplate.spacing);
+  const hasDetections = !!lastResults;
+
+  calibrateBtn.disabled = !hasImage;
+  runBtn.disabled = !(hasImage && hasMeasuredWidth);
+  drawRowBtn.disabled = !(hasImage && hasMeasuredWidth && hasDetections);
+
+  setStepLabelState(step1Label, hasImage && !hasMeasuredWidth, hasMeasuredWidth);
+  setStepLabelState(step2Label, hasMeasuredWidth && !hasDetections, hasDetections);
+  setStepLabelState(step3Label, hasDetections, false);
+}
 
 
 
@@ -613,6 +666,7 @@ calibrateBtn.addEventListener('click', () => {
     mainCanvas.classList.remove('draw-mode');
     redrawAll();
   }
+  syncImageryStepFlow();
 });
 
 function exitCalibrateUi(opts) {
@@ -638,6 +692,7 @@ setTemplateBtn.addEventListener('click', () => {
   calibrateBtn.style.color = '#c084fc'; calibrateBtn.style.borderColor = '#c084fc';
   mainCanvas.classList.remove('draw-mode');
   redrawAll();
+  syncImageryStepFlow();
   console.log(`[PaveView] Stall width: ${Math.round(spacing)}px`);
 });
 
@@ -1041,13 +1096,11 @@ function handleFile(file) {
       thumbImg.src = dataURL;
       thumbWrap.style.display = 'block';
       uploadZone.style.display = 'none';
-      runBtn.disabled       = false;
-      drawRowBtn.disabled   = false;
-      calibrateBtn.disabled = false;
       emptyState.style.display = 'none';
       resetZoom();
 
       renderImage();
+      syncImageryStepFlow();
     };
     img.src = dataURL;
   };
@@ -1100,6 +1153,7 @@ function clearImage() {
   mainCanvas.height = 0;
   fileInput.value   = '';
   setStatus('idle');
+  syncImageryStepFlow();
 }
 
 let _baseImageSnapshot = null; // cached ImageData of the base image for toggle redraws
@@ -2364,6 +2418,7 @@ runBtn.addEventListener('click', async () => {
     setStatus('done');
     document.getElementById('reviewBtn').disabled = false;
     document.getElementById('legendPanel').style.display = 'block';
+    syncImageryStepFlow();
 
   } catch (err) {
     console.error(err);
@@ -2371,7 +2426,7 @@ runBtn.addEventListener('click', async () => {
     alert('Detection failed: ' + err.message);
   } finally {
     spinnerOverlay.classList.remove('active');
-    runBtn.disabled = false;
+    syncImageryStepFlow();
   }
 });
 
@@ -2654,6 +2709,7 @@ function buildReceipt() {
 
   const items = document.getElementById('receiptItems');
   items.innerHTML = '';
+  const selectedJobType = getSelectedImageryJobType();
 
   function fmt(n) { return n.toLocaleString('en-US', {maximumFractionDigits:0}); }
   function pxToFt(px) { return ppf ? px / ppf : null; }
@@ -2677,6 +2733,9 @@ function buildReceipt() {
       </div>`;
     items.appendChild(el);
   }
+
+  addSection('Job Type', '#4fc3f7');
+  addRow('Selected', imageryJobTypeLabel(selectedJobType), 'Will sync to report generation', true);
 
   // -- LOT PERIMETER --
   const perim = reviewDetections.find(d => normalizeClass(d.class) === 'lot_perimeter');
@@ -2780,6 +2839,10 @@ document.getElementById('receiptManualBtn')?.addEventListener('click', () => {
   if (px > 0 && ft > 0) { receiptPixelsPerFoot = px / ft; buildReceipt(); }
 });
 document.getElementById('receiptStallLineRecalc')?.addEventListener('click', buildReceipt);
+imageryJobTypeSel?.addEventListener('change', () => {
+  if (document.getElementById('receiptModal')?.style.display === 'flex') buildReceipt();
+});
+syncImageryStepFlow();
 
 function imageryDetectionCenter(d) {
   if (d.points && d.points.length) {
@@ -2907,9 +2970,9 @@ async function continueImageryToProjectReports() {
     const sealcoatCost = totalSqft * pseal + linearFt * pcrack + sealerGallons * sealerGal;
     const stripingCost = stallC * pstripe + adaC * pada + linearFt * plin + crosswalkSqft * pcross;
 
-    const selectedJobTypes = ['paving', 'striping'];
-    let totalCost = pavingCost + stripingCost;
-    const jobType = 'both';
+    const jobType = getSelectedImageryJobType();
+    const selectedJobTypes = getSelectedImageryJobTypes();
+    let totalCost = jobType === 'striping' ? stripingCost : sealcoatCost;
 
     const planId = 'plan-' + Date.now();
     const plansArr = [{ id: planId, label: 'Site imagery', imgW: uploadedW, imgH: uploadedH }];
