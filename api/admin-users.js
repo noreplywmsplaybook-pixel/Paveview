@@ -322,6 +322,65 @@ async function handlePatch(req, res, serviceRoleKey) {
     return;
   }
 
+  if (action === 'set_account_type') {
+    const userId = String(body.userId || '').trim();
+    const accountType = String(body.accountType || '').trim();
+    if (!userId) {
+      sendJson(res, 400, { error: 'userId is required.' });
+      return;
+    }
+    const PRODUCT_MAP = {
+      inactive: null,
+      trial_24h: { product: 'takeoff_trial_24h', amount_paid: 0 },
+      takeoff_tier1_monthly: { product: 'takeoff_tier1_monthly', amount_paid: 9999 },
+      takeoff_tier1_annual: { product: 'takeoff_tier1_annual', amount_paid: 99900 },
+      takeoff_tier2_monthly: { product: 'takeoff_tier2_monthly', amount_paid: 19999 },
+      takeoff_tier2_annual: { product: 'takeoff_tier2_annual', amount_paid: 199999 },
+      takeoff_tier3_monthly: { product: 'takeoff_tier3_monthly', amount_paid: 39999 },
+      takeoff_tier3_annual: { product: 'takeoff_tier3_annual', amount_paid: 399999 }
+    };
+    if (!Object.prototype.hasOwnProperty.call(PRODUCT_MAP, accountType)) {
+      sendJson(res, 400, { error: 'Invalid accountType.' });
+      return;
+    }
+
+    const revoke = await supabaseFetch(
+      `/rest/v1/purchases?user_id=eq.${encodeURIComponent(userId)}&status=eq.active`,
+      {
+        method: 'PATCH',
+        serviceRoleKey,
+        body: { status: 'revoked', updated_at: new Date().toISOString() }
+      }
+    );
+    if (!revoke.ok) {
+      sendJson(res, revoke.status || 500, { error: revoke.payload?.message || 'Failed to revoke current access.' });
+      return;
+    }
+
+    if (accountType === 'inactive') {
+      sendJson(res, 200, { ok: true, userId, accountType, revokedOnly: true });
+      return;
+    }
+
+    const target = PRODUCT_MAP[accountType];
+    const insert = await supabaseFetch('/rest/v1/purchases', {
+      method: 'POST',
+      serviceRoleKey,
+      body: [{
+        user_id: userId,
+        product: target.product,
+        amount_paid: target.amount_paid,
+        status: 'active'
+      }]
+    });
+    if (!insert.ok) {
+      sendJson(res, insert.status || 500, { error: insert.payload?.message || 'Failed to set new account type.' });
+      return;
+    }
+    sendJson(res, 200, { ok: true, userId, accountType });
+    return;
+  }
+
   if (action === 'set_learning_status') {
     const sampleId = String(body.sampleId || '').trim();
     const status = String(body.status || '').trim().toLowerCase();

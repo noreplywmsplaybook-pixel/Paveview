@@ -157,8 +157,9 @@ tr:hover td{background:#141414}
 <!-- MAIN -->
 <div id="wrap" style="display:none">
   <div class="admin-tabs">
-    <button class="admin-tab-btn active" id="tab-btn-overview" onclick="showAdminTab('overview')">Overview</button>
+    <button class="admin-tab-btn active" id="tab-btn-overview" onclick="showAdminTab('overview')">Home</button>
     <button class="admin-tab-btn" id="tab-btn-customers" onclick="showAdminTab('customers')">Customers</button>
+    <button class="admin-tab-btn" id="tab-btn-analytics" onclick="showAdminTab('analytics')">Analytics</button>
     <button class="admin-tab-btn" id="tab-btn-learning" onclick="showAdminTab('learning')">Learning</button>
     <button class="admin-tab-btn" id="tab-btn-settings" onclick="showAdminTab('settings')">Settings</button>
   </div>
@@ -166,10 +167,8 @@ tr:hover td{background:#141414}
 
   <!-- STATS -->
   <div class="stats admin-section active" data-admin-tab="overview">
-    <div class="stat"><div class="stat-l">Total Customers</div><div class="stat-v" id="s-total">—</div><div class="stat-sub">All time</div></div>
-    <div class="stat"><div class="stat-l">Active Licenses</div><div class="stat-v" id="s-active">—</div><div class="stat-sub">Paid & active</div></div>
-    <div class="stat"><div class="stat-l">Revenue</div><div class="stat-v" id="s-revenue">—</div><div class="stat-sub">Total collected</div></div>
-    <div class="stat"><div class="stat-l">This Month</div><div class="stat-v" id="s-month">—</div><div class="stat-sub">New customers</div></div>
+    <div class="stat"><div class="stat-l">New Members Today</div><div class="stat-v" id="s-new-today">—</div><div class="stat-sub">Joined today</div></div>
+    <div class="stat"><div class="stat-l">Active Users Today</div><div class="stat-v" id="s-active-today">—</div><div class="stat-sub">Joined or active today</div></div>
   </div>
 
   <!-- ADMIN SECURITY -->
@@ -202,18 +201,105 @@ tr:hover td{background:#141414}
     </div>
   </div>
 
-  <!-- PLATFORM ANALYTICS -->
+  <!-- TODAY USERS -->
   <div class="section admin-section active" data-admin-tab="overview">
+    <div class="section-hdr">
+      <span class="section-title">Users Today</span>
+      <span class="small-note" id="today-summary">Waiting for data…</span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Joined Today</th>
+            <th>Active Today</th>
+            <th>Last Activity</th>
+          </tr>
+        </thead>
+        <tbody id="today-body">
+          <tr><td colspan="5" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CUSTOMERS SUMMARY -->
+  <div class="stats admin-section" data-admin-tab="customers">
+    <div class="stat"><div class="stat-l">Total Users</div><div class="stat-v" id="c-total-users">—</div><div class="stat-sub">All accounts</div></div>
+    <div class="stat"><div class="stat-l">Total Churned Users</div><div class="stat-v" id="c-total-churned">—</div><div class="stat-sub">Expired trial or revoked membership</div></div>
+  </div>
+
+  <!-- ACTIVE MEMBERS -->
+  <div class="section admin-section" data-admin-tab="customers">
+    <div class="section-hdr">
+      <span class="section-title">Active Members</span>
+      <div class="section-hdr-right">
+        <input type="text" class="search-inp" id="search" placeholder="Search name or email…" oninput="filterTable()">
+        <button class="btn y" onclick="openAddModal()">+ Add Account</button>
+        <button class="btn" onclick="loadData()">↺ Refresh</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th>Account Type</th>
+            <th>Projects</th>
+            <th>Last Active</th>
+            <th>Joined</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="active-body">
+          <tr><td colspan="8" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- INACTIVE MEMBERS -->
+  <div class="section admin-section" data-admin-tab="customers">
+    <div class="section-hdr">
+      <span class="section-title">Inactive Members</span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th>Account Type</th>
+            <th>Projects</th>
+            <th>Last Active</th>
+            <th>Joined</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="inactive-body">
+          <tr><td colspan="8" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PLATFORM ANALYTICS -->
+  <div class="section admin-section" data-admin-tab="analytics">
     <div class="section-hdr">
       <span class="section-title">Platform Analytics</span>
       <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#444" id="analytics-updated">Waiting for data…</span>
     </div>
     <div class="analytics-stats">
-      <div class="a-stat"><div class="a-stat-l">Daily Users</div><div class="a-stat-v" id="an-dau">—</div><div class="a-stat-sub">Distinct users active today</div></div>
-      <div class="a-stat"><div class="a-stat-l">MRR Estimate</div><div class="a-stat-v" id="an-mrr">—</div><div class="a-stat-sub">Active licenses monthly</div></div>
-      <div class="a-stat"><div class="a-stat-l">Monthly Revenue</div><div class="a-stat-v" id="an-month-rev">—</div><div class="a-stat-sub" id="an-month-rev-sub">Current month</div></div>
+      <div class="a-stat"><div class="a-stat-l">Users Today</div><div class="a-stat-v" id="an-dau">—</div><div class="a-stat-sub">Distinct users active today</div></div>
+      <div class="a-stat"><div class="a-stat-l">Users This Week</div><div class="a-stat-v" id="an-wau">—</div><div class="a-stat-sub">Distinct users active this week</div></div>
+      <div class="a-stat"><div class="a-stat-l">Users This Month</div><div class="a-stat-v" id="an-mau">—</div><div class="a-stat-sub">Distinct users active this month</div></div>
       <div class="a-stat"><div class="a-stat-l">Churn Rate</div><div class="a-stat-v" id="an-churn">—</div><div class="a-stat-sub">Current month</div></div>
-      <div class="a-stat"><div class="a-stat-l">ARR Run-Rate</div><div class="a-stat-v" id="an-arr">—</div><div class="a-stat-sub">MRR x 12</div></div>
+      <div class="a-stat"><div class="a-stat-l">Total Revenue</div><div class="a-stat-v" id="an-total-rev">$0</div><div class="a-stat-sub">Pinned to zero</div></div>
     </div>
     <div class="charts">
       <div class="chart-card">
@@ -233,87 +319,7 @@ tr:hover td{background:#141414}
         <div class="chart-wrap"><canvas id="chart-status"></canvas></div>
       </div>
     </div>
-    <div class="analytics-note">Churn is calculated from revocations over active subscriptions at month start. DAU uses profile, project, and purchase activity timestamps.</div>
-  </div>
-
-  <!-- CUSTOMERS TABLE -->
-  <div class="section admin-section" data-admin-tab="customers">
-    <div class="section-hdr">
-      <span class="section-title">Customers</span>
-      <div class="section-hdr-right">
-        <input type="text" class="search-inp" id="search" placeholder="Search name or email…" oninput="filterTable()">
-        <button class="btn y" onclick="openAddModal()">+ Add Account</button>
-        <button class="btn" onclick="loadData()">↺ Refresh</button>
-      </div>
-    </div>
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Status</th>
-            <th>Product</th>
-            <th>Projects</th>
-            <th>Last Active</th>
-            <th>Joined</th>
-            <th>Purchase Date</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="tbl-body">
-          <tr><td colspan="9" class="empty">Loading…</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- ACTIVE TESTERS -->
-  <div class="section admin-section active" data-admin-tab="overview">
-    <div class="section-hdr">
-      <span class="section-title">Active Testers (Last 24h)</span>
-      <span class="small-note" id="tester-summary">Waiting for data…</span>
-    </div>
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Last Activity</th>
-            <th>Projects</th>
-            <th>Access</th>
-          </tr>
-        </thead>
-        <tbody id="testers-body">
-          <tr><td colspan="5" class="empty">Loading…</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- RECENT PURCHASES -->
-  <div class="section admin-section" data-admin-tab="customers">
-    <div class="section-hdr">
-      <span class="section-title">Recent Purchases</span>
-    </div>
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Email</th>
-            <th>Product</th>
-            <th>Amount</th>
-            <th>Status</th>
-            <th>Date</th>
-            <th>Stripe ID</th>
-          </tr>
-        </thead>
-        <tbody id="purchases-body">
-          <tr><td colspan="6" class="empty">Loading…</td></tr>
-        </tbody>
-      </table>
-    </div>
+    <div class="analytics-note">Users today/week/month are based on profile, project, and purchase activity timestamps. Total revenue is intentionally shown as $0.</div>
   </div>
 
   <!-- LEARNING FEEDBACK -->
@@ -850,8 +856,9 @@ document.addEventListener('keydown', e => {
 async function loadData() {
   if (loadingData) return;
   loadingData = true;
-  document.getElementById('tbl-body').innerHTML = '<tr><td colspan="9" class="empty">Loading…</td></tr>';
-  document.getElementById('testers-body').innerHTML = '<tr><td colspan="5" class="empty">Loading…</td></tr>';
+  document.getElementById('today-body').innerHTML = '<tr><td colspan="5" class="empty">Loading…</td></tr>';
+  document.getElementById('active-body').innerHTML = '<tr><td colspan="8" class="empty">Loading…</td></tr>';
+  document.getElementById('inactive-body').innerHTML = '<tr><td colspan="8" class="empty">Loading…</td></tr>';
   try {
     let profileRows = [];
     let purchaseRows = [];
@@ -945,16 +952,16 @@ async function loadData() {
       };
     }).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
-    renderTable(allCustomers);
-    renderActiveTesters(allCustomers);
-    renderPurchases(purchaseRows);
+    renderTodayUsers(allCustomers);
+    renderCustomerRows(allCustomers.filter(isCustomerActive), 'active-body');
+    renderCustomerRows(allCustomers.filter(c => !isCustomerActive(c)), 'inactive-body');
     renderLearningTable();
     updateStats(allCustomers, purchaseRows);
     updatePlatformAnalytics(profileRows, purchaseRows, projectRows);
   } catch (err) {
-    document.getElementById('tbl-body').innerHTML = `<tr><td colspan="9" class="empty">Failed to load data: ${err.message || err}</td></tr>`;
-    document.getElementById('testers-body').innerHTML = '<tr><td colspan="5" class="empty">Failed to load tester activity.</td></tr>';
-    document.getElementById('purchases-body').innerHTML = '<tr><td colspan="6" class="empty">Failed to load purchases.</td></tr>';
+    document.getElementById('today-body').innerHTML = '<tr><td colspan="5" class="empty">Failed to load today activity.</td></tr>';
+    document.getElementById('active-body').innerHTML = `<tr><td colspan="8" class="empty">Failed to load active members: ${err.message || err}</td></tr>`;
+    document.getElementById('inactive-body').innerHTML = '<tr><td colspan="8" class="empty">Failed to load inactive members.</td></tr>';
     const ltbody = document.getElementById('learning-body');
     if (ltbody) ltbody.innerHTML = '<tr><td colspan="8" class="empty">Failed to load learning samples.</td></tr>';
     resetAnalytics(err.message || String(err));
@@ -964,27 +971,19 @@ async function loadData() {
 }
 
 function updateStats(customers, purchases) {
-  const latestActiveByUser = {};
-  purchases.forEach(p => {
-    if (!p.user_id || !isPurchaseAccessActive(p)) return;
-    if (isAdminAccountId(p.user_id)) return;
-    if (!latestActiveByUser[p.user_id]) latestActiveByUser[p.user_id] = p;
-  });
-  const active = Object.keys(latestActiveByUser).length;
-  const revenue = Object.values(latestActiveByUser).reduce((sum, p) => {
-    return sum + getEffectivePurchaseAmountCents(p);
-  }, 0);
-  const thisMonth = customers.filter(c => {
-    const d = toDateOrNull(c.created_at);
-    if (!d) return false;
-    const now = new Date();
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).length;
-
-  document.getElementById('s-total').textContent = customers.length;
-  document.getElementById('s-active').textContent = active;
-  document.getElementById('s-revenue').textContent = '$' + (revenue / 100).toLocaleString('en-US', { maximumFractionDigits: 0 });
-  document.getElementById('s-month').textContent = thisMonth;
+  const now = new Date();
+  const newToday = customers.filter(c => isSameCalendarDay(c.created_at, now)).length;
+  const activeToday = customers.filter(c => isSameCalendarDay(c.created_at, now) || isSameCalendarDay(c.last_active_at, now)).length;
+  const churned = customers.filter(isCustomerChurned).length;
+  const totalUsers = customers.length;
+  const newEl = document.getElementById('s-new-today');
+  const activeEl = document.getElementById('s-active-today');
+  const custTotalEl = document.getElementById('c-total-users');
+  const custChurnEl = document.getElementById('c-total-churned');
+  if (newEl) newEl.textContent = newToday;
+  if (activeEl) activeEl.textContent = activeToday;
+  if (custTotalEl) custTotalEl.textContent = totalUsers;
+  if (custChurnEl) custChurnEl.textContent = churned;
 }
 
 function dayKey(date) {
@@ -1031,6 +1030,67 @@ function centsToMoney(cents) {
   return '$' + Math.round((cents || 0) / 100).toLocaleString('en-US');
 }
 
+function currentAccountType(customer) {
+  const p = customer?.purchase;
+  if (!p) return 'inactive';
+  if (isTrialPurchase(p)) return isPurchaseAccessActive(p) ? 'trial_24h' : 'inactive';
+  return isPurchaseAccessActive(p) ? String(p.product || 'inactive') : 'inactive';
+}
+
+function accountTypeLabel(type) {
+  const map = {
+    inactive: 'Inactive',
+    trial_24h: 'Free Trial (24h)',
+    takeoff_tier1_monthly: 'Tier 1 Monthly',
+    takeoff_tier1_annual: 'Tier 1 Annual',
+    takeoff_tier2_monthly: 'Tier 2 Monthly',
+    takeoff_tier2_annual: 'Tier 2 Annual',
+    takeoff_tier3_monthly: 'Tier 3 Monthly',
+    takeoff_tier3_annual: 'Tier 3 Annual'
+  };
+  return map[type] || type || 'Inactive';
+}
+
+function accountTypeOptions(selected) {
+  const types = ['inactive','trial_24h','takeoff_tier1_monthly','takeoff_tier1_annual','takeoff_tier2_monthly','takeoff_tier2_annual','takeoff_tier3_monthly','takeoff_tier3_annual'];
+  return types.map(type => `<option value="${type}" ${type===selected?'selected':''}>${accountTypeLabel(type)}</option>`).join('');
+}
+
+function isCustomerActive(customer) {
+  return !!(customer?.purchase && isPurchaseAccessActive(customer.purchase));
+}
+
+function isCustomerChurned(customer) {
+  const purchases = Array.isArray(customer?.purchases) ? customer.purchases : [];
+  if (!purchases.length || isCustomerActive(customer)) return false;
+  return purchases.some(p => p.status === 'revoked' || (isTrialPurchase(p) && !isPurchaseAccessActive(p)));
+}
+
+function isSameCalendarDay(value, ref) {
+  const d = toDateOrNull(value);
+  const r = toDateOrNull(ref) || new Date();
+  if (!d) return false;
+  return d.getFullYear() === r.getFullYear() && d.getMonth() === r.getMonth() && d.getDate() === r.getDate();
+}
+
+function renderTodayUsers(customers) {
+  const tbody = document.getElementById('today-body');
+  const summary = document.getElementById('today-summary');
+  const rows = (customers || []).filter(c => isSameCalendarDay(c.created_at) || isSameCalendarDay(c.last_active_at)).sort((a,b)=>new Date(b.last_active_at||b.created_at||0)-new Date(a.last_active_at||a.created_at||0));
+  if (summary) summary.textContent = `${rows.length} user${rows.length===1?'':'s'} joined or were active today`;
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">No users joined or were active today.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(c => `<tr>
+    <td>${c.full_name || '—'}</td>
+    <td class="mono">${c.email || '—'}</td>
+    <td>${isSameCalendarDay(c.created_at) ? '<span class="badge badge-green">Yes</span>' : '—'}</td>
+    <td>${isSameCalendarDay(c.last_active_at) ? '<span class="badge badge-yellow">Yes</span>' : '—'}</td>
+    <td>${c.last_active_at ? `<span class="mono">${formatRelative(c.last_active_at)}</span><div style="font-size:10px;color:#555">${formatDateTime(c.last_active_at)}</div>` : '<span style="color:#555">No activity</span>'}</td>
+  </tr>`).join('');
+}
+
 function renderMetric(id, value) {
   const el = document.getElementById(id);
   if (el) el.textContent = value;
@@ -1044,8 +1104,8 @@ function upsertChart(id, config) {
 }
 
 function resetAnalytics(reason) {
-  ['an-dau', 'an-mrr', 'an-month-rev', 'an-churn', 'an-arr'].forEach(id => renderMetric(id, '—'));
-  renderMetric('an-month-rev-sub', 'Unavailable');
+  ['an-dau', 'an-wau', 'an-mau', 'an-churn'].forEach(id => renderMetric(id, '—'));
+  renderMetric('an-total-rev', '$0');
   const upd = document.getElementById('analytics-updated');
   if (upd) upd.textContent = `Analytics unavailable (${reason || 'error'})`;
   Object.keys(chartRefs).forEach(k => {
@@ -1120,6 +1180,15 @@ function updatePlatformAnalytics(profiles, purchases, projects) {
   const dailyWindow = dayBuckets(30);
   const dailyUsersSeries = dailyWindow.map(d => (activityByDay[d.key] ? activityByDay[d.key].size : 0));
   const todayUsers = dailyUsersSeries[dailyUsersSeries.length - 1] || 0;
+  const weekStart = new Date(now); weekStart.setDate(now.getDate() - 6); weekStart.setHours(0,0,0,0);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const weeklyUsers = new Set();
+  const monthlyUsers = new Set();
+  Object.entries(activityByDay).forEach(([key, users]) => {
+    const d = new Date(`${key}T00:00:00`);
+    if (d >= weekStart) users.forEach(uid => weeklyUsers.add(uid));
+    if (d >= monthStart) users.forEach(uid => monthlyUsers.add(uid));
+  });
 
   const revenueWindow = monthBuckets(12);
   const revenueByMonth = {};
@@ -1171,11 +1240,10 @@ function updatePlatformAnalytics(profiles, purchases, projects) {
   const noPurchase = profiles.filter(p => !purchasedUsers.has(p.id)).length;
 
   renderMetric('an-dau', String(todayUsers));
-  renderMetric('an-mrr', centsToMoney(mrrCents));
-  renderMetric('an-month-rev', centsToMoney(monthRevenueCents));
+  renderMetric('an-wau', String(weeklyUsers.size));
+  renderMetric('an-mau', String(monthlyUsers.size));
   renderMetric('an-churn', `${currentChurn.toFixed(2)}%`);
-  renderMetric('an-arr', centsToMoney(arrCents));
-  renderMetric('an-month-rev-sub', monthDelta === null ? 'No previous month baseline' : `${monthDelta >= 0 ? '+' : ''}${monthDelta.toFixed(1)}% vs last month`);
+  renderMetric('an-total-rev', '$0');
   const updatedEl = document.getElementById('analytics-updated');
   if (updatedEl) {
     updatedEl.textContent = `Updated ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
@@ -1290,111 +1358,43 @@ function updatePlatformAnalytics(profiles, purchases, projects) {
   });
 }
 
-function renderTable(customers) {
-  const tbody = document.getElementById('tbl-body');
-  if (!customers.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty">No customers yet.</td></tr>'; return; }
-
+function renderCustomerRows(customers, tbodyId) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  if (!customers.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty">No users in this list.</td></tr>`;
+    return;
+  }
   tbody.innerHTML = customers.map(c => {
     const p = c.purchase;
-    const isAdmin = isAdminAccountId(c.id);
     const trial = isTrialPurchase(p);
-    const trialActive = trial && isPurchaseAccessActive(p);
-    const trialExpired = trial && !trialActive;
-    const status = isAdmin
-      ? '<span class="badge badge-gray">Admin</span>'
-      : p
-      ? (isPurchaseAccessActive(p)
-          ? (trial ? '<span class="badge badge-yellow">Trial (24h)</span>' : '<span class="badge badge-green">Active</span>')
-          : (trialExpired ? '<span class="badge badge-red">Expired Trial</span>' : '<span class="badge badge-red">Revoked</span>'))
-      : '<span class="badge badge-gray">No Purchase</span>';
-    const product = isAdmin
-      ? '<span class="badge badge-gray">admin</span>'
-      : (p ? `<span class="badge badge-yellow">${p.product || 'takeoff'}</span>` : '—');
+    const active = isCustomerActive(c);
+    const status = active
+      ? (trial ? '<span class="badge badge-yellow">Trial (24h)</span>' : '<span class="badge badge-green">Active</span>')
+      : (p ? (trial ? '<span class="badge badge-red">Expired Trial</span>' : '<span class="badge badge-red">Inactive</span>') : '<span class="badge badge-gray">No Access</span>');
     const joined = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-    const purchaseDate = p ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
     const lastActiveCell = c.last_active_at
       ? `<span class="mono">${formatRelative(c.last_active_at)}</span><div style="font-size:10px;color:#555">${formatDateTime(c.last_active_at)}</div>`
       : '<span style="color:#555">No activity</span>';
     const profileFlag = c.missing_profile ? '<div style="font-size:10px;color:#f5c842">profile missing</div>' : '';
-    const adminBtn = isAdmin
-      ? `<button class="btn" style="padding:3px 8px;font-size:9px" onclick="unsetAdminAccount('${c.id}')">Unset Admin</button>`
-      : `<button class="btn" style="padding:3px 8px;font-size:9px" onclick="setAdminAccount('${c.id}')">Set Admin</button>`;
-    const accessBtn = p && isPurchaseAccessActive(p)
-      ? `<button class="btn red" style="padding:3px 8px;font-size:9px" onclick="revokeAccess('${c.id}','${(c.email||'').replace(/'/g,"\\'")}','${(c.full_name||c.email||'').replace(/'/g,"\\'")}')">Revoke</button>`
-      : p
-        ? (trial
-            ? `<button class="btn y" style="padding:3px 8px;font-size:9px" onclick="grantTrialAccess('${c.id}','${(c.email||'').replace(/'/g,"\\'")}')">Renew 24h</button>`
-            : `<button class="btn green" style="padding:3px 8px;font-size:9px" onclick="restoreAccess('${p.id}','${(c.full_name||c.email||'').replace(/'/g,"\\'")}')">Restore</button>`)
-        : `<button class="btn y" style="padding:3px 8px;font-size:9px" onclick="grantAccess('${c.id}','${(c.email||'').replace(/'/g,"\\'")}')">Grant</button>`;
-    const actions = `${adminBtn}${accessBtn}`;
-
+    const selectedType = currentAccountType(c);
     return `<tr>
       <td>${c.full_name || '—'}${profileFlag}</td>
       <td class="mono">${c.email || '—'}</td>
       <td>${status}</td>
-      <td>${product}</td>
+      <td>
+        <select id="acct-type-${c.id}" class="search-inp" style="width:180px">
+          ${accountTypeOptions(selectedType)}
+        </select>
+      </td>
       <td class="mono">${c.project_count || 0}</td>
       <td>${lastActiveCell}</td>
       <td class="mono" style="font-size:11px">${joined}</td>
-      <td class="mono" style="font-size:11px">${purchaseDate}</td>
-      <td><div class="td-actions">${actions}</div></td>
-    </tr>`;
-  }).join('');
-}
-
-function renderActiveTesters(customers) {
-  const tbody = document.getElementById('testers-body');
-  const summary = document.getElementById('tester-summary');
-  const testers = (customers || [])
-    .filter(c => c.is_active_tester)
-    .sort((a, b) => new Date(b.last_active_at || 0) - new Date(a.last_active_at || 0))
-    .slice(0, 30);
-
-  if (summary) summary.textContent = `${testers.length} user${testers.length === 1 ? '' : 's'} active in last 24h`;
-  if (!testers.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="empty">No recent tester activity in the last 24 hours.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = testers.map(c => {
-    const isAdmin = isAdminAccountId(c.id);
-    const access = c.purchase
-      ? (isAdmin ? '<span class="badge badge-gray">Admin</span>' : (isPurchaseAccessActive(c.purchase) ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>'))
-      : '<span class="badge badge-gray">No Purchase</span>';
-    return `<tr>
-      <td>${c.full_name || '—'}</td>
-      <td class="mono">${c.email || '—'}</td>
-      <td><span class="tester-online mono">${formatRelative(c.last_active_at)}</span><div style="font-size:10px;color:#555">${formatDateTime(c.last_active_at)}</div></td>
-      <td class="mono">${c.project_count || 0}</td>
-      <td>${access}</td>
-    </tr>`;
-  }).join('');
-}
-
-function renderPurchases(purchases) {
-  const tbody = document.getElementById('purchases-body');
-  if (!purchases.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">No purchases yet.</td></tr>'; return; }
-
-  tbody.innerHTML = purchases.slice(0, 50).map(p => {
-    const isAdmin = isAdminAccountId(p.user_id);
-    const trial = isTrialPurchase(p);
-    const trialExpiry = trial ? getTrialExpiry(p) : null;
-    const status = isAdmin
-      ? '<span class="badge badge-gray">Admin</span>'
-      : isPurchaseAccessActive(p)
-      ? (trial ? '<span class="badge badge-yellow">Trial (24h)</span>' : '<span class="badge badge-green">Active</span>')
-      : '<span class="badge badge-red">Inactive</span>';
-    const amountCents = isAdmin ? 0 : getPurchaseAmountCents(p);
-    const amount = amountCents > 0 ? '$' + (amountCents / 100).toLocaleString() : '$0';
-    const date = new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const stripeId = p.stripe_payment_intent ? `<span class="mono" style="font-size:10px;color:#444">${p.stripe_payment_intent.substring(0, 20)}…</span>` : '—';
-    const email = profilesById[p.user_id]?.email || p.email || p.customer_email || p.billing_email || `${(p.user_id || '').substring(0, 8)}…`;
-    return `<tr>
-      <td class="mono">${email}</td>
-      <td><span class="badge badge-yellow">${isAdmin ? 'admin' : (p.product || 'takeoff')}</span>${trialExpiry ? `<div style="font-size:10px;color:#555;margin-top:4px">expires ${formatDateTime(trialExpiry)}</div>` : ''}</td>
-      <td class="mono">${amount}</td>
-      <td>${status}</td>
-      <td class="mono" style="font-size:11px">${date}</td>
-      <td>${stripeId}</td>
+      <td>
+        <div class="td-actions">
+          <button class="btn y" style="padding:3px 8px;font-size:9px" onclick="applyAccountType('${c.id}','${(c.full_name||c.email||'').replace(/'/g,"\\'")}')">Apply</button>
+        </div>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -1406,7 +1406,8 @@ function filterTable() {
     (c.email || '').toLowerCase().includes(q) ||
     (c.full_name || '').toLowerCase().includes(q)
   );
-  renderTable(filtered);
+  renderCustomerRows(filtered.filter(isCustomerActive), 'active-body');
+  renderCustomerRows(filtered.filter(c => !isCustomerActive(c)), 'inactive-body');
 }
 // ── ADMIN SECURITY ──
 function refreshPinState() {
@@ -1600,6 +1601,24 @@ async function grantTrialAccess(userId, email) {
   });
   if (error) alert('Error: ' + error.message);
   else loadData();
+}
+
+async function applyAccountType(userId, name) {
+  const sel = document.getElementById(`acct-type-${userId}`);
+  if (!sel) return;
+  const accountType = sel.value;
+  try {
+    const resp = await fetch(ADMIN_API_URL, {
+      method: 'PATCH',
+      headers: adminAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ action: 'set_account_type', userId, accountType })
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(payload.error || `Account update failed (${resp.status})`);
+    loadData();
+  } catch (e) {
+    alert(`Failed to update ${name || 'user'}: ${e.message || e}`);
+  }
 }
 
 function stopLiveUpdates() {
