@@ -1,0 +1,3366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PaveView · Detection Platform</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d0f11;
+    --surface:   #13161a;
+    --border:    #222629;
+    --muted:     #3a3f46;
+    --text:      #e8eaed;
+    --sub:       #7a8390;
+    --accent:    #f5c542;
+    --accent2:   #4fc3f7;
+
+    /* class palette */
+    --c-asphalt:    rgba(20,20,20,0.82);
+    --c-obstruct:   rgba(140,145,150,0.72);
+    --c-stall:      rgba(255,255,255,0.80);
+    --c-hatching:   rgba(245,197,66,0.75);
+    --c-stencil:    rgba(245,197,66,0.60);
+    --c-handicap:   rgba(79,195,247,0.75);
+    --c-perimeter:  rgba(255,100,80,0.55);
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; }
+
+  /* -- LAYOUT -- */
+  .shell {
+    display: grid;
+    grid-template-rows: 56px 1fr;
+    grid-template-columns: 280px 1fr;
+    height: 100vh;
+  }
+
+  /* TOPBAR */
+  .topbar {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 18px; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent); }
+  .tag { font-size: 10px; letter-spacing: 2px; color: var(--sub); text-transform: uppercase; padding: 3px 8px; border: 1px solid var(--border); border-radius: 3px; }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .status-dot.active { background: #4caf50; box-shadow: 0 0 6px #4caf5088; }
+  .status-label { font-size: 11px; color: var(--sub); }
+
+  /* SIDEBAR */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 20px 16px;
+    display: flex; flex-direction: column; gap: 24px;
+    overflow-y: auto;
+  }
+  .section-label {
+    font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase;
+    color: var(--sub); margin-bottom: 10px;
+  }
+
+  /* Upload zone */
+  .upload-zone {
+    display: block;
+    border: 1.5px dashed var(--muted);
+    border-radius: 8px;
+    padding: 28px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+  }
+  .upload-zone:hover { border-color: var(--accent); background: rgba(245,197,66,.04); }
+  .upload-icon { font-size: 28px; margin-bottom: 8px; }
+  .upload-zone p { font-size: 11px; color: var(--sub); line-height: 1.6; }
+
+  /* Thumb */
+  .thumb-wrap { position: relative; border-radius: 6px; overflow: hidden; display: none; }
+  .thumb-wrap img { width: 100%; display: block; }
+  .thumb-clear {
+    position: absolute; top: 6px; right: 6px;
+    background: rgba(0,0,0,.7); color: #fff;
+    border: none; border-radius: 50%; width: 22px; height: 22px;
+    font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+
+  /* Confidence */
+  .conf-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .conf-val { font-size: 13px; color: var(--accent); }
+  input[type=range] {
+    -webkit-appearance: none; width: 100%; height: 4px;
+    background: var(--border); border-radius: 2px; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px;
+    border-radius: 50%; background: var(--accent); cursor: pointer;
+  }
+
+  /* Class toggles */
+  .class-list { display: flex; flex-direction: column; gap: 6px; }
+  .class-item {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; cursor: pointer; padding: 5px 8px;
+    border-radius: 5px; transition: background .15s;
+  }
+  .class-item:hover { background: rgba(255,255,255,.04); }
+  .class-item input { display: none; }
+  .class-swatch {
+    width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0;
+    border: 1.5px solid rgba(255,255,255,.15);
+  }
+  .class-item.off .class-swatch { opacity: .25; }
+  .class-item.off span { color: var(--muted); }
+
+  /* Run button */
+  .run-btn {
+    background: var(--accent); color: #000;
+    font-family: 'Syne', sans-serif; font-weight: 700;
+    font-size: 13px; letter-spacing: 1px;
+    border: none; border-radius: 7px; padding: 13px;
+    cursor: pointer; width: 100%;
+    transition: opacity .2s, transform .1s;
+    text-transform: uppercase;
+  }
+  .run-btn:hover { opacity: .88; }
+  .run-btn:active { transform: scale(.98); }
+  .run-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+  /* Legend */
+  .legend { display: flex; flex-direction: column; gap: 5px; }
+  .legend-row { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--sub); }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* -- MAIN CANVAS AREA -- */
+  .main {
+    position: relative; overflow: hidden;
+    background: repeating-conic-gradient(#13161a 0% 25%, #0d0f11 0% 50%) 0 0 / 24px 24px;
+  }
+
+  .canvas-wrap {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    cursor: default;
+  }
+  .canvas-wrap.panning { cursor: grab; }
+  .canvas-wrap.panning:active { cursor: grabbing; }
+  #mainCanvas { display: block; transform-origin: center center; }
+  #mainCanvas.draw-mode { cursor: crosshair; }
+
+  /* Spinner overlay */
+  .spinner-overlay {
+    position: absolute; inset: 0;
+    background: rgba(13,15,17,.82);
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px;
+    z-index: 10;
+  }
+  .spinner-overlay.active { display: flex; }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner-msg { font-size: 12px; color: var(--sub); letter-spacing: 1px; }
+
+  /* Stats bar */
+  .stats-bar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: rgba(13,15,17,.9);
+    border-top: 1px solid var(--border);
+    display: flex; gap: 24px; padding: 10px 20px;
+    font-size: 11px; color: var(--sub);
+  }
+  .stat { display: flex; gap: 6px; align-items: center; }
+  .stat strong { color: var(--text); font-weight: 500; }
+
+  /* Empty state */
+  .empty-state {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; pointer-events: none;
+  }
+  .empty-state .big { font-family: 'Syne', sans-serif; font-size: 13px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
+  .empty-state .small { font-size: 11px; color: var(--border); }
+
+  /* -- SCROLLBAR -- */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div id="auth-check" style="position:fixed;inset:0;background:#0d0f11;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:'DM Mono',monospace;font-size:11px;color:#7a8390;">Checking session…</div>
+<div class="shell">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="logo">Pave<span>View</span></div>
+    <div class="tag">Detection Platform</div>
+    <div class="topbar-right">
+      <div class="status-dot" id="statusDot"></div>
+      <div class="status-label" id="statusLabel">Idle</div>
+    </div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <div>
+      <div class="section-label">Image</div>
+      <input type="file" id="fileInput" accept="image/*" style="display:none;">
+      <label for="fileInput" class="upload-zone" id="uploadZone">
+        <div class="upload-icon">🛰️</div>
+        <p>Click to upload aerial image</p>
+      </label>
+      <div class="thumb-wrap" id="thumbWrap">
+        <img id="thumbImg" src="" alt="preview">
+        <button class="thumb-clear" id="thumbClear">×</button>
+      </div>
+    </div>
+
+    <button class="run-btn" id="runBtn" disabled>Detect Zones</button>
+
+    <button class="run-btn" id="calibrateBtn" disabled style="margin-top:8px;background:var(--surface);color:#c084fc;border:1.5px solid #c084fc;">Measure Stall Width</button>
+    <button class="run-btn" id="setTemplateBtn" disabled style="margin-top:4px;background:var(--surface);color:#c084fc;border:1.5px solid #c084fc;font-size:11px;padding:8px;display:none;">Use This Spacing</button>
+
+    <button class="run-btn" id="drawRowBtn" disabled style="margin-top:8px;background:var(--surface);color:#f5c542;border:1.5px solid var(--accent);">Draw Stall Line</button>
+
+    <button class="run-btn" id="undoRowBtn" disabled style="margin-top:4px;background:var(--surface);color:var(--muted);border:1.5px solid var(--muted);font-size:11px;padding:8px;">Undo Last Row</button>
+
+    <button class="run-btn" id="clearRefBtn" disabled style="margin-top:4px;background:var(--surface);color:var(--muted);border:1.5px solid var(--muted);font-size:11px;padding:8px;">Clear All</button>
+
+    <button class="run-btn" id="reviewBtn" disabled style="margin-top:16px;background:linear-gradient(135deg,#f5c542,#e6a817);color:#000;font-weight:700;border:none;">Confirm & Review →</button>
+
+  </aside>
+  <!-- Hidden inputs kept for JS compatibility -->
+  <input type="range" id="confSliderMain" min="10" max="90" value="40" style="display:none;">
+  <span id="confValMain" style="display:none;">40%</span>
+  <input type="range" id="stallWSlider" min="10" max="300" value="30" style="display:none;">
+  <input type="range" id="stallHSlider" min="20" max="600" value="55" style="display:none;">
+  <span id="stallWVal" style="display:none;">30px</span>
+  <span id="stallHVal" style="display:none;">55px</span>
+  <div id="classList" style="display:none;">
+    <label class="class-item" data-class="lot_perimeter"><input type="checkbox" checked></label>
+    <label class="class-item" data-class="obstruction"><input type="checkbox" checked></label>
+    <label class="class-item" data-class="hatching"><input type="checkbox" checked></label>
+    <label class="class-item" data-class="stencil"><input type="checkbox" checked></label>
+    <label class="class-item" data-class="arrow"><input type="checkbox" checked></label>
+    <label class="class-item" data-class="handicap"><input type="checkbox" checked></label>
+  </div>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <div class="empty-state" id="emptyState">
+      <div class="big">No image loaded</div>
+      <div class="small">Upload an aerial parking lot image to begin</div>
+    </div>
+
+    <div class="canvas-wrap">
+      <canvas id="mainCanvas"></canvas>
+    </div>
+
+    <!-- Legend — shown after detection -->
+    <div id="legendPanel" style="display:none;position:absolute;top:12px;right:12px;background:rgba(13,15,17,0.88);border:1px solid #1e2328;border-radius:8px;padding:10px 13px;z-index:5;backdrop-filter:blur(4px);">
+      <div style="font-size:9px;letter-spacing:2px;color:#3a4048;text-transform:uppercase;margin-bottom:8px;">Legend</div>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:#7a8390;"><div style="width:10px;height:10px;border-radius:2px;background:#ff6450;flex-shrink:0;"></div>Lot Perimeter</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:#7a8390;"><div style="width:10px;height:10px;border-radius:2px;background:#dc3232;flex-shrink:0;"></div>Obstructions</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:#7a8390;"><div style="width:10px;height:10px;border-radius:2px;background:#f5c542;flex-shrink:0;"></div>Hatching / ADA</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:#7a8390;"><div style="width:10px;height:10px;border-radius:2px;background:#d4a800;flex-shrink:0;"></div>Stencils</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:#7a8390;"><div style="width:10px;height:10px;border-radius:2px;background:#e8d080;flex-shrink:0;"></div>Arrows</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:#7a8390;"><div style="width:10px;height:10px;border-radius:2px;background:#4fc3f7;flex-shrink:0;"></div>Handicap</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:#7a8390;"><div style="width:10px;height:10px;border-radius:2px;background:#f5c542;opacity:0.6;flex-shrink:0;"></div>Stall Lines</div>
+      </div>
+    </div>
+
+    <div class="spinner-overlay" id="spinnerOverlay">
+      <div class="spinner"></div>
+      <div class="spinner-msg" id="spinnerMsg">Initializing...</div>
+    </div>
+
+    <div class="stats-bar" id="statsBar" style="display:none;">
+      <div class="stat">Stalls: <strong id="statStalls">—</strong></div>
+      <div class="stat">Obstructions: <strong id="statObstructions">—</strong></div>
+      <div class="stat">Handicap: <strong id="statHandicap">—</strong></div>
+      <div class="stat">Detections: <strong id="statTotal">—</strong></div>
+      <div class="stat">Time: <strong id="statTime">—</strong></div>
+    </div>
+
+    <!-- DEBUG PANEL -->
+    <div id="debugPanel" style="display:none;position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.85);color:#f5c542;font-family:monospace;font-size:10px;padding:10px 14px;border-radius:6px;max-width:320px;z-index:20;line-height:1.7;">
+      <div style="color:#7a8390;margin-bottom:4px;letter-spacing:1px;">RAW CLASS NAMES</div>
+      <div><span style="color:#4fc3f7;">MAIN MODEL:</span> <span id="debugMain">—</span></div>
+      <div style="margin-top:4px;"><span style="color:#4fc3f7;">STALL MODEL:</span> <span id="debugStall">—</span></div>
+    </div>
+
+  </main>
+
+</div>
+
+<!-- -- REVIEW MODAL -------------------------------------------------------- -->
+<div id="reviewModal" style="display:none;position:fixed;inset:0;z-index:100;background:#0d0f11;flex-direction:column;font-family:'DM Mono',monospace;">
+
+  <!-- Topbar -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#13161a;border-bottom:1px solid #1e2328;flex-shrink:0;">
+    <div style="display:flex;align-items:center;gap:16px;">
+      <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:17px;color:#f5c542;">Pave<span style="color:#fff;">View</span></span>
+      <div style="width:1px;height:20px;background:#1e2328;"></div>
+      <span id="reviewPhaseLabel" style="font-size:10px;letter-spacing:2px;color:#5a6270;text-transform:uppercase;"></span>
+      <div id="reviewPhaseInstruction" style="padding:5px 10px;border-radius:6px;background:rgba(13,15,17,0.84);border:1px solid rgba(245,197,66,0.35);font-family:'Syne',sans-serif;font-size:13px;font-weight:700;letter-spacing:0.2px;color:#f5c542;text-transform:uppercase;white-space:nowrap;text-align:center;pointer-events:none;"></div>
+    </div>
+    <!-- Phase stepper -->
+    <div id="reviewStepper" style="display:flex;align-items:center;gap:6px;"></div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span id="reviewProgress" style="font-size:11px;color:#5a6270;"></span>
+      <button id="reviewDoneBtn" style="background:linear-gradient(135deg,#f5c542,#e6a817);color:#000;border:none;padding:9px 20px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;">FINISH →</button>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div style="display:flex;flex:1;overflow:hidden;">
+
+    <!-- Left: detection list (hidden on "missed" phase) -->
+    <div id="reviewLeftPanel" style="width:200px;background:#0f1114;border-right:1px solid #1e2328;display:flex;flex-direction:column;flex-shrink:0;">
+      <div style="padding:10px 12px 6px;font-size:9px;letter-spacing:2px;color:#3a4048;text-transform:uppercase;border-bottom:1px solid #1a1e24;">In This Phase</div>
+      <div id="reviewDetList" style="flex:1;overflow-y:auto;padding:4px 6px;"></div>
+    </div>
+
+    <!-- Center: canvas -->
+    <div style="flex:1;position:relative;overflow:hidden;background:repeating-conic-gradient(#13161a 0% 25%,#0d0f11 0% 50%) 0 0/24px 24px;">
+      <canvas id="reviewCanvas" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);max-width:100%;max-height:100%;display:block;cursor:default;"></canvas>
+      <div id="reviewDrawHint" style="display:none;position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(245,197,66,0.12);border:1px solid rgba(245,197,66,0.5);padding:7px 18px;border-radius:20px;font-size:11px;color:#f5c542;pointer-events:none;white-space:nowrap;"></div>
+      <button id="reviewPrevBtn" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);background:rgba(19,22,26,0.9);color:#fff;border:1px solid #2a2f36;width:38px;height:38px;border-radius:50%;font-size:18px;cursor:pointer;">‹</button>
+      <button id="reviewNextBtn" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:rgba(19,22,26,0.9);color:#fff;border:1px solid #2a2f36;width:38px;height:38px;border-radius:50%;font-size:18px;cursor:pointer;">›</button>
+    </div>
+
+    <!-- Right: context panel (switches by phase) -->
+    <div style="width:240px;background:#0f1114;border-left:1px solid #1e2328;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;">
+
+      <!-- Detection info (shown during detect phases) -->
+      <div id="reviewDetPanel" style="display:flex;flex-direction:column;">
+        <div style="padding:12px 14px;border-bottom:1px solid #1e2328;">
+          <div id="reviewDetLabel" style="font-size:13px;font-weight:700;color:#f5c542;margin-bottom:3px;text-transform:capitalize;"></div>
+          <div id="reviewDetMeta" style="font-size:10px;color:#5a6270;line-height:1.6;"></div>
+        </div>
+        <div style="padding:10px 14px;border-bottom:1px solid #1e2328;">
+          <div style="font-size:9px;color:#3a4048;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;">Edit</div>
+          <div style="font-size:10px;color:#5a6270;line-height:1.7;">Hover edge → dot appears<br>Drag dot to reshape<br>Click edge to insert point<br>When adding/redrawing a zone: click the first point again or press Enter to finish.</div>
+        </div>
+        <div style="padding:10px 14px;display:flex;flex-direction:column;gap:7px;border-bottom:1px solid #1e2328;">
+          <button id="reviewDeleteBtn" style="background:#1a0a0a;color:#ff5555;border:1px solid #3a1a1a;padding:8px;border-radius:5px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;font-weight:700;">✕ Delete Zone</button>
+          <button id="reviewRedrawBtn" style="background:#110d1a;color:#c084fc;border:1px solid #2a1a3a;padding:8px;border-radius:5px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;">↺ Redraw Zone</button>
+          <button id="reviewAddBtn" style="background:#0d1a0d;color:#4caf50;border:1px solid #1a3a1a;padding:8px;border-radius:5px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;">+ Add Zone</button>
+          <div id="reviewRedrawWrap" style="display:none;padding:8px;background:#13161a;border-radius:5px;border:1px solid #2a1a3a;">
+            <div style="font-size:10px;color:#c084fc;margin-bottom:5px;">Click to trace · Double-click to close</div>
+            <button id="reviewCancelRedraw" style="background:transparent;color:#5a6270;border:1px solid #2a2f36;padding:5px;border-radius:4px;font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;width:100%;">Cancel</button>
+          </div>
+          <div id="reviewAddTypeWrap" style="display:none;flex-direction:column;gap:5px;padding:8px;background:#13161a;border-radius:5px;border:1px solid #2a2f36;">
+            <select id="reviewAddType" style="background:#0d0f11;color:#fff;border:1px solid #2a2f36;border-radius:4px;padding:6px;font-family:'DM Mono',monospace;font-size:11px;width:100%;">
+              <option value="lot_perimeter">Lot Perimeter</option>
+              <option value="obstruction">Obstruction</option>
+              <option value="hatching">Hatching / ADA</option>
+              <option value="stencil">Stencil</option>
+              <option value="arrow">Arrow</option>
+              <option value="handicap">Handicap</option>
+            </select>
+            <button id="reviewCancelAdd" style="background:transparent;color:#5a6270;border:1px solid #2a2f36;padding:5px;border-radius:4px;font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;">Cancel</button>
+          </div>
+        </div>
+        <div style="padding:10px 14px;">
+          <div id="reviewStallCount" style="font-size:11px;color:#f5c542;"></div>
+        </div>
+      </div>
+
+      <!-- "Anything Missed?" panel (shown on last phase) -->
+      <div id="reviewMissedPanel" style="display:none;flex-direction:column;gap:0;">
+        <div style="padding:14px;border-bottom:1px solid #1e2328;">
+          <div style="font-size:13px;font-weight:700;color:#f5c542;margin-bottom:4px;">Anything Missed?</div>
+          <div style="font-size:10px;color:#5a6270;line-height:1.6;">Add any features the model didn't catch.</div>
+        </div>
+
+        <!-- Stencils -->
+        <div style="padding:10px 14px;border-bottom:1px solid #1e2328;">
+          <div style="font-size:9px;letter-spacing:2px;color:#3a4048;text-transform:uppercase;margin-bottom:8px;">Stencils</div>
+          <div id="missedStencilList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;max-height:120px;overflow-y:auto;"></div>
+          <div style="display:flex;gap:4px;">
+            <select id="missedStencilType" style="flex:1;background:#0d0f11;color:#fff;border:1px solid #2a2f36;border-radius:4px;padding:5px;font-family:'DM Mono',monospace;font-size:10px;">
+              <option>STOP</option>
+              <option>YIELD</option>
+              <option>ONLY</option>
+              <option>RESERVED</option>
+              <option>NO PARKING</option>
+              <option>FIRE LANE</option>
+              <option>Custom...</option>
+            </select>
+            <button id="missedAddStencilBtn" style="background:#1a1e24;color:#f5c542;border:1px solid #2a2f36;padding:5px 8px;border-radius:4px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;">+</button>
+          </div>
+          <input id="missedStencilCustom" placeholder="Custom stencil text..." style="display:none;width:100%;margin-top:4px;background:#0d0f11;color:#fff;border:1px solid #2a2f36;border-radius:4px;padding:5px;font-family:'DM Mono',monospace;font-size:10px;box-sizing:border-box;">
+        </div>
+
+        <!-- Fire Lane -->
+        <div style="padding:10px 14px;border-bottom:1px solid #1e2328;">
+          <div style="font-size:9px;letter-spacing:2px;color:#3a4048;text-transform:uppercase;margin-bottom:8px;">Fire Lane</div>
+          <div style="font-size:10px;color:#5a6270;margin-bottom:6px;">Draw a line along the fire lane.</div>
+          <button id="missedFireLaneBtn" style="background:#1a0d0a;color:#ff6450;border:1px solid #3a1a1a;padding:7px;border-radius:5px;font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;width:100%;">✏ Draw Fire Lane</button>
+          <div id="missedFireLaneList" style="margin-top:6px;display:flex;flex-direction:column;gap:3px;"></div>
+        </div>
+
+        <!-- Point features -->
+        <div style="padding:10px 14px;border-bottom:1px solid #1e2328;">
+          <div style="font-size:9px;letter-spacing:2px;color:#3a4048;text-transform:uppercase;margin-bottom:8px;">Point Features</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+            <button class="missed-point-btn" data-type="bollard" style="background:#0d0f11;color:#4fc3f7;border:1px solid #1a2f3a;padding:7px 4px;border-radius:5px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">⬤ Bollard</button>
+            <button class="missed-point-btn" data-type="stop_block" style="background:#0d0f11;color:#e8d080;border:1px solid #2a2a1a;padding:7px 4px;border-radius:5px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">▬ Stop Block</button>
+            <button class="missed-point-btn" data-type="bollard_sign" style="background:#0d0f11;color:#c084fc;border:1px solid #2a1a3a;padding:7px 4px;border-radius:5px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">🪧 Bollard Sign</button>
+            <button class="missed-point-btn" data-type="speed_bump" style="background:#0d0f11;color:#4caf50;border:1px solid #1a3a1a;padding:7px 4px;border-radius:5px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">〜 Speed Bump</button>
+          </div>
+          <div id="missedPointList" style="margin-top:8px;display:flex;flex-direction:column;gap:3px;max-height:100px;overflow-y:auto;"></div>
+        </div>
+
+        <!-- Confirm -->
+        <div style="padding:12px 14px;">
+          <button id="missedConfirmBtn" style="background:linear-gradient(135deg,#f5c542,#e6a817);color:#000;border:none;padding:10px;border-radius:6px;font-family:'DM Mono',monospace;font-size:12px;font-weight:700;cursor:pointer;width:100%;">CONFIRM & FINISH</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Phase nav bar (bottom) -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:48px;background:#13161a;border-top:1px solid #1e2328;flex-shrink:0;">
+    <button id="reviewPhaseBackBtn" style="background:#1a1e24;color:#fff;border:1px solid #2a2f36;padding:8px 18px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;">← Back</button>
+    <div id="reviewPhaseSteps" style="display:flex;gap:6px;align-items:center;"></div>
+    <button id="reviewPhaseNextBtn" style="background:#f5c542;color:#000;border:none;padding:8px 18px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;">Next Phase →</button>
+  </div>
+</div>
+
+<!-- -- RECEIPT MODAL --------------------------------------------------------- -->
+<div id="receiptModal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.85);align-items:center;justify-content:center;font-family:'DM Mono',monospace;">
+  <div style="background:#13161a;border:1px solid #2a2f36;border-radius:12px;width:520px;max-height:88vh;overflow-y:auto;display:flex;flex-direction:column;">
+
+    <!-- Header -->
+    <div style="padding:20px 24px 14px;border-bottom:1px solid #1e2328;">
+      <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#f5c542;">Pave<span style="color:#fff;">View</span> <span style="font-size:13px;color:#5a6270;font-family:'DM Mono',monospace;font-weight:400;letter-spacing:1px;">SITE REPORT</span></div>
+      <div id="receiptDate" style="font-size:10px;color:#3a4048;margin-top:4px;"></div>
+    </div>
+
+    <!-- Scale bar -->
+    <div style="padding:14px 24px;background:#0f1114;border-bottom:1px solid #1e2328;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="font-size:9px;letter-spacing:2px;color:#3a4048;text-transform:uppercase;">Scale</div>
+      <div id="receiptScaleInfo" style="font-size:11px;color:#f5c542;flex:1;"></div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:10px;color:#5a6270;">Stall width =</span>
+        <input id="receiptStallFt" type="number" value="9" min="1" max="20" step="0.5"
+          style="width:48px;background:#1a1e24;color:#fff;border:1px solid #2a2f36;border-radius:4px;padding:4px 6px;font-family:'DM Mono',monospace;font-size:11px;text-align:center;">
+        <span style="font-size:10px;color:#5a6270;">ft</span>
+        <button id="receiptRecalcBtn" style="background:#f5c542;color:#000;border:none;padding:4px 10px;border-radius:4px;font-family:'DM Mono',monospace;font-size:10px;font-weight:700;cursor:pointer;">Recalc</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;width:100%;">
+        <span style="font-size:10px;color:#5a6270;">Manual override:</span>
+        <input id="receiptManualPx" type="number" placeholder="pixels" min="1"
+          style="width:64px;background:#1a1e24;color:#fff;border:1px solid #2a2f36;border-radius:4px;padding:4px 6px;font-family:'DM Mono',monospace;font-size:10px;text-align:center;">
+        <span style="font-size:10px;color:#5a6270;">=</span>
+        <input id="receiptManualFt" type="number" placeholder="feet" min="1"
+          style="width:56px;background:#1a1e24;color:#fff;border:1px solid #2a2f36;border-radius:4px;padding:4px 6px;font-family:'DM Mono',monospace;font-size:10px;text-align:center;">
+        <span style="font-size:10px;color:#5a6270;">ft</span>
+        <button id="receiptManualBtn" style="background:#1a1e24;color:#f5c542;border:1px solid #2a2f36;padding:4px 10px;border-radius:4px;font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;">Set</button>
+      </div>
+    </div>
+
+    <!-- Line items -->
+    <div id="receiptItems" style="padding:16px 24px;display:flex;flex-direction:column;gap:0;"></div>
+
+    <!-- Stall line length override -->
+    <div style="padding:12px 24px;background:#0f1114;border-top:1px solid #1e2328;display:flex;align-items:center;gap:8px;">
+      <span style="font-size:10px;color:#5a6270;">Stall line length =</span>
+      <input id="receiptStallLineFt" type="number" value="18" min="1" max="50" step="1"
+        style="width:48px;background:#1a1e24;color:#fff;border:1px solid #2a2f36;border-radius:4px;padding:4px 6px;font-family:'DM Mono',monospace;font-size:11px;text-align:center;">
+      <span style="font-size:10px;color:#5a6270;">ft each</span>
+      <button id="receiptStallLineRecalc" style="background:#1a1e24;color:#f5c542;border:1px solid #2a2f36;padding:4px 10px;border-radius:4px;font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;">Update</button>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:16px 24px;border-top:1px solid #1e2328;display:flex;gap:8px;justify-content:flex-end;">
+      <button id="receiptCloseBtn" style="background:#1a1e24;color:#aaa;border:1px solid #2a2f36;padding:9px 18px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;">Close</button>
+      <button id="receiptExportBtn" style="background:linear-gradient(135deg,#f5c542,#e6a817);color:#000;border:none;padding:9px 20px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;">Continue to Report Generation →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// -- CONFIG ------------------------------------------------------------------
+const MAIN_MODEL   = 'my-first-project-ug0a7/4';
+const STALL_MODEL  = 'parking-lot-egjcr-an53v/1';   // car-based gap fill
+const LANE_MODEL   = 'parking-lot-it5ls-vpsdl/1';   // primary — rotated stall spaces
+const PARK_MODEL   = 'parking-dataset-tbypu-vjh7q/1'; // parking=empty stall, car=occupied stall
+const NMS_IOU_THRESH  = 0.10;
+const NMS_DIST_RATIO  = 0.05;
+
+// Class → fill color (RGBA)
+const CLASS_COLORS = {
+  lot_perimeter: 'rgba(255,100,80,0.45)',
+  obstruction:   'rgba(220,50,50,0.68)',
+  obstructions:  'rgba(220,50,50,0.68)',
+  hatching:      'rgba(245,197,66,0.72)',
+  stencil:       'rgba(212,168,0,0.65)',
+  stencils:      'rgba(212,168,0,0.65)',
+  arrow:         'rgba(232,208,128,0.65)',
+  arrows:        'rgba(232,208,128,0.65)',
+  handicap:      'rgba(79,195,247,0.75)',
+  stall:         'rgba(255,255,255,0.80)',
+  stalls:        'rgba(255,255,255,0.80)',
+};
+
+const STALL_CLASSES = new Set(['stall','stalls','parking_stall','parking stall','space','parking_space','parking','car']);
+
+// -- STATE -------------------------------------------------------------------
+let uploadedImage = null;
+let uploadedB64   = null;
+let uploadedW     = 0;
+let uploadedH     = 0;
+let apiScale      = 1;
+let showRowFill   = false;
+let lastResults   = null;
+let refBoxes      = [];
+let refAngle      = null;
+let isDrawMode    = false;
+let isRowMode    = false;
+let rowDirUx     = 0;      // locked direction x (set on 2nd click, never changes)
+let rowDirUy     = 0;      // locked direction y
+let rowDots      = [];     // all placed dots [{x,y}] - current row
+let allRows      = [];     // committed rows [[{x,y},...]]
+let drawStart    = null;
+let dragRow      = null;
+let dragRowStart = null;
+let rowLines     = [];     // kept for compatibility
+
+// Zoom / pan state
+let zoomLevel  = 1;
+let panX       = 0;
+let panY       = 0;
+let isPanning  = false;
+let panStart   = null;
+
+// Calibration state
+let isCalibrateMode = false;
+let dotPoints       = []; // up to 3 stall center dots
+let dragCalibIdx    = -1;
+let dragCalibCorner = -1;
+let dragCalibOff    = null;
+let stallTemplate   = null; // {w, h, spacing}
+
+// -- ELEMENTS ----------------------------------------------------------------
+const fileInput       = document.getElementById('fileInput');
+const uploadZone      = document.getElementById('uploadZone');
+const thumbWrap       = document.getElementById('thumbWrap');
+const thumbImg        = document.getElementById('thumbImg');
+const thumbClear      = document.getElementById('thumbClear');
+const confSliderMain  = document.getElementById('confSliderMain');
+const confValMain     = document.getElementById('confValMain');
+const stallWSlider    = document.getElementById('stallWSlider');
+const stallHSlider    = document.getElementById('stallHSlider');
+const stallWVal       = document.getElementById('stallWVal');
+const stallHVal       = document.getElementById('stallHVal');
+const runBtn          = document.getElementById('runBtn');
+const calibrateBtn    = document.getElementById('calibrateBtn');
+const setTemplateBtn  = document.getElementById('setTemplateBtn');
+const drawRowBtn      = document.getElementById('drawRowBtn');
+const undoRowBtn      = document.getElementById('undoRowBtn');
+const clearRefBtn     = document.getElementById('clearRefBtn');
+const mainCanvas      = document.getElementById('mainCanvas');
+const spinnerOverlay  = document.getElementById('spinnerOverlay');
+const spinnerMsg      = document.getElementById('spinnerMsg');
+const statusDot       = document.getElementById('statusDot');
+const statusLabel     = document.getElementById('statusLabel');
+const statsBar        = document.getElementById('statsBar');
+const emptyState      = document.getElementById('emptyState');
+const classList       = document.getElementById('classList');
+const ctx             = mainCanvas.getContext('2d');
+
+
+
+
+// -- CALIBRATION ---------------------------------------------------------------
+calibrateBtn.addEventListener('click', () => {
+  isCalibrateMode = !isCalibrateMode;
+  if (isCalibrateMode) {
+    isRowMode = false;
+    rowDots = []; rowDirUx = 0; rowDirUy = 0;
+    drawRowBtn.textContent = 'Draw Stall Line';
+    drawRowBtn.style.color = '#f5c542'; drawRowBtn.style.borderColor = '#f5c542';
+    mainCanvas.classList.remove('draw-mode');
+    dotPoints = [];
+    calibrateBtn.textContent = 'Cancel';
+    calibrateBtn.style.color = '#ff6450'; calibrateBtn.style.borderColor = '#ff6450';
+    setTemplateBtn.style.display = 'none';
+    mainCanvas.classList.add('draw-mode');
+  } else {
+    exitCalibrateUi();
+    mainCanvas.classList.remove('draw-mode');
+    redrawAll();
+  }
+});
+
+function exitCalibrateUi(opts) {
+  const keepPartialDots = opts && opts.keepPartialDots;
+  isCalibrateMode = false;
+  calibrateBtn.textContent = 'Measure Stall Width';
+  calibrateBtn.style.color = '#c084fc'; calibrateBtn.style.borderColor = '#c084fc';
+  setTemplateBtn.style.display = 'none';
+  dragCalibIdx = -1; dragCalibOff = null;
+  if (!keepPartialDots) dotPoints = [];
+}
+
+setTemplateBtn.addEventListener('click', () => {
+  if (dotPoints.length < 2) return;
+  const p0 = dotPoints[0], p1 = dotPoints[1];
+  const spacing = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+
+  stallTemplate = { w: spacing, h: spacing * 1.8, spacing };
+  stallWSlider.value = Math.round(spacing); stallWVal.textContent = Math.round(spacing) + 'px';
+
+  exitCalibrateUi();
+  calibrateBtn.textContent = `Width: ${Math.round(spacing)}px ✓`;
+  calibrateBtn.style.color = '#c084fc'; calibrateBtn.style.borderColor = '#c084fc';
+  mainCanvas.classList.remove('draw-mode');
+  redrawAll();
+  console.log(`[PaveView] Stall width: ${Math.round(spacing)}px`);
+});
+
+function drawCalibBoxes() {
+  if (!dotPoints.length) return;
+
+  if (dotPoints.length === 2) {
+    const p0 = dotPoints[0], p1 = dotPoints[1];
+    const spacing = Math.round(Math.hypot(p1.x-p0.x, p1.y-p0.y));
+    const mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
+
+    // Line between stall lines
+    ctx.strokeStyle = '#d946ef'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+
+    // Distance label
+    ctx.fillStyle = '#f0abfc'; ctx.font = 'bold 13px DM Mono, monospace';
+    ctx.fillText(`${spacing}px`, mx + 6, my - 6);
+  }
+
+  // Endpoint dots = stall lines
+  dotPoints.forEach((p, i) => {
+    ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2);
+    ctx.fillStyle = '#d946ef'; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = '#f0abfc'; ctx.font = 'bold 11px DM Mono, monospace';
+    ctx.fillText(i === 0 ? 'line 1' : 'line 2', p.x + 7, p.y + 4);
+  });
+
+  // Prompt
+  ctx.fillStyle = '#f0abfc'; ctx.font = 'bold 12px DM Mono, monospace';
+  if (dotPoints.length === 0) ctx.fillText('Click a stall line', 10, 20);
+  else if (dotPoints.length === 1) ctx.fillText('Click the next stall line', 10, 20);
+}
+
+drawRowBtn.addEventListener('click', () => {
+  console.log('[PaveView] drawRowBtn clicked, isRowMode was:', isRowMode, 'disabled:', drawRowBtn.disabled);
+  isRowMode = !isRowMode;
+  if (isRowMode) {
+    exitCalibrateUi();
+    rowDots = []; rowDirUx = 0; rowDirUy = 0;
+    drawRowBtn.textContent = 'Stop Drawing';
+    drawRowBtn.style.color = '#ff6450';
+    drawRowBtn.style.borderColor = '#ff6450';
+    mainCanvas.classList.add('draw-mode');
+    redrawAll();
+  } else {
+    // Turn off — discard any in-progress dots
+    rowDots = []; rowDirUx = 0; rowDirUy = 0;
+    drawRowBtn.textContent = 'Draw Stall Line';
+    drawRowBtn.style.color = '#f5c542';
+    drawRowBtn.style.borderColor = '#f5c542';
+    mainCanvas.classList.remove('draw-mode');
+    redrawAll();
+  }
+});
+
+undoRowBtn.addEventListener('click', () => {
+  if (allRows.length > 0) allRows.pop();
+  undoRowBtn.disabled = allRows.length === 0;
+  redrawAll();
+});
+
+clearRefBtn.addEventListener('click', () => {
+  allRows = []; rowDots = []; rowDirUx = 0; rowDirUy = 0;
+  undoRowBtn.disabled = true; clearRefBtn.disabled = true;
+  isRowMode = false;
+  drawRowBtn.textContent = 'Draw Stall Line';
+  drawRowBtn.style.color = '#f5c542';
+  drawRowBtn.style.borderColor = '#f5c542';
+  mainCanvas.classList.remove('draw-mode');
+  redrawAll();
+});
+
+// Place one dot per click.
+// Click 1: exact position.
+// Click 2: locks direction. Dot placed exactly spacing from dot 1.
+// Click 3+: same direction, same spacing. Click position ignored entirely.
+function placeNextDot(pos) {
+  const S = stallTemplate ? stallTemplate.spacing : Number(stallWSlider.value) || 30;
+
+  if (rowDots.length === 0) {
+    rowDots.push({ x: pos.x, y: pos.y });
+
+  } else if (rowDots.length === 1) {
+    const p = rowDots[0];
+    const dx = pos.x - p.x, dy = pos.y - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 1) return;
+    rowDirUx = dx / d;
+    rowDirUy = dy / d;
+    rowDots.push({ x: p.x + rowDirUx * S, y: p.y + rowDirUy * S });
+
+  } else {
+    // Direction and spacing are locked. Click position is irrelevant.
+    const p = rowDots[rowDots.length - 1];
+    rowDots.push({ x: p.x + rowDirUx * S, y: p.y + rowDirUy * S });
+  }
+  redrawAll();
+}
+
+function drawRowStalls() {
+  const drawDot = d => {
+    ctx.beginPath(); ctx.arc(d.x, d.y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#f5c542'; ctx.fill();
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+  };
+  allRows.forEach(row => row.forEach(drawDot));
+  rowDots.forEach(drawDot);
+
+  const total = allRows.reduce((s, r) => s + r.length, 0) + rowDots.length;
+  if (total > 0) {
+    document.getElementById('statStalls').textContent = total;
+    statsBar.style.display = 'flex';
+  }
+}
+
+function redrawAll() {
+  if (lastResults) {
+    drawDetections(lastResults.perimeterPred, lastResults.nonStalls);
+  } else if (uploadedImage) {
+    restoreBaseImage();
+  }
+  drawRowStalls();
+  if (isCalibrateMode || dotPoints.length > 0) drawCalibBoxes();
+}
+
+const canvasWrap = document.querySelector('.canvas-wrap');
+
+function applyTransform() {
+  mainCanvas.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+}
+
+function resetZoom() {
+  zoomLevel = 1; panX = 0; panY = 0;
+  applyTransform();
+}
+
+// Zoom with scroll wheel
+canvasWrap.addEventListener('wheel', e => {
+  if (!uploadedImage) return;
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  zoomLevel = Math.max(0.3, Math.min(8, zoomLevel * factor));
+  applyTransform();
+}, { passive: false });
+
+// Pan with middle mouse or space+drag
+canvasWrap.addEventListener('mousedown', e => {
+  if (e.button === 1 || e.button === 2) { // middle or right click = pan
+    e.preventDefault();
+    isPanning = true;
+    panStart = { x: e.clientX - panX, y: e.clientY - panY };
+    canvasWrap.classList.add('panning');
+  }
+});
+window.addEventListener('mousemove', e => {
+  if (!isPanning || !panStart) return;
+  panX = e.clientX - panStart.x;
+  panY = e.clientY - panStart.y;
+  applyTransform();
+});
+window.addEventListener('mouseup', e => {
+  if (e.button === 1 || e.button === 2) {
+    isPanning = false; panStart = null;
+    canvasWrap.classList.remove('panning');
+  }
+});
+canvasWrap.addEventListener('contextmenu', e => e.preventDefault());
+
+// Get canvas-space coords from mouse event — correctly handles CSS zoom/pan transform
+function canvasCoords(e) {
+  const rect = mainCanvas.getBoundingClientRect();
+  // rect already reflects CSS transform (zoom+pan), so dividing by rect size gives
+  // normalized 0-1 position, then multiply by actual canvas pixels
+  return {
+    x: (e.clientX - rect.left) / rect.width  * mainCanvas.width,
+    y: (e.clientY - rect.top)  / rect.height * mainCanvas.height,
+  };
+}
+
+// Find which row the point is near (within h/2 perpendicular distance of row line)
+function hitTestRow(px, py) {
+  for (let i = allRows.length - 1; i >= 0; i--) {
+    const r = { stalls: allRows[i], x1: allRows[i][0]?.x, y1: allRows[i][0]?.y, x2: allRows[i][allRows[i].length-1]?.x, y2: allRows[i][allRows[i].length-1]?.y };
+    if (!r.stalls.length) continue;
+    const h = r.stalls[0].stallH ?? (stallTemplate ? stallTemplate.spacing : Number(stallWSlider.value) || 24);
+    const dx = r.x2 - r.x1, dy = r.y2 - r.y1;
+    const len = Math.sqrt(dx*dx + dy*dy);
+    if (len < 1) continue;
+    const t = ((px - r.x1)*dx + (py - r.y1)*dy) / (len*len);
+    if (t < -0.1 || t > 1.1) continue;
+    const closestX = r.x1 + t*dx, closestY = r.y1 + t*dy;
+    const dist = Math.hypot(px - closestX, py - closestY);
+    if (dist < h * 0.6) return i;
+  }
+  return -1;
+}
+
+// Rebuild stall points after moving a row
+function rebuildRowStalls(row) {
+  const stalls = stallsFromLine(row.x1, row.y1, row.x2, row.y2);
+  row.stalls = stalls;
+}
+
+mainCanvas.addEventListener('mousedown', e => {
+  const pos = canvasCoords(e);
+
+  // Calibration box drag/resize
+  if (isCalibrateMode && dotPoints.length > 0) {
+    const HIT = 12;
+    for (let i = dotPoints.length - 1; i >= 0; i--) {
+      if (Math.hypot(pos.x-dotPoints[i].x, pos.y-dotPoints[i].y) < HIT) {
+        dragCalibIdx = i;
+        dragCalibOff = { x: pos.x-dotPoints[i].x, y: pos.y-dotPoints[i].y };
+        mainCanvas.style.cursor = 'grabbing';
+        return;
+      }
+    }
+    return;
+  }
+
+  // Row drag
+  if (!isRowMode) {
+    const idx = hitTestRow(pos.x, pos.y);
+    if (idx >= 0) {
+      dragRow = idx; dragRowStart = pos;
+      mainCanvas.style.cursor = 'grabbing';
+    }
+  }
+});
+
+mainCanvas.addEventListener('mousemove', e => {
+  const cur = canvasCoords(e);
+
+  // Calibration box drag/resize
+  if (dragCalibIdx >= 0 && dragCalibOff) {
+    dotPoints[dragCalibIdx] = { x: cur.x - dragCalibOff.x, y: cur.y - dragCalibOff.y };
+    redrawAll(); drawCalibBoxes();
+    return;
+  }
+
+  // Row dragging
+  if (dragRow !== null && dragRowStart) {
+    const odx = cur.x - dragRowStart.x;
+    const ody = cur.y - dragRowStart.y;
+  // drag disabled for dot-based rows
+    return;
+    row.x1 += odx; row.y1 += ody;
+    row.x2 += odx; row.y2 += ody;
+    dragRowStart = cur;
+    rebuildRowStalls(row);
+    redrawAll();
+    return;
+  }
+
+  // Row preview — show dots from start to cursor
+  if (isRowMode && rowDots.length === 1) {
+    redrawAll();
+    const start = rowDots[0];
+    const dx = cur.x - start.x, dy = cur.y - start.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 1) {
+      const S = stallTemplate ? stallTemplate.spacing : Number(stallWSlider.value) || 30;
+      const ux = dx / dist, uy = dy / dist;
+      const count = Math.max(1, Math.round(dist / S) + 1);
+      for (let i = 0; i < count; i++) {
+        const px = start.x + ux * i * S, py = start.y + uy * i * S;
+        ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(245,197,66,0.6)'; ctx.fill();
+      }
+      // Count label
+      ctx.fillStyle = '#f5c542';
+      ctx.fillRect(cur.x + 6, cur.y - 22, count > 9 ? 52 : 44, 20);
+      ctx.fillStyle = '#000'; ctx.font = 'bold 13px DM Mono, monospace';
+      ctx.fillText(`${count} dots`, cur.x + 10, cur.y - 7);
+    }
+  }
+
+  // Cursor hint — show grab when hovering a row (not in draw modes)
+  if (!isDrawMode && !isRowMode && !drawStart) {
+    const idx = hitTestRow(cur.x, cur.y);
+    mainCanvas.style.cursor = idx >= 0 ? 'grab' : '';
+  }
+});
+
+mainCanvas.addEventListener('click', e => {
+  const pos = canvasCoords(e);
+
+  if (isCalibrateMode) {
+    if (dragCalibIdx >= 0) { dragCalibIdx = -1; dragCalibOff = null; return; }
+    if (dotPoints.length >= 2) return;
+    dotPoints.push({ x: pos.x, y: pos.y });
+    redrawAll(); drawCalibBoxes();
+    if (dotPoints.length === 2) {
+      setTemplateBtn.style.display = 'block';
+      setTemplateBtn.disabled = false;
+    }
+    return;
+  }
+
+  if (isRowMode) {
+    if (rowDots.length === 0) {
+      // First click — start point
+      rowDots.push({ x: pos.x, y: pos.y });
+      redrawAll();
+    } else {
+      // Second click — compute and commit row, stay in row mode for next one
+      const start = rowDots[0];
+      const dx = pos.x - start.x, dy = pos.y - start.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1) return;
+      const S = stallTemplate ? stallTemplate.spacing : Number(stallWSlider.value) || 30;
+      const ux = dx / dist, uy = dy / dist;
+      const count = Math.max(1, Math.round(dist / S) + 1);
+      rowDots = [];
+      for (let i = 0; i < count; i++) {
+        rowDots.push({ x: start.x + ux * i * S, y: start.y + uy * i * S });
+      }
+      // Commit row
+      allRows.push([...rowDots]);
+      undoRowBtn.disabled = false;
+      clearRefBtn.disabled = false;
+      // Reset for next row — stay in row mode
+      rowDots = []; rowDirUx = 0; rowDirUy = 0;
+      redrawAll();
+    }
+    return;
+  }
+});
+
+// -- MOUSEUP -------------------------------------------------------------------
+mainCanvas.addEventListener('mouseup', () => {
+  if (dragCalibIdx >= 0) {
+    dragCalibIdx = -1; dragCalibCorner = -1; dragCalibOff = null;
+    mainCanvas.style.cursor = isCalibrateMode ? 'crosshair' : '';
+    redrawAll(); if (dotPoints.length) drawCalibBoxes();
+    return;
+  }
+  if (dragRow !== null) {
+    dragRow = null; dragRowStart = null;
+    mainCanvas.style.cursor = '';
+    return;
+  }
+});
+
+// -- CLASS TOGGLE STATE -------------------------------------------------------
+const enabledClasses = new Set([
+  'lot_perimeter','obstruction','hatching','stencil','arrow','handicap','stall'
+]);
+
+classList.querySelectorAll('.class-item').forEach(item => {
+  const cb = item.querySelector('input');
+  cb.addEventListener('change', () => {
+    const cls = item.dataset.class;
+    if (cb.checked) { enabledClasses.add(cls); item.classList.remove('off'); }
+    else            { enabledClasses.delete(cls); item.classList.add('off'); }
+  });
+});
+
+// -- CONFIDENCE SLIDER --------------------------------------------------------
+
+confSliderMain.addEventListener('input',  () => { confValMain.textContent  = confSliderMain.value  + '%'; });
+stallWSlider.addEventListener('input', () => { stallWVal.textContent = stallWSlider.value + 'px'; });
+stallHSlider.addEventListener('input', () => { stallHVal.textContent = stallHSlider.value + 'px'; });
+
+
+// -- FILE UPLOAD --------------------------------------------------------------
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) handleFile(file);
+});
+
+thumbClear.addEventListener('click', () => {
+  clearImage();
+});
+
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const dataURL = ev.target.result;
+    const img = new Image();
+    img.onload = () => {
+      uploadedImage = img;
+      uploadedW = img.naturalWidth;
+      uploadedH = img.naturalHeight;
+
+      // Resize for API — Roboflow rejects images over ~1.5MB
+      // Cap longest side at 1500px for the API copy, keep original for canvas render
+      const MAX_SIDE = 1500;
+      const scale = Math.min(1, MAX_SIDE / Math.max(uploadedW, uploadedH));
+      apiScale = scale;
+      const apiW = Math.round(uploadedW * scale);
+      const apiH = Math.round(uploadedH * scale);
+      const apiCanvas = document.createElement('canvas');
+      apiCanvas.width  = apiW;
+      apiCanvas.height = apiH;
+      apiCanvas.getContext('2d').drawImage(img, 0, 0, apiW, apiH);
+      uploadedB64 = apiCanvas.toDataURL('image/jpeg', 0.88).split(',')[1];
+
+      thumbImg.src = dataURL;
+      thumbWrap.style.display = 'block';
+      uploadZone.style.display = 'none';
+      runBtn.disabled       = false;
+      drawRowBtn.disabled   = false;
+      calibrateBtn.disabled = false;
+      emptyState.style.display = 'none';
+      resetZoom();
+
+      renderImage();
+    };
+    img.src = dataURL;
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearImage() {
+  uploadedImage = null;
+  uploadedB64   = null;
+  uploadedW     = 0;
+  uploadedH     = 0;
+  apiScale      = 1;
+  _baseImageSnapshot = null;
+
+  // Reset all drawing state
+  refBoxes  = [];
+  refAngle  = null;
+  rowLines = []; allRows = []; rowDots = []; rowDirUx = 0; rowDirUy = 0;
+  drawStart = null;
+  isDrawMode = false;
+  isRowMode  = false;
+  lastResults = null;
+  window.manualStalls = [];
+
+  // Reset sliders to defaults
+  stallWSlider.value = 30; stallWVal.textContent = '30px';
+  stallHSlider.value = 55; stallHVal.textContent = '55px';
+
+  // Reset buttons
+  runBtn.disabled        = true;
+  drawRowBtn.disabled    = true;
+  undoRowBtn.disabled    = true;
+  clearRefBtn.disabled   = true;
+  calibrateBtn.disabled  = true;
+  setTemplateBtn.style.display = 'none';
+  drawRowBtn.textContent = 'Draw Row Line';
+  drawRowBtn.style.color = '#f5c542'; drawRowBtn.style.borderColor = '#f5c542';
+  calibrateBtn.textContent = 'Calibrate Stall Spacing';
+  calibrateBtn.style.color = '#c084fc'; calibrateBtn.style.borderColor = '#c084fc';
+  isCalibrateMode = false; dotPoints = []; dragCalibIdx = -1; stallTemplate = null;
+  mainCanvas.classList.remove('draw-mode');
+
+  thumbWrap.style.display  = 'none';
+  uploadZone.style.display = 'block';
+  emptyState.style.display = 'flex';
+  document.getElementById('legendPanel').style.display = 'none';
+  statsBar.style.display   = 'none';
+  ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+  mainCanvas.width  = 0;
+  mainCanvas.height = 0;
+  fileInput.value   = '';
+  setStatus('idle');
+}
+
+let _baseImageSnapshot = null; // cached ImageData of the base image for toggle redraws
+
+function renderImage() {
+  mainCanvas.width  = uploadedW;
+  mainCanvas.height = uploadedH;
+  ctx.drawImage(uploadedImage, 0, 0);
+  // Cache the base image pixels so toggle can restore without re-drawing from file
+  try { _baseImageSnapshot = ctx.getImageData(0, 0, uploadedW, uploadedH); } catch(e) {}
+}
+
+function restoreBaseImage() {
+  if (_baseImageSnapshot) {
+    ctx.putImageData(_baseImageSnapshot, 0, 0);
+  } else {
+    ctx.drawImage(uploadedImage, 0, 0);
+  }
+}
+
+// -- STATUS -------------------------------------------------------------------
+function setStatus(state, msg) {
+  const states = {
+    idle:     { dot: false, label: 'Idle' },
+    running:  { dot: true,  label: msg || 'Running...' },
+    done:     { dot: true,  label: 'Complete' },
+    error:    { dot: false, label: 'Error' },
+  };
+  const s = states[state] || states.idle;
+  statusDot.classList.toggle('active', s.dot);
+  statusLabel.textContent = s.label;
+}
+
+// Scale prediction coords from API image space back to full canvas space
+function scaleUpPred(p) {
+  if (apiScale === 1) return p;
+  const s = 1 / apiScale;
+  return {
+    ...p,
+    x: p.x * s, y: p.y * s,
+    width: p.width * s, height: p.height * s,
+    points: p.points ? p.points.map(pt => ({ x: pt.x * s, y: pt.y * s })) : p.points,
+  };
+}
+async function runRoboflow(modelPath, b64, confidence, modelType = 'detect') {
+  const payload = {
+    imageBase64: b64,
+    mode: modelType === 'segment' ? 'segment' : 'detect',
+    confidence,
+    overlap: modelType === 'segment' ? 80 : 30
+  };
+  if (modelPath) payload.main_model_id = modelPath;
+  const resp = await fetch('/api/roboflow-detect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (resp.ok) return data;
+  // If a hardcoded model path is forbidden, retry with server-default model.
+  if (resp.status === 403 && modelPath) {
+    const retry = await fetch('/api/roboflow-detect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageBase64: b64,
+        mode: payload.mode,
+        confidence: payload.confidence,
+        overlap: payload.overlap
+      })
+    });
+    const retryData = await retry.json().catch(() => ({}));
+    if (retry.ok) return retryData;
+    throw new Error([retryData?.error, retryData?.hint, `HTTP ${retry.status}`].filter(Boolean).join(' · '));
+  }
+  throw new Error([data?.error, data?.hint, `HTTP ${resp.status}`].filter(Boolean).join(' · '));
+}
+
+// Hybrid call for main model — outline.roboflow.com for polygons (perimeter/zones),
+// detect.roboflow.com for stalls/symbols — exactly matching PaveView's backend
+async function runRoboflowHybrid(modelPath, b64, confidence) {
+  const payload = {
+    imageBase64: b64,
+    mode: 'hybrid',
+    confidence,
+    overlap: 80
+  };
+  if (modelPath) payload.main_model_id = modelPath;
+  const resp = await fetch('/api/roboflow-detect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (resp.ok) return data;
+  // If hardcoded model is forbidden, retry with server default main model.
+  if (resp.status === 403 && modelPath) {
+    const retry = await fetch('/api/roboflow-detect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageBase64: b64,
+        mode: 'hybrid',
+        confidence,
+        overlap: 80
+      })
+    });
+    const retryData = await retry.json().catch(() => ({}));
+    if (retry.ok) return retryData;
+    throw new Error([retryData?.error, retryData?.hint, `HTTP ${retry.status}`].filter(Boolean).join(' · '));
+  }
+  throw new Error([data?.error, data?.hint, `HTTP ${resp.status}`].filter(Boolean).join(' · '));
+}
+
+// -- IOU / NMS ----------------------------------------------------------------
+function iou(a, b) {
+  const ax1 = a.x - a.width/2, ay1 = a.y - a.height/2;
+  const ax2 = a.x + a.width/2, ay2 = a.y + a.height/2;
+  const bx1 = b.x - b.width/2, by1 = b.y - b.height/2;
+  const bx2 = b.x + b.width/2, by2 = b.y + b.height/2;
+
+  const ix1 = Math.max(ax1, bx1), iy1 = Math.max(ay1, by1);
+  const ix2 = Math.min(ax2, bx2), iy2 = Math.min(ay2, by2);
+  const iw = Math.max(0, ix2 - ix1), ih = Math.max(0, iy2 - iy1);
+  const inter = iw * ih;
+  const aArea = a.width * a.height;
+  const bArea = b.width * b.height;
+  return inter / (aArea + bArea - inter + 1e-6);
+}
+
+// Center-to-center distance in pixels
+function centerDist(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+
+// Diagonal of the smaller bbox — use as distance scale
+function smallerDiag(a, b) {
+  const diagA = Math.sqrt(a.width*a.width + a.height*a.height);
+  const diagB = Math.sqrt(b.width*b.width + b.height*b.height);
+  return Math.min(diagA, diagB);
+}
+
+// Two stalls are duplicates if IoU > threshold OR centers are very close
+function isDuplicate(a, b) {
+  if (iou(a, b) > NMS_IOU_THRESH) return true;
+  const dist = centerDist(a, b);
+  const scale = smallerDiag(a, b);
+  if (dist < scale * NMS_DIST_RATIO) return true;
+  return false;
+}
+
+// Merge two arrays of stall predictions — primary wins, secondary fills genuine gaps
+function mergeStalls(primary, secondary) {
+  const merged = [...primary];
+  for (const candidate of secondary) {
+    const dup = merged.some(existing => isDuplicate(existing, candidate));
+    if (!dup) merged.push(candidate);
+  }
+  return merged;
+}
+
+// Full NMS within a single array (removes intra-model dups too)
+function nmsArray(preds) {
+  const sorted = [...preds].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+  const kept = [];
+  for (const pred of sorted) {
+    const dup = kept.some(k => isDuplicate(k, pred));
+    if (!dup) kept.push(pred);
+  }
+  return kept;
+}
+
+// Tighter NMS with explicit IOU and distance thresholds
+function nmsWithThreshold(preds, iouThresh, distRatio) {
+  const sorted = [...preds].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+  const kept = [];
+  for (const pred of sorted) {
+    const dup = kept.some(k => {
+      if (iou(k, pred) > iouThresh) return true;
+      const dist = centerDist(k, pred);
+      const scale = smallerDiag(k, pred);
+      if (dist < scale * distRatio) return true;
+      return false;
+    });
+    if (!dup) kept.push(pred);
+  }
+  return kept;
+}
+
+// -- NORMALIZE CLASS NAME ------------------------------------------------------
+function normalizeClass(cls) {
+  const c = cls.toLowerCase().replace(/[^a-z_]/g, '_');
+  // map synonyms
+  if (STALL_CLASSES.has(c)) return 'stall';
+  if (c.includes('perimeter') || c.includes('lot')) return 'lot_perimeter';
+  if (c.includes('obstruct') || c.includes('island') || c.includes('curb')) return 'obstruction';
+  if (c.includes('hatch') || c.includes('ada') || c.includes('cross')) return 'hatching';
+  if (c.includes('handicap') || c.includes('disabled') || c.includes('wheelchair')) return 'handicap';
+  if (c.includes('arrow')) return 'arrow';
+  if (c.includes('stencil') || c.includes('symbol')) return 'stencil';
+  return c;
+}
+
+// -- PERIMETER HELPERS ---------------------------------------------------------
+
+// Build a Path2D from a prediction's polygon or bbox
+function predToPath2D(pred) {
+  const path = new Path2D();
+  if (pred.points && pred.points.length >= 3) {
+    path.moveTo(pred.points[0].x, pred.points[0].y);
+    for (let i = 1; i < pred.points.length; i++) path.lineTo(pred.points[i].x, pred.points[i].y);
+    path.closePath();
+  } else {
+    const x1 = pred.x - pred.width  / 2;
+    const y1 = pred.y - pred.height / 2;
+    path.rect(x1, y1, pred.width, pred.height);
+  }
+  return path;
+}
+
+// Get a flat array of {x,y} points from a prediction (polygon or bbox corners)
+function predToPoints(pred) {
+  if (pred.points && pred.points.length >= 3) return pred.points;
+  const x1 = pred.x - pred.width  / 2;
+  const y1 = pred.y - pred.height / 2;
+  const x2 = pred.x + pred.width  / 2;
+  const y2 = pred.y + pred.height / 2;
+  return [{ x: x1, y: y1 }, { x: x2, y: y1 }, { x: x2, y: y2 }, { x: x1, y: y2 }];
+}
+
+// Ray-casting point-in-polygon test
+function pointInPolygon(px, py, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    const intersect = ((yi > py) !== (yj > py)) &&
+      (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// -- PERIMETER OBSTRUCTION CLIPPING -------------------------------------------
+// For each obstruction that overlaps or touches the perimeter polygon,
+// find where the obstruction bbox intersects the perimeter and cut straight
+// across — excluding the obstruction from the lot rather than hugging it.
+
+function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+  // Returns {x,y,t,u} if segments AB and CD intersect, else null
+  const dxAB = bx-ax, dyAB = by-ay;
+  const dxCD = dx-cx, dyCD = dy-cy;
+  const denom = dxAB*dyCD - dyAB*dxCD;
+  if (Math.abs(denom) < 1e-10) return null;
+  const t = ((cx-ax)*dyCD - (cy-ay)*dxCD) / denom;
+  const u = ((cx-ax)*dyAB - (cy-ay)*dxAB) / denom;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return { x: ax + t*dxAB, y: ay + t*dyAB, t, u };
+}
+
+function polyContainsPoint(poly, px, py) {
+  let inside = false;
+  for (let i = 0, j = poly.length-1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    if (((yi > py) !== (yj > py)) && (px < (xj-xi)*(py-yi)/(yj-yi)+xi))
+      inside = !inside;
+  }
+  return inside;
+}
+
+function obstructionPoly(obs) {
+  if (obs.points && obs.points.length >= 3) return obs.points;
+  const x1 = obs.x - obs.width/2, y1 = obs.y - obs.height/2;
+  const x2 = obs.x + obs.width/2, y2 = obs.y + obs.height/2;
+  return [{x:x1,y:y1},{x:x2,y:y1},{x:x2,y:y2},{x:x1,y:y2}];
+}
+
+// -- PERIMETER CORNER SQUARING -------------------------------------------------
+// Find vertices where the turn angle is close to 90° and snap them to a clean
+// right angle. Collapses nearby vertices first so small wiggles don't create
+// false corners.
+
+function squarePerimeterCorners(pts) {
+  if (pts.length < 4) return pts;
+
+  // Step 1: Simplify — merge vertices that are within MERGE_DIST of each other
+  // so small segmentation wiggles don't create hundreds of micro-edges
+  const MERGE_DIST = 6; // px
+  let simplified = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const prev = simplified[simplified.length - 1];
+    if (Math.hypot(pts[i].x - prev.x, pts[i].y - prev.y) > MERGE_DIST) {
+      simplified.push(pts[i]);
+    }
+  }
+
+  // Step 2: For each vertex, look at the incoming and outgoing edge directions.
+  // If the angle between them is within CORNER_TOL of 90°, snap to exact 90°
+  // by projecting the corner to where a true right angle would be.
+  const CORNER_TOL  = 20; // degrees — angles within 90±20° get squared
+  const MIN_EDGE    = 12; // px — ignore very short edges (likely noise)
+  const result = [...simplified];
+  const n = result.length;
+
+  for (let i = 0; i < n; i++) {
+    const prev = result[(i - 1 + n) % n];
+    const cur  = result[i];
+    const next = result[(i + 1) % n];
+
+    const dx1 = cur.x - prev.x, dy1 = cur.y - prev.y;
+    const dx2 = next.x - cur.x, dy2 = next.y - cur.y;
+    const len1 = Math.hypot(dx1, dy1);
+    const len2 = Math.hypot(dx2, dy2);
+    if (len1 < MIN_EDGE || len2 < MIN_EDGE) continue;
+
+    // Angle between the two edges (incoming reversed dot outgoing)
+    const dot = (-dx1*dx2 + -dy1*dy2) / (len1 * len2);
+    const angleDeg = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+
+    // Only square corners that are clearly near 90°
+    if (Math.abs(angleDeg - 90) > CORNER_TOL) continue;
+
+    // Snap: project cur onto the two edge lines to find the true 90° corner
+    // Dominant axes: snap the smaller deflection to match the larger one
+    const ux1 = dx1/len1, uy1 = dy1/len1; // incoming direction
+    const ux2 = dx2/len2, uy2 = dy2/len2; // outgoing direction
+
+    // Find intersection of: line through prev in dir ux1/uy1,
+    // and line through next in dir -ux2/-uy2
+    const denom = ux1*uy2 - uy1*ux2;
+    if (Math.abs(denom) < 0.01) continue; // parallel — skip
+
+    const t = ((next.x - prev.x)*uy2 - (next.y - prev.y)*ux2) / denom;
+    const snapped = {
+      x: Math.round(prev.x + ux1 * t),
+      y: Math.round(prev.y + uy1 * t),
+    };
+
+    // Sanity check — don't move the vertex more than half the shorter edge length
+    const moved = Math.hypot(snapped.x - cur.x, snapped.y - cur.y);
+    if (moved < Math.min(len1, len2) * 0.5) {
+      result[i] = snapped;
+    }
+  }
+
+  return result;
+}
+
+function clipObstructionsFromPerimeter(perimPts, obstructions) {
+  let poly = [...perimPts];
+
+  for (const obs of obstructions) {
+    const obsPoly = obstructionPoly(obs);
+
+    // Find perimeter vertices that fall inside the obstruction (expanded by buffer)
+    const EXPAND = 8;
+    const expanded = [
+      { x: obs.x - obs.width/2  - EXPAND, y: obs.y - obs.height/2 - EXPAND },
+      { x: obs.x + obs.width/2  + EXPAND, y: obs.y - obs.height/2 - EXPAND },
+      { x: obs.x + obs.width/2  + EXPAND, y: obs.y + obs.height/2 + EXPAND },
+      { x: obs.x - obs.width/2  - EXPAND, y: obs.y + obs.height/2 + EXPAND },
+    ];
+    const obsPolyExpanded = obs.points && obs.points.length >= 3
+      ? obsPoly  // use actual polygon
+      : expanded; // use expanded bbox
+
+    const insideIndices = poly
+      .map((p, i) => polyContainsPoint(obsPolyExpanded, p.x, p.y) ? i : -1)
+      .filter(i => i >= 0);
+
+    if (insideIndices.length === 0) continue;
+
+    // Find the first and last inside index (wrapping around)
+    // The two "bridge" points are the vertices just BEFORE and just AFTER the inside run
+    const first = insideIndices[0];
+    const last  = insideIndices[insideIndices.length - 1];
+
+    // Entry = vertex just before the inside run, exit = vertex just after
+    const entry = (first - 1 + poly.length) % poly.length;
+    const exit  = (last  + 1) % poly.length;
+
+    // Build new polygon: keep everything outside, bridge straight from entry to exit
+    const newPoly = [];
+    let i = exit;
+    while (i !== entry) {
+      newPoly.push(poly[i]);
+      i = (i + 1) % poly.length;
+    }
+    newPoly.push(poly[entry]); // entry point
+    // Straight line bridge — skip all the inside vertices
+
+    if (newPoly.length >= 3) {
+      poly = newPoly;
+      console.log(`[PaveView] Clipped obstruction at (${Math.round(obs.x)},${Math.round(obs.y)}), removed ${insideIndices.length} perimeter vertices`);
+    }
+  }
+
+  return poly;
+}
+
+// Filter predictions to those whose center lies inside the perimeter polygon
+function filterInsidePerimeter(preds, perimeterPoints) {
+  if (!perimeterPoints || perimeterPoints.length < 3) return preds; // no perimeter — pass all
+  return preds.filter(p => pointInPolygon(p.x, p.y, perimeterPoints));
+}
+
+// -- DRAWING -------------------------------------------------------------------
+
+function drawDetections(perimeterPred, innerPredictions) {
+  restoreBaseImage();
+
+  // 1. If we have a perimeter, dim everything outside it
+  if (perimeterPred) {
+    const perimPath = predToPath2D(perimeterPred);
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0, 0, uploadedW, uploadedH);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fill(perimPath);
+    ctx.restore();
+    // Restore image inside perimeter using snapshot
+    ctx.save();
+    ctx.clip(perimPath);
+    if (_baseImageSnapshot) {
+      ctx.putImageData(_baseImageSnapshot, 0, 0);
+    } else {
+      ctx.drawImage(uploadedImage, 0, 0);
+    }
+    ctx.restore();
+  }
+
+  // 2. Draw inner detections (clipped to perimeter)
+  const nonStalls = innerPredictions.filter(p => normalizeClass(p.class) !== 'stall');
+  const stalls    = innerPredictions.filter(p => normalizeClass(p.class) === 'stall');
+
+  for (const pred of nonStalls) {
+    const cls = normalizeClass(pred.class);
+    if (!isClassEnabled(cls)) continue;
+    const color = CLASS_COLORS[cls] || 'rgba(200,200,200,0.4)';
+    if (perimeterPred) {
+      ctx.save();
+      ctx.clip(predToPath2D(perimeterPred));
+      drawZone(pred, color);
+      ctx.restore();
+    } else {
+      drawZone(pred, color);
+    }
+  }
+
+  for (const pred of stalls) {
+    if (!isClassEnabled('stall')) continue;
+    drawStallBox(pred);
+  }
+
+  // 3. Draw perimeter outline on top
+  if (perimeterPred && isClassEnabled('lot_perimeter')) {
+    const perimPath = predToPath2D(perimeterPred);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,100,80,0.95)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([12, 6]);
+    ctx.stroke(perimPath);
+    ctx.restore();
+  }
+}
+
+function drawZone(pred, color) {
+  const hasPolygon = pred.points && pred.points.length >= 3;
+
+  if (hasPolygon) {
+    ctx.fillStyle   = color;
+    ctx.strokeStyle = color.replace(/[\d.]+\)$/, '0.9)');
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(pred.points[0].x, pred.points[0].y);
+    for (let i = 1; i < pred.points.length; i++) ctx.lineTo(pred.points[i].x, pred.points[i].y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (pred.width && pred.height) {
+    // Bbox fallback — dashed outline so user knows it is approximate
+    const x1 = pred.x - pred.width  / 2;
+    const y1 = pred.y - pred.height / 2;
+    ctx.fillStyle = color.replace(/[\d.]+\)$/, '0.25)');
+    ctx.fillRect(x1, y1, pred.width, pred.height);
+    ctx.strokeStyle = color.replace(/[\d.]+\)$/, '0.85)');
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 3]);
+    ctx.strokeRect(x1, y1, pred.width, pred.height);
+    ctx.setLineDash([]);
+  }
+}
+
+// -- STALL SPREAD DEDUP --------------------------------------------------------
+// After merging, enforce minimum center-to-center distance between dots.
+// Uses the average bbox size as the minimum spacing so dots stay one stall apart.
+// Highest-confidence detections win when two dots are too close.
+function spreadStalls(stalls) {
+  if (stalls.length < 2) return stalls;
+
+  const avgShort = stalls.reduce((s, p) => s + Math.min(p.width, p.height), 0) / stalls.length;
+  const minDist  = avgShort * 1.5;
+
+  const sorted = [...stalls].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+  const kept   = [];
+
+  for (const candidate of sorted) {
+    const tooClose = kept.some(k => {
+      const dx = k.x - candidate.x;
+      const dy = k.y - candidate.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist >= minDist) return false;
+
+      // For stalls with known orientation, check if they're in the same row
+      // (close along short axis) vs opposite rows (close along long axis).
+      // Only suppress if they're close along the SHORT axis (same row duplicate).
+      if (k.points && k.points.length === 4) {
+        const angle = boxAngle(k.points);
+        // Project distance onto stall's short axis (perpendicular to long axis)
+        const shortAxisDist = Math.abs(dx * Math.cos(angle + Math.PI/2) + dy * Math.sin(angle + Math.PI/2));
+        // If stalls are far apart on the short axis, they're in different rows — allow both
+        if (shortAxisDist > avgShort * 1.2) return false;
+      }
+      return true;
+    });
+    if (!tooClose) kept.push(candidate);
+  }
+
+  return kept;
+}
+
+// -- PIXEL SAMPLING (offscreen — reads raw image, no overlays) ----------------
+let _sampleCanvas = null;
+let _sampleCtx    = null;
+
+function buildSampleCanvas() {
+  _sampleCanvas = document.createElement('canvas');
+  _sampleCanvas.width  = uploadedW;
+  _sampleCanvas.height = uploadedH;
+  _sampleCtx = _sampleCanvas.getContext('2d');
+  _sampleCtx.drawImage(uploadedImage, 0, 0);
+}
+
+// Returns perceived brightness 0–255 at pixel (x,y)
+function pixelBrightness(x, y) {
+  const xi = Math.round(Math.min(Math.max(x, 0), uploadedW  - 1));
+  const yi = Math.round(Math.min(Math.max(y, 0), uploadedH  - 1));
+  const d  = _sampleCtx.getImageData(xi, yi, 1, 1).data;
+  return 0.299 * d[0] + 0.587 * d[1] + 0.114 * d[2]; // luminance
+}
+
+// Nudge a stall perpendicular to its row line until its side edges clear white lines.
+// perpAngle = direction perpendicular to the row (stall depth direction).
+// Tries up to maxNudge pixels in both directions, picks whichever clears first.
+function nudgeStallOffEdges(cx, cy, w, h, stallAngle) {
+  if (!_sampleCtx) return { x: cx, y: cy };
+  const WHITE = 170;
+  const maxNudge = Math.round(h * 0.4);
+  const cos = Math.cos(stallAngle), sin = Math.sin(stallAngle);
+  const hw = w / 2;
+
+  // Check if either side edge (left or right of stall width) has white pixels
+  function sideEdgesWhite(ox, oy) {
+    const checks = [];
+    // Sample along the left edge (−hw from center along stallAngle perp)
+    for (let t = -0.4; t <= 0.4; t += 0.2) {
+      checks.push({
+        x: ox + cos * (-hw) - sin * (t * h),
+        y: oy + sin * (-hw) + cos * (t * h),
+      });
+      checks.push({
+        x: ox + cos * ( hw) - sin * (t * h),
+        y: oy + sin * ( hw) + cos * (t * h),
+      });
+    }
+    return checks.filter(p => pixelBrightness(p.x, p.y) > WHITE).length >= 2;
+  }
+
+  if (!sideEdgesWhite(cx, cy)) return { x: cx, y: cy }; // already clear
+
+  // Try nudging in perpendicular direction (along stall depth)
+  // perpendicular to stallAngle = along lineAngle
+  const lineAngle = stallAngle - Math.PI / 2;
+  const px = Math.cos(lineAngle), py = Math.sin(lineAngle);
+
+  for (let d = 1; d <= maxNudge; d++) {
+    if (!sideEdgesWhite(cx + px * d, cy + py * d)) return { x: cx + px * d, y: cy + py * d };
+    if (!sideEdgesWhite(cx - px * d, cy - py * d)) return { x: cx - px * d, y: cy - py * d };
+  }
+  return { x: cx, y: cy }; // couldn't clear — keep original
+}
+// Searches a spiral of candidate offsets within the bbox, picks the darkest.
+// Find the centroid of the darkest contiguous region within the stall bbox.
+// Samples the bbox on a grid, finds the darkest cluster centroid, places dot there.
+function nudgeOffWhite(stall) {
+  const WHITE_THRESH = 150;
+  const cx = stall.x, cy = stall.y;
+
+  const hw   = stall.width  * 0.48;
+  const hh   = stall.height * 0.48;
+  const step = Math.max(1.5, Math.min(hw, hh) * 0.07);
+
+  // Sample full bbox grid
+  const samples = [];
+  for (let dx = -hw; dx <= hw; dx += step) {
+    for (let dy = -hh; dy <= hh; dy += step) {
+      const x = cx + dx, y = cy + dy;
+      const lum = pixelBrightness(x, y);
+      samples.push({ x, y, lum });
+    }
+  }
+
+  if (samples.length === 0) return stall;
+
+  // Find darkest 25% of samples — these are the asphalt pixels
+  const sorted = [...samples].sort((a, b) => a.lum - b.lum);
+  const darkCount = Math.max(1, Math.floor(sorted.length * 0.25));
+  const darkSamples = sorted.slice(0, darkCount);
+
+  // Only proceed if those dark pixels are actually dark (not just relatively dark on a bright bbox)
+  const darkestLum = darkSamples[0].lum;
+  if (darkestLum > WHITE_THRESH) return stall; // whole bbox is bright, can't find asphalt
+
+  // Centroid of the dark cluster
+  const sumX = darkSamples.reduce((s, p) => s + p.x, 0);
+  const sumY = darkSamples.reduce((s, p) => s + p.y, 0);
+  const newX = sumX / darkSamples.length;
+  const newY = sumY / darkSamples.length;
+
+  return { ...stall, x: newX, y: newY };
+}
+
+// Apply nudge to all stalls
+function nudgeStallsOffLines(stalls) {
+  return stalls.map(nudgeOffWhite);
+}
+
+// -- STALL BOX ANGLE SNAPPING --------------------------------------------------
+
+// Extract primary edge angle from a 4-point rotated bbox
+function boxAngle(points) {
+  if (!points || points.length < 2) return 0;
+  // Use the longest edge as the stall's length axis
+  let maxLen = 0, angle = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.sqrt(dx*dx + dy*dy);
+    if (len > maxLen) { maxLen = len; angle = Math.atan2(dy, dx); }
+  }
+  // Normalize to [0, π) — opposite directions are same stall orientation
+  if (angle < 0) angle += Math.PI;
+  if (angle >= Math.PI) angle -= Math.PI;
+  return angle;
+}
+
+// Find dominant angles from a set of stalls using histogram binning
+function dominantAngles(stalls, binDeg = 10) {
+  const bins = {};
+  const binRad = binDeg * Math.PI / 180;
+  for (const s of stalls) {
+    if (!s.points || s.points.length < 3) continue;
+    const a = boxAngle(s.points);
+    const bin = Math.round(a / binRad) * binRad;
+    bins[bin] = (bins[bin] || 0) + 1;
+  }
+  // Return up to 2 dominant angles (handles lots with two row orientations)
+  return Object.entries(bins)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(e => parseFloat(e[0]));
+}
+
+// Rotate a set of points around a center by angle delta
+function rotatePoints(points, cx, cy, delta) {
+  return points.map(p => {
+    const dx = p.x - cx, dy = p.y - cy;
+    return {
+      x: cx + dx * Math.cos(delta) - dy * Math.sin(delta),
+      y: cy + dx * Math.sin(delta) + dy * Math.cos(delta),
+    };
+  });
+}
+
+// Snap all lane-model stall boxes to dominant angles
+function snapBoxAngles(stalls) {
+  const laneStalls = stalls.filter(s => s._source === 'lane_model' && s.points && s.points.length >= 3);
+  if (laneStalls.length < 3) return stalls; // not enough to find dominant angle
+
+  const dominant = dominantAngles(laneStalls);
+  if (dominant.length === 0) return stalls;
+
+  return stalls.map(s => {
+    if (s._source !== 'lane_model' || !s.points || s.points.length < 3) return s;
+
+    const currentAngle = boxAngle(s.points);
+    // Find nearest dominant angle
+    let nearestAngle = dominant[0];
+    let minDiff = Math.abs(currentAngle - dominant[0]);
+    for (const d of dominant) {
+      const diff = Math.abs(currentAngle - d);
+      if (diff < minDiff) { minDiff = diff; nearestAngle = d; }
+    }
+
+    // Only snap if within 20° of a dominant — don't force outliers
+    if (minDiff > 20 * Math.PI / 180) return s;
+
+    const delta = nearestAngle - currentAngle;
+    if (Math.abs(delta) < 0.01) return s; // already aligned
+
+    const cx = s.points.reduce((sum, p) => sum + p.x, 0) / s.points.length;
+    const cy = s.points.reduce((sum, p) => sum + p.y, 0) / s.points.length;
+    return { ...s, points: rotatePoints(s.points, cx, cy, delta) };
+  });
+}
+
+function drawStallBox(pred) {
+  const hasPoly = pred.points && pred.points.length >= 3;
+  ctx.strokeStyle = 'rgba(245,197,66,0.95)';
+  ctx.fillStyle   = 'rgba(245,197,66,0.18)';
+  ctx.lineWidth   = 1.5;
+
+  if (hasPoly) {
+    // Rotated box from lane model — draw actual polygon
+    ctx.beginPath();
+    ctx.moveTo(pred.points[0].x, pred.points[0].y);
+    for (let i = 1; i < pred.points.length; i++) ctx.lineTo(pred.points[i].x, pred.points[i].y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    // Axis-aligned fallback
+    const x1 = pred.x - pred.width  / 2;
+    const y1 = pred.y - pred.height / 2;
+    ctx.beginPath();
+    ctx.rect(x1, y1, pred.width, pred.height);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Center dot
+  const cx = pred.points
+    ? pred.points.reduce((s, p) => s + p.x, 0) / pred.points.length
+    : pred.x;
+  const cy = pred.points
+    ? pred.points.reduce((s, p) => s + p.y, 0) / pred.points.length
+    : pred.y;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(245,197,66,0.95)';
+  ctx.fill();
+}
+
+function isClassEnabled(normalizedCls) {
+  if (enabledClasses.has(normalizedCls)) return true;
+  if (normalizedCls === 'stall' && enabledClasses.has('stall')) return true;
+  return false;
+}
+
+// -- TILING --------------------------------------------------------------------
+const TILE_SIZE    = 640;  // default — overridden by lot size config
+const TILE_OVERLAP = 0.20; // default — overridden by lot size config
+
+// Get axis-aligned bounding box of the perimeter polygon (or full image)
+function perimeterBBox(perimeterPoints) {
+  if (!perimeterPoints || perimeterPoints.length < 3) {
+    return { x1: 0, y1: 0, x2: uploadedW, y2: uploadedH };
+  }
+  const xs = perimeterPoints.map(p => p.x);
+  const ys = perimeterPoints.map(p => p.y);
+  return {
+    x1: Math.max(0, Math.floor(Math.min(...xs))),
+    y1: Math.max(0, Math.floor(Math.min(...ys))),
+    x2: Math.min(uploadedW, Math.ceil(Math.max(...xs))),
+    y2: Math.min(uploadedH, Math.ceil(Math.max(...ys))),
+  };
+}
+
+// Generate tile definitions covering the bbox
+function generateTiles(bbox, tileSize, tileOverlap) {
+  const stride = Math.floor(tileSize * (1 - tileOverlap));
+  const tiles  = [];
+  for (let ty = bbox.y1; ty < bbox.y2; ty += stride) {
+    for (let tx = bbox.x1; tx < bbox.x2; tx += stride) {
+      const x1 = tx;
+      const y1 = ty;
+      const x2 = Math.min(tx + tileSize, bbox.x2);
+      const y2 = Math.min(ty + tileSize, bbox.y2);
+      if (x2 - x1 < 32 || y2 - y1 < 32) continue;
+      tiles.push({ x1, y1, x2, y2 });
+    }
+  }
+  return tiles;
+}
+
+// Crop a tile from the uploaded image and return base64
+function cropTileToB64(tile) {
+  const tw = tile.x2 - tile.x1;
+  const th = tile.y2 - tile.y1;
+  const tc = document.createElement('canvas');
+  tc.width  = tw;
+  tc.height = th;
+  const tcx = tc.getContext('2d');
+  tcx.drawImage(uploadedImage, tile.x1, tile.y1, tw, th, 0, 0, tw, th);
+  // Return base64 without data URL prefix
+  return tc.toDataURL('image/jpeg', 0.92).split(',')[1];
+}
+
+// Translate tile-local prediction coords back to full-image coords
+function translatePred(pred, tile) {
+  return {
+    ...pred,
+    x: pred.x + tile.x1,
+    y: pred.y + tile.y1,
+    // points if present (segmentation)
+    points: pred.points
+      ? pred.points.map(p => ({ x: p.x + tile.x1, y: p.y + tile.y1 }))
+      : undefined,
+  };
+}
+
+// Run stall model across all tiles, collect translated predictions
+async function runTiledStallDetection(perimeterPoints, confidence, onProgress, lotCfg) {
+  // Small lots: skip tiling, run full image
+  if (!lotCfg.tileSize) {
+    onProgress('Pass 2 — Full image (small lot)...');
+    try {
+      const result = await runRoboflow(PARK_MODEL, uploadedB64, confidence, 'detect');
+      return nmsArray((result.predictions || []).map(p => ({ ...p, class: 'stall', _source: 'tile_0' })));
+    } catch(e) { console.warn('Full image pass failed:', e.message); return []; }
+  }
+
+  const bbox  = perimeterBBox(perimeterPoints);
+  const tiles = generateTiles(bbox, lotCfg.tileSize, lotCfg.overlap);
+  const allPreds = [];
+
+  for (let i = 0; i < tiles.length; i++) {
+    const tile = tiles[i];
+    onProgress(`Pass 2 — Tile ${i + 1} / ${tiles.length}...`);
+    try {
+      const b64    = cropTileToB64(tile);
+      const result = await runRoboflow(PARK_MODEL, b64, confidence, 'detect');
+      const preds  = (result.predictions || [])
+        .map(p => translatePred(p, tile))
+        .map(p => ({ ...p, class: 'stall', _source: `tile_${i}` }));
+      allPreds.push(...preds);
+    } catch (e) {
+      console.warn(`Tile ${i} failed:`, e.message);
+    }
+  }
+
+  return nmsArray(allPreds);
+}
+function updateStats(perimeterFound, predictions, elapsed) {
+  const rowStalls = allRows.reduce((s, r) => s + r.length, 0) + rowDots.length;
+  const obs   = predictions.filter(p => normalizeClass(p.class) === 'obstruction').length;
+  const handi = predictions.filter(p => normalizeClass(p.class) === 'handicap').length;
+
+  document.getElementById('statStalls').textContent       = rowStalls;
+  document.getElementById('statObstructions').textContent = obs;
+  document.getElementById('statHandicap').textContent     = handi;
+  document.getElementById('statTotal').textContent        = rowStalls + predictions.length;
+  document.getElementById('statTime').textContent         = (elapsed / 1000).toFixed(2) + 's';
+  statsBar.style.display = 'flex';
+
+  if (!perimeterFound) statusLabel.textContent = 'No perimeter detected — showing all';
+}
+
+// -- ROW RECONSTRUCTION --------------------------------------------------------
+
+function dominantAngle(points) {
+  const n  = points.length;
+  const mx = points.reduce((s, p) => s + p.x, 0) / n;
+  const my = points.reduce((s, p) => s + p.y, 0) / n;
+  let sxx = 0, sxy = 0, syy = 0;
+  for (const p of points) {
+    const dx = p.x - mx, dy = p.y - my;
+    sxx += dx*dx; sxy += dx*dy; syy += dy*dy;
+  }
+  return Math.atan2(2 * sxy, sxx - syy) / 2;
+}
+
+function projectOntoAngle(p, angle) {
+  return p.x * Math.cos(angle) + p.y * Math.sin(angle);
+}
+function projectPerp(p, angle) {
+  return -p.x * Math.sin(angle) + p.y * Math.cos(angle);
+}
+
+function clusterIntoRows(stalls, perpTolerance) {
+  if (stalls.length < 2) return [stalls];
+  const angle = dominantAngle(stalls);
+  const bands = [];
+  for (const s of stalls) {
+    const perp = projectPerp(s, angle);
+    let placed = false;
+    for (const band of bands) {
+      if (Math.abs(band.perpCenter - perp) < perpTolerance) {
+        band.points.push(s);
+        band.perpCenter = band.points.reduce((sum, p) => sum + projectPerp(p, angle), 0) / band.points.length;
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) bands.push({ perpCenter: perp, points: [s] });
+  }
+  return bands.filter(b => b.points.length >= 2).map(b => b.points);
+}
+
+function fitRow(points, angle) {
+  const projs = points.map(p => ({ point: p, t: projectOntoAngle(p, angle) }));
+  projs.sort((a, b) => a.t - b.t);
+  return projs;
+}
+
+function medianSpacing(projs) {
+  if (projs.length < 2) return null;
+  const gaps = [];
+  for (let i = 1; i < projs.length; i++) gaps.push(projs[i].t - projs[i-1].t);
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor(gaps.length / 2)];
+}
+
+function reconstructRow(points, angle, perimeterPoints, avgShortSide) {
+  if (points.length < 2) return points.map(p => ({ x: p.x, y: p.y, _reconstructed: false }));
+  const projs   = fitRow(points, angle);
+  const spacing = medianSpacing(projs);
+  if (!spacing || spacing < avgShortSide * 0.4 || spacing > avgShortSide * 4) {
+    return points.map(p => ({ x: p.x, y: p.y, _reconstructed: false }));
+  }
+  const perpVal = projectPerp(points[0], angle);
+  function toXY(along, perp) {
+    return {
+      x: along * Math.cos(angle) - perp * Math.sin(angle),
+      y: along * Math.sin(angle) + perp * Math.cos(angle),
+    };
+  }
+  const filled = [];
+  for (let i = 0; i < projs.length - 1; i++) {
+    filled.push({ x: projs[i].point.x, y: projs[i].point.y, _reconstructed: false });
+    const gap   = projs[i+1].t - projs[i].t;
+    const nFill = Math.round(gap / spacing) - 1;
+    for (let k = 1; k <= nFill; k++) {
+      const pt = toXY(projs[i].t + k * spacing, perpVal);
+      if (!perimeterPoints || pointInPolygon(pt.x, pt.y, perimeterPoints)) {
+        filled.push({ ...pt, _reconstructed: true });
+      }
+    }
+  }
+  filled.push({ x: projs[projs.length-1].point.x, y: projs[projs.length-1].point.y, _reconstructed: false });
+  // Extend backward
+  let along = projs[0].t - spacing;
+  while (true) {
+    const pt = toXY(along, perpVal);
+    if (perimeterPoints && !pointInPolygon(pt.x, pt.y, perimeterPoints)) break;
+    filled.unshift({ ...pt, _reconstructed: true });
+    along -= spacing;
+    if (filled.length > 200) break;
+  }
+  // Extend forward
+  along = projs[projs.length-1].t + spacing;
+  while (true) {
+    const pt = toXY(along, perpVal);
+    if (perimeterPoints && !pointInPolygon(pt.x, pt.y, perimeterPoints)) break;
+    filled.push({ ...pt, _reconstructed: true });
+    along += spacing;
+    if (filled.length > 200) break;
+  }
+  return filled;
+}
+
+function reconstructAllRows(stalls, perimeterPoints) {
+  if (stalls.length < 4) return stalls;
+  const avgShortSide  = stalls.reduce((s, p) => s + Math.min(p.width || 20, p.height || 20), 0) / stalls.length;
+  const perpTolerance = avgShortSide * 1.2;
+  const angle         = dominantAngle(stalls);
+  const rows          = clusterIntoRows(stalls, perpTolerance);
+  const allPoints     = [];
+  for (const row of rows) {
+    const reconstructed = reconstructRow(row, angle, perimeterPoints, avgShortSide);
+    for (const pt of reconstructed) {
+      allPoints.push({
+        x: pt.x, y: pt.y,
+        class: 'stall',
+        confidence: pt._reconstructed ? 0.5 : 1,
+        width: avgShortSide, height: avgShortSide,
+        _source: pt._reconstructed ? 'reconstructed' : 'detected',
+      });
+    }
+  }
+  return nmsArray(allPoints);
+}
+
+function getImageryTilePassConfig(perimeterPoints) {
+  const bb = perimeterPoints ? perimeterBBox(perimeterPoints) : null;
+  const spanW = Math.max(1, Math.round(bb ? (bb.x2 - bb.x1) : uploadedW));
+  const spanH = Math.max(1, Math.round(bb ? (bb.y2 - bb.y1) : uploadedH));
+  const area = spanW * spanH;
+  if (area <= 700000) {
+    return { tile: 700, overlap: 0.14, concurrency: 4, maxTiles: 4 };
+  }
+  if (area <= 1600000) {
+    return { tile: 720, overlap: 0.16, concurrency: 4, maxTiles: 6 };
+  }
+  if (area <= 3200000) {
+    return { tile: 760, overlap: 0.18, concurrency: 4, maxTiles: 8 };
+  }
+  return { tile: 820, overlap: 0.18, concurrency: 5, maxTiles: 10 };
+}
+
+// -- MAIN RUN ------------------------------------------------------------------
+runBtn.addEventListener('click', async () => {
+  if (!uploadedB64) {
+    // Recover from stale UI state by rebuilding the API payload from the loaded image.
+    if (uploadedImage && uploadedW > 0 && uploadedH > 0) {
+      try {
+        const MAX_SIDE = 1500;
+        const scale = Math.min(1, MAX_SIDE / Math.max(uploadedW, uploadedH));
+        apiScale = scale;
+        const apiW = Math.round(uploadedW * scale);
+        const apiH = Math.round(uploadedH * scale);
+        const apiCanvas = document.createElement('canvas');
+        apiCanvas.width = apiW;
+        apiCanvas.height = apiH;
+        apiCanvas.getContext('2d').drawImage(uploadedImage, 0, 0, apiW, apiH);
+        uploadedB64 = apiCanvas.toDataURL('image/jpeg', 0.88).split(',')[1];
+      } catch (_e) {}
+    }
+  }
+  if (!uploadedB64) {
+    alert('Please upload an image before running Detect Zones.');
+    return;
+  }
+
+  const confidenceMain = parseInt(confSliderMain.value);
+  const t0 = performance.now();
+
+  runBtn.disabled = true;
+  spinnerOverlay.classList.add('active');
+  setStatus('running');
+
+  try {
+    spinnerMsg.textContent = 'Detecting zones...';
+    let perimeterPred = null, perimeterPoints = null, mainNonStallsFiltered = [];
+    let mainModelError = null;
+    try {
+      const mainResult = await runRoboflowHybrid(MAIN_MODEL, uploadedB64, confidenceMain);
+      console.log('[PaveView] Raw predictions sample:', JSON.stringify((mainResult.predictions||[]).slice(0,3), null, 2));
+      const mainPreds  = (mainResult.predictions || []).map(scaleUpPred);
+      console.log('[PaveView] apiScale:', apiScale, '| After scale sample:', JSON.stringify(mainPreds.slice(0,2).map(p=>({class:p.class, x:Math.round(p.x), y:Math.round(p.y), pts:p.points?p.points.length:0, pt0:p.points?p.points[0]:null})),null,2));
+      const perimeterCandidates = mainPreds
+        .filter(p => normalizeClass(p.class) === 'lot_perimeter')
+        .sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+      perimeterPred   = perimeterCandidates[0] || null;
+      perimeterPoints = perimeterPred ? predToPoints(perimeterPred) : null;
+      const mainNonStalls = mainPreds
+        .filter(p => normalizeClass(p.class) !== 'lot_perimeter' && !STALL_CLASSES.has(normalizeClass(p.class)));
+      mainNonStallsFiltered = mainNonStalls;
+    } catch (e) {
+      mainModelError = e;
+      console.warn('Main model failed:', e.message);
+      setStatus('error', 'Zone detection auth failed');
+    }
+    if (mainModelError) {
+      const msg = String(mainModelError?.message || '');
+      if (msg) alert(`Detect Zones failed: ${msg}`);
+      return;
+    }
+
+    // -- TILED PASS for small features (hatching, arrows, handicap) ------------
+    const SMALL_FEATURE_CLASSES = new Set(['hatching','arrow','handicap','stencil']);
+    try {
+      spinnerMsg.textContent = 'Tiling for small features...';
+      const tileCfg = getImageryTilePassConfig(perimeterPoints);
+      const TILE    = tileCfg.tile;
+      const OVERLAP = tileCfg.overlap;
+      const STEP    = Math.round(TILE * (1 - OVERLAP));
+      const CONCURRENCY = tileCfg.concurrency;
+
+      // Build tile list — skip tiles with no overlap with perimeter bbox
+      const perimBB = perimeterPoints ? perimeterBBox(perimeterPoints) : { x1:0, y1:0, x2:uploadedW, y2:uploadedH };
+      const tiles = [];
+      for (let ty = 0; ty < uploadedH; ty += STEP) {
+        for (let tx = 0; tx < uploadedW; tx += STEP) {
+          const tw = Math.min(TILE, uploadedW - tx);
+          const th = Math.min(TILE, uploadedH - ty);
+          if (tw < 64 || th < 64) continue;
+          // Skip tile if entirely outside perimeter bounding box
+          if (tx > perimBB.x2 || tx+tw < perimBB.x1 || ty > perimBB.y2 || ty+th < perimBB.y1) continue;
+          tiles.push({ tx, ty, tw, th });
+        }
+      }
+      if (tiles.length > tileCfg.maxTiles) {
+        const cx = (perimBB.x1 + perimBB.x2) / 2;
+        const cy = (perimBB.y1 + perimBB.y2) / 2;
+        tiles.sort((a, b) => {
+          const acx = a.tx + a.tw / 2, acy = a.ty + a.th / 2;
+          const bcx = b.tx + b.tw / 2, bcy = b.ty + b.th / 2;
+          return Math.hypot(acx - cx, acy - cy) - Math.hypot(bcx - cx, bcy - cy);
+        });
+        tiles.length = tileCfg.maxTiles;
+      }
+      if (!tiles.length) {
+        spinnerMsg.textContent = 'Rendering...';
+      }
+
+      // Process tiles in parallel batches
+      const tiledPreds = [];
+      for (let i = 0; i < tiles.length; i += CONCURRENCY) {
+        const batch = tiles.slice(i, i + CONCURRENCY);
+        spinnerMsg.textContent = `Tiling ${i}/${tiles.length}...`;
+
+        const batchResults = await Promise.all(batch.map(async ({ tx, ty, tw, th }) => {
+          const tc = document.createElement('canvas');
+          tc.width = tw; tc.height = th;
+          tc.getContext('2d').drawImage(mainCanvas, tx, ty, tw, th, 0, 0, tw, th);
+          const tileB64 = tc.toDataURL('image/jpeg', 0.85).split(',')[1];
+          try {
+            const result = await runRoboflowHybrid(MAIN_MODEL, tileB64, confidenceMain);
+            return (result.predictions || [])
+              .filter(p => SMALL_FEATURE_CLASSES.has(normalizeClass(p.class)))
+              .map(p => ({
+                ...p,
+                x: p.x + tx,
+                y: p.y + ty,
+                points: p.points && p.points.length > 0
+                  ? p.points.map(pt => ({ x: pt.x + tx, y: pt.y + ty }))
+                  : p.points,
+              }));
+          } catch { return []; }
+        }));
+
+        batchResults.forEach(preds => tiledPreds.push(...preds));
+      }
+
+      // Tighter NMS for handicap — they stack badly
+      // Hatching excluded from IOU-based NMS — overlapping strips kill each other
+      const handicapPreds = tiledPreds.filter(p => normalizeClass(p.class) === 'handicap');
+      const hatchPreds    = tiledPreds.filter(p => normalizeClass(p.class) === 'hatching');
+      const otherPreds    = tiledPreds.filter(p => normalizeClass(p.class) !== 'handicap' && normalizeClass(p.class) !== 'hatching');
+
+      const dedupHandicap = nmsWithThreshold(handicapPreds, 0.15, 0.4);
+      // Hatching: only dedup by center proximity (30px), keep all distinct strips
+      const dedupHatch = hatchPreds.filter((p, i) =>
+        !hatchPreds.slice(0, i).some(q => Math.hypot(p.x - q.x, p.y - q.y) < 60)
+      );
+      console.log(`[PaveView] Hatching: ${hatchPreds.length} raw → ${dedupHatch.length} kept`);
+      const dedupOther    = nmsArray(otherPreds);
+      const dedupedTiled  = [...dedupHandicap, ...dedupHatch, ...dedupOther];
+
+      console.log(`[PaveView] Tiled: ${tiles.length} tiles, ${tiledPreds.length} raw → ${dedupedTiled.length} after NMS (${dedupHandicap.length} handicap)`);
+
+      const baseNonSmall = mainNonStallsFiltered.filter(p => !SMALL_FEATURE_CLASSES.has(normalizeClass(p.class)));
+      mainNonStallsFiltered = [...baseNonSmall, ...dedupedTiled];
+    } catch (e) {
+      console.warn('[PaveView] Tiled pass failed:', e.message);
+    }
+
+    // -- CLIP OBSTRUCTIONS FROM PERIMETER -------------------------------------
+    // If an obstruction touches or overlaps the lot perimeter, cut it off
+    // instead of letting the perimeter hug around it
+    if (perimeterPred && perimeterPred.points && perimeterPred.points.length >= 3) {
+      const obstructions = mainNonStallsFiltered.filter(p => normalizeClass(p.class) === 'obstruction');
+      if (obstructions.length > 0) {
+        perimeterPred.points = clipObstructionsFromPerimeter(perimeterPred.points, obstructions);
+        console.log(`[PaveView] Perimeter clipped against ${obstructions.length} obstructions`);
+      }
+      perimeterPred.points = squarePerimeterCorners(perimeterPred.points);
+      console.log(`[PaveView] Perimeter squared, ${perimeterPred.points.length} pts`);
+    }
+
+    const elapsed = performance.now() - t0;
+    spinnerMsg.textContent = 'Rendering...';
+
+    lastResults = {
+      perimeterPred,
+      detectedOnly: [],
+      withFill:     [],
+      nonStalls:    mainNonStallsFiltered,
+      elapsed,
+    };
+
+    drawDetections(perimeterPred, mainNonStallsFiltered);
+    drawRowStalls();
+    updateStats(!!perimeterPred, mainNonStallsFiltered, elapsed);
+    setStatus('done');
+    document.getElementById('reviewBtn').disabled = false;
+    document.getElementById('legendPanel').style.display = 'block';
+
+  } catch (err) {
+    console.error(err);
+    setStatus('error');
+    alert('Detection failed: ' + err.message);
+  } finally {
+    spinnerOverlay.classList.remove('active');
+    runBtn.disabled = false;
+  }
+});
+
+// -- REVIEW MODAL -------------------------------------------------------------
+
+const reviewModal      = document.getElementById('reviewModal');
+const reviewCanvas     = document.getElementById('reviewCanvas');
+const reviewCtx        = reviewCanvas.getContext('2d');
+const reviewBtn        = document.getElementById('reviewBtn');
+const reviewDoneBtn    = document.getElementById('reviewDoneBtn');
+const reviewPrevBtn    = document.getElementById('reviewPrevBtn');
+const reviewNextBtn    = document.getElementById('reviewNextBtn');
+const reviewDeleteBtn  = document.getElementById('reviewDeleteBtn');
+const reviewRedrawBtn  = document.getElementById('reviewRedrawBtn');
+const reviewAddBtn     = document.getElementById('reviewAddBtn');
+const reviewCancelAdd  = document.getElementById('reviewCancelAdd');
+const reviewCancelRedraw = document.getElementById('reviewCancelRedraw');
+const reviewAddType    = document.getElementById('reviewAddType');
+const reviewAddTypeWrap= document.getElementById('reviewAddTypeWrap');
+const reviewRedrawWrap = document.getElementById('reviewRedrawWrap');
+const reviewDrawHint   = document.getElementById('reviewDrawHint');
+const reviewDetLabel   = document.getElementById('reviewDetLabel');
+const reviewDetMeta    = document.getElementById('reviewDetMeta');
+const reviewProgress   = document.getElementById('reviewProgress');
+const reviewDetList    = document.getElementById('reviewDetList');
+const reviewStallCount = document.getElementById('reviewStallCount');
+const reviewPhaseLabel = document.getElementById('reviewPhaseLabel');
+const reviewPhaseInstruction = document.getElementById('reviewPhaseInstruction');
+const reviewPhaseSteps = document.getElementById('reviewPhaseSteps');
+const reviewPhaseNextBtn = document.getElementById('reviewPhaseNextBtn');
+const reviewPhaseBackBtn = document.getElementById('reviewPhaseBackBtn');
+const reviewDetPanel   = document.getElementById('reviewDetPanel');
+const reviewMissedPanel= document.getElementById('reviewMissedPanel');
+
+// -- PHASE DEFINITIONS --------------------------------------------------------
+const REVIEW_PHASES = [
+  { id: 'lot_perimeter', label: 'Lot Perimeter',  color: '#ff6450' },
+  { id: 'obstruction',   label: 'Obstructions',   color: '#dc3232' },
+  { id: 'hatching',      label: 'Hatching / ADA', color: '#f5c542' },
+  { id: 'handicap',      label: 'Handicap Stalls',color: '#4fc3f7' },
+  { id: 'arrow',         label: 'Arrows',          color: '#e8d080' },
+  { id: 'stencil',       label: 'Stencils',        color: '#d4a800' },
+  { id: 'missed',        label: 'Anything Missed?',color: '#c084fc' },
+];
+
+let reviewPhaseIdx   = 0;
+let reviewDetections = [];
+let reviewIdx        = 0;
+let reviewImgSnap    = null;
+let reviewDragVtx    = null;
+let reviewIsAdding   = false;
+let reviewIsRedrawing= false;
+let reviewNewPoly    = [];
+let reviewHoverVtx   = null;
+let reviewHoverEdge  = null;
+
+// Missed phase state
+let missedFireLines  = []; // [{points:[{x,y},...]}]
+let missedPoints     = []; // [{type, x, y}]
+let missedStencils   = []; // [{text, x, y}]
+let missedDrawMode   = null; // 'fireline' | 'point:bollard' etc
+let missedFireLinePts= [];
+
+const REVIEW_COLORS = {
+  lot_perimeter: 'rgba(255,100,80,0.55)',
+  obstruction:   'rgba(220,50,50,0.65)',
+  hatching:      'rgba(245,197,66,0.65)',
+  stencil:       'rgba(212,168,0,0.65)',
+  arrow:         'rgba(232,208,128,0.65)',
+  handicap:      'rgba(79,195,247,0.70)',
+};
+
+const POINT_COLORS = {
+  bollard: '#4fc3f7', stop_block: '#e8d080',
+  bollard_sign: '#c084fc', speed_bump: '#4caf50',
+};
+
+function activePhases() {
+  return REVIEW_PHASES.filter(ph => {
+    if (ph.id === 'missed') return true; // always show missed
+    return reviewDetections.some(d => normalizeClass(d.class) === ph.id);
+  });
+}
+
+function currentPhase() { return activePhases()[reviewPhaseIdx]; }
+
+function phaseInstructionText(ph) {
+  if (!ph) return 'Review and Confirm';
+  if (ph.id === 'missed') return 'Review and Confirm Anything Missed';
+  return 'Review and Confirm ' + ph.label;
+}
+
+function phaseDetections() {
+  const ph = currentPhase();
+  if (!ph || ph.id === 'missed') return [];
+  return reviewDetections.filter(d => normalizeClass(d.class) === ph.id);
+}
+
+// -- OPEN / CLOSE -------------------------------------------------------------
+function rdpSimplify(points, epsilon) {
+  if (points.length <= 2) return points;
+  const first = points[0], last = points[points.length-1];
+  let maxDist = 0, maxIdx = 0;
+  const dx = last.x-first.x, dy = last.y-first.y;
+  const lineLenSq = dx*dx + dy*dy;
+  for (let i = 1; i < points.length-1; i++) {
+    let dist;
+    if (lineLenSq === 0) {
+      dist = Math.hypot(points[i].x-first.x, points[i].y-first.y);
+    } else {
+      const t = Math.max(0, Math.min(1, ((points[i].x-first.x)*dx+(points[i].y-first.y)*dy)/lineLenSq));
+      dist = Math.hypot(points[i].x-(first.x+t*dx), points[i].y-(first.y+t*dy));
+    }
+    if (dist > maxDist) { maxDist = dist; maxIdx = i; }
+  }
+  if (maxDist > epsilon) {
+    const left  = rdpSimplify(points.slice(0, maxIdx+1), epsilon);
+    const right = rdpSimplify(points.slice(maxIdx), epsilon);
+    return [...left.slice(0,-1), ...right];
+  }
+  return [first, last];
+}
+
+function simplifyDetectionForReview(det) {
+  if (!det.points || det.points.length < 4) return det;
+  const cls = normalizeClass(det.class);
+  const epsilon = cls === 'lot_perimeter' ? 4 : cls === 'obstruction' ? 3 : 2;
+  const MAX_PTS = { lot_perimeter:24, obstruction:16, hatching:12, default:12 };
+  const max = MAX_PTS[cls] || MAX_PTS.default;
+  let pts = rdpSimplify(det.points, epsilon);
+  let eps = epsilon;
+  while (pts.length > max && eps < 50) { eps *= 1.5; pts = rdpSimplify(det.points, eps); }
+  return { ...det, points: pts };
+}
+
+function openReview() {
+  if (!lastResults) return;
+  reviewDetections = [];
+  const nr = lastResults.nonStalls || [];
+  for (const p of nr) reviewDetections.push(simplifyDetectionForReview({ ...p, _approved: true }));
+  if (lastResults.perimeterPred)
+    reviewDetections.unshift(simplifyDetectionForReview({ ...lastResults.perimeterPred, _approved: true }));
+
+  reviewPhaseIdx = 0;
+  reviewIdx = 0;
+  missedFireLines = []; missedPoints = []; missedStencils = [];
+
+  console.log('[Review] Loaded detections:', reviewDetections.map(d => normalizeClass(d.class)));
+  console.log('[Review] Classes:', [...new Set(reviewDetections.map(d => normalizeClass(d.class)))]);
+
+  reviewCanvas.width  = uploadedW;
+  reviewCanvas.height = uploadedH;
+  reviewCtx.drawImage(uploadedImage, 0, 0);
+  reviewImgSnap = reviewCtx.getImageData(0, 0, uploadedW, uploadedH);
+
+  reviewModal.style.display = 'flex';
+  enterPhase();
+}
+
+function closeReview() {
+  reviewModal.style.display = 'none';
+  reviewIsAdding = false; reviewIsRedrawing = false; reviewNewPoly = [];
+  cancelMissedDraw();
+  if (lastResults) {
+    lastResults.nonStalls = reviewDetections.filter(d => normalizeClass(d.class) !== 'lot_perimeter');
+    const perim = reviewDetections.find(d => normalizeClass(d.class) === 'lot_perimeter');
+    if (perim) lastResults.perimeterPred = perim;
+    drawDetections(lastResults.perimeterPred, lastResults.nonStalls);
+    redrawAll();
+  }
+  showReceipt();
+}
+
+// -- RECEIPT -------------------------------------------------------------------
+
+let receiptPixelsPerFoot = null; // derived from calibration
+
+function polygonArea(pts) {
+  // Shoelace formula
+  let area = 0;
+  for (let i = 0, j = pts.length-1; i < pts.length; j = i++) {
+    area += (pts[j].x + pts[i].x) * (pts[j].y - pts[i].y);
+  }
+  return Math.abs(area / 2);
+}
+
+function polylineLength(pts) {
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x-pts[i-1].x, pts[i].y-pts[i-1].y);
+  return len;
+}
+
+function getPixelsPerFoot() {
+  if (receiptPixelsPerFoot) return receiptPixelsPerFoot;
+  if (stallTemplate && stallTemplate.spacing) {
+    const stallFt = parseFloat(document.getElementById('receiptStallFt')?.value) || 9;
+    console.log('[Receipt] stallTemplate.spacing:', stallTemplate.spacing, 'stallFt:', stallFt, 'ppf:', stallTemplate.spacing / stallFt);
+    return stallTemplate.spacing / stallFt;
+  }
+  console.log('[Receipt] No stallTemplate:', stallTemplate);
+  return null;
+}
+
+function showReceipt() {
+  const modal = document.getElementById('receiptModal');
+  document.getElementById('receiptDate').textContent = new Date().toLocaleDateString('en-US', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  modal.style.display = 'flex';
+  buildReceipt();
+}
+
+function buildReceipt() {
+  const ppf = getPixelsPerFoot();
+  const ppf2 = ppf ? ppf * ppf : null;
+
+  // Scale info
+  const scaleEl = document.getElementById('receiptScaleInfo');
+  if (stallTemplate && stallTemplate.spacing) {
+    const stallFt = parseFloat(document.getElementById('receiptStallFt')?.value) || 9;
+    scaleEl.textContent = `Stall calibration: ${Math.round(stallTemplate.spacing)}px = ${stallFt}ft → 1ft = ${(stallTemplate.spacing/stallFt).toFixed(1)}px`;
+  } else if (ppf) {
+    scaleEl.textContent = `Manual scale: 1ft = ${ppf.toFixed(1)}px`;
+  } else {
+    scaleEl.textContent = 'No scale set — pixel counts only';
+  }
+
+  const items = document.getElementById('receiptItems');
+  items.innerHTML = '';
+
+  function fmt(n) { return n.toLocaleString('en-US', {maximumFractionDigits:0}); }
+  function pxToFt(px) { return ppf ? px / ppf : null; }
+  function pxToSqFt(px2) { return ppf2 ? px2 / ppf2 : null; }
+
+  function addSection(label, color) {
+    const el = document.createElement('div');
+    el.style.cssText = `padding:10px 0 4px;font-size:9px;letter-spacing:2px;color:${color||'#3a4048'};text-transform:uppercase;border-bottom:1px solid #1e2328;margin-top:8px;`;
+    el.textContent = label;
+    items.appendChild(el);
+  }
+
+  function addRow(label, value, sub, highlight) {
+    const el = document.createElement('div');
+    el.style.cssText = `display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;border-bottom:1px solid #0f1114;`;
+    el.innerHTML = `
+      <span style="font-size:11px;color:${highlight?'#fff':'#7a8390'};">${label}</span>
+      <div style="text-align:right;">
+        <span style="font-size:12px;color:${highlight?'#f5c542':'#e8eaed'};font-weight:700;">${value}</span>
+        ${sub ? `<div style="font-size:9px;color:#3a4048;margin-top:1px;">${sub}</div>` : ''}
+      </div>`;
+    items.appendChild(el);
+  }
+
+  // -- LOT PERIMETER --
+  const perim = reviewDetections.find(d => normalizeClass(d.class) === 'lot_perimeter');
+  addSection('Lot Perimeter', '#ff6450');
+  if (perim && perim.points && perim.points.length >= 3) {
+    const areaPx = polygonArea(perim.points);
+    const sqft = pxToSqFt(areaPx);
+    addRow('Lot Area', sqft ? `${fmt(sqft)} sq ft` : `${fmt(areaPx)} px²`,
+      sqft ? `${(sqft/43560).toFixed(3)} acres` : 'No scale set', true);
+    const perimPx = polylineLength([...perim.points, perim.points[0]]);
+    const perimFt = pxToFt(perimPx);
+    addRow('Perimeter Length', perimFt ? `${fmt(perimFt)} ln ft` : `${fmt(perimPx)} px`, null);
+  } else {
+    addRow('Lot Area', '—', 'No perimeter detected');
+  }
+
+  // -- STALL LINES --
+  const stallLineFt = parseFloat(document.getElementById('receiptStallLineFt')?.value) || 18;
+  const totalDots = allRows.reduce((s,r) => s + r.length, 0);
+  addSection('Stall Lines', '#f5c542');
+  addRow('Stall Line Count', `${fmt(totalDots)} lines`, null, true);
+  addRow('Total Stall Striping', `${fmt(totalDots * stallLineFt)} ln ft`, `@ ${stallLineFt} ft per line`);
+
+  // -- OBSTRUCTIONS --
+  const obs = reviewDetections.filter(d => normalizeClass(d.class) === 'obstruction');
+  if (obs.length > 0) {
+    addSection('Obstructions', '#dc3232');
+    addRow('Count', `${obs.length}`, null, true);
+    const totalObsArea = obs.reduce((s,d) => s + (d.points?.length>=3 ? polygonArea(d.points) : (d.width||0)*(d.height||0)), 0);
+    const obsSqFt = pxToSqFt(totalObsArea);
+    addRow('Total Area', obsSqFt ? `${fmt(obsSqFt)} sq ft` : `${fmt(totalObsArea)} px²`, null);
+  }
+
+  // -- HATCHING --
+  const hatching = reviewDetections.filter(d => normalizeClass(d.class) === 'hatching');
+  if (hatching.length > 0) {
+    addSection('Hatching / ADA', '#f5c542');
+    addRow('Count', `${hatching.length} zones`, null, true);
+    const totalHatchArea = hatching.reduce((s,d) => s + (d.points?.length>=3 ? polygonArea(d.points) : (d.width||0)*(d.height||0)), 0);
+    const hatchSqFt = pxToSqFt(totalHatchArea);
+    addRow('Total Area', hatchSqFt ? `${fmt(hatchSqFt)} sq ft` : `${fmt(totalHatchArea)} px²`, null);
+  }
+
+  // -- HANDICAP --
+  const handi = reviewDetections.filter(d => normalizeClass(d.class) === 'handicap');
+  if (handi.length > 0) {
+    addSection('Handicap Stalls', '#4fc3f7');
+    addRow('Count', `${handi.length} stalls`, null, true);
+  }
+
+  // -- ARROWS --
+  const arrows = reviewDetections.filter(d => normalizeClass(d.class) === 'arrow');
+  if (arrows.length > 0) {
+    addSection('Arrows', '#e8d080');
+    addRow('Count', `${arrows.length}`, null, true);
+  }
+
+  // -- STENCILS --
+  const stencils = reviewDetections.filter(d => normalizeClass(d.class) === 'stencil');
+  const allStencils = [...stencils.map(s => ({text: s.class})), ...missedStencils];
+  if (allStencils.length > 0) {
+    addSection('Stencils', '#d4a800');
+    addRow('Count', `${allStencils.length}`, null, true);
+  }
+
+  // -- MISSED FEATURES --
+  if (missedFireLines.length > 0 || missedPoints.length > 0) {
+    addSection('Additional Features', '#c084fc');
+    if (missedFireLines.length > 0) {
+      const totalFlPx = missedFireLines.reduce((s,fl) => s + polylineLength(fl.points), 0);
+      const flFt = pxToFt(totalFlPx);
+      addRow('Fire Lanes', `${missedFireLines.length} line${missedFireLines.length>1?'s':''}`,
+        flFt ? `~${fmt(flFt)} ln ft total` : null, true);
+    }
+    const types = {};
+    missedPoints.forEach(p => { types[p.type] = (types[p.type]||0) + 1; });
+    Object.entries(types).forEach(([type, count]) => {
+      addRow(type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()), `${count}`, null);
+    });
+  }
+}
+
+// Receipt button wiring
+document.getElementById('receiptCloseBtn')?.addEventListener('click', () => {
+  document.getElementById('receiptModal').style.display = 'none';
+});
+document.getElementById('receiptRecalcBtn')?.addEventListener('click', () => {
+  receiptPixelsPerFoot = null; buildReceipt();
+});
+document.getElementById('receiptManualBtn')?.addEventListener('click', () => {
+  const px = parseFloat(document.getElementById('receiptManualPx').value);
+  const ft = parseFloat(document.getElementById('receiptManualFt').value);
+  if (px > 0 && ft > 0) { receiptPixelsPerFoot = px / ft; buildReceipt(); }
+});
+document.getElementById('receiptStallLineRecalc')?.addEventListener('click', buildReceipt);
+
+function imageryDetectionCenter(d) {
+  if (d.points && d.points.length) {
+    let sx = 0, sy = 0, n = 0;
+    for (const p of d.points) {
+      const x = p.x !== undefined ? p.x : p[0];
+      const y = p.y !== undefined ? p.y : p[1];
+      if (Number.isFinite(x) && Number.isFinite(y)) { sx += x; sy += y; n++; }
+    }
+    if (n) return { x: sx / n, y: sy / n };
+  }
+  return { x: Number(d.x) || 0, y: Number(d.y) || 0 };
+}
+
+async function continueImageryToProjectReports() {
+  const btn = document.getElementById('receiptExportBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const _sb = window._sbClient;
+    if (!_sb) throw new Error('Not signed in.');
+    const { data: { session } } = await _sb.auth.getSession();
+    if (!session) throw new Error('Sign in required.');
+
+    const ppf = getPixelsPerFoot();
+    const ppf2 = ppf ? ppf * ppf : null;
+    if (!uploadedImage || uploadedW < 8 || uploadedH < 8) throw new Error('No valid image.');
+
+    const perim = reviewDetections.find(d => normalizeClass(d.class) === 'lot_perimeter');
+    const zones = [];
+    if (perim && perim.points && perim.points.length >= 3) {
+      const sqft = ppf2 ? Math.round(polygonArea(perim.points) / ppf2) : 0;
+      zones.push({
+        name: 'Lot',
+        color: '#d4a843',
+        pts: perim.points.map(p => ({ x: p.x, y: p.y })),
+        labelSize: 12,
+        sqft
+      });
+    }
+    reviewDetections.filter(d => normalizeClass(d.class) === 'obstruction').forEach((d, i) => {
+      if (!d.points || d.points.length < 3) return;
+      const sq = ppf2 ? Math.round(polygonArea(d.points) / ppf2) : 0;
+      zones.push({
+        name: 'Obstruction ' + (i + 1),
+        color: '#6b7280',
+        obstruct: true,
+        pts: d.points.map(p => ({ x: p.x, y: p.y })),
+        labelSize: 10,
+        sqft: sq
+      });
+    });
+
+    const closed = zones.filter(z => !z.obstruct);
+    let totalSqft = closed.reduce((s, z) => s + (z.sqft || 0), 0);
+
+    const linearSegs = [];
+    allRows.forEach((row, ri) => {
+      if (!row || row.length < 2) return;
+      linearSegs.push({
+        id: 'row-' + ri,
+        label: 'Row ' + (ri + 1),
+        pts: row.map(p => ({ x: p.x, y: p.y }))
+      });
+    });
+    missedFireLines.forEach((fl, i) => {
+      if (!fl.points || fl.points.length < 2) return;
+      linearSegs.push({
+        id: 'fire-' + i,
+        label: 'Fire lane',
+        pts: fl.points.map(p => ({ x: p.x, y: p.y }))
+      });
+    });
+
+    const hatchZones = [];
+    reviewDetections.filter(d => normalizeClass(d.class) === 'hatching').forEach(d => {
+      if (!d.points || d.points.length < 3) return;
+      hatchZones.push({ type: 'crosswalk', pts: d.points.map(p => ({ x: p.x, y: p.y })) });
+    });
+
+    const markers = [];
+    let stallIdx = 0;
+    allRows.forEach(row => {
+      row.forEach(pt => { markers.push({ type: 'stall', x: pt.x, y: pt.y, label: String(++stallIdx) }); });
+    });
+    reviewDetections.filter(d => normalizeClass(d.class) === 'handicap').forEach((d, i) => {
+      const c = imageryDetectionCenter(d);
+      markers.push({ type: 'ada', x: c.x, y: c.y, label: 'ADA ' + (i + 1) });
+    });
+
+    const pr = JSON.parse(localStorage.getItem('paveview_pricing') || '{}');
+    const depth = pr.depth ?? 3, comp = pr.comp ?? 1.05, base = pr.base ?? 6;
+    const pa = pr.pa ?? 85, pb = pr.pb ?? 22, pl = pr.pl ?? 1.25;
+    const plin = pr.plin ?? 3, pstripe = pr.pstripe ?? 8, pada = pr.pada ?? 25, pcross = pr.pcross ?? 2.5;
+    const sealerGal = pr.sealerGal ?? 4.5, sealerCov = pr.sealerCov ?? 80, sealerCoats = pr.sealerCoats ?? 2;
+    const pseal = pr.pseal ?? 0.18, pcrack = pr.pcrack ?? 2.5;
+
+    const sc = ppf ? 1 / ppf : 40 / 70;
+    let linearFt = 0;
+    linearSegs.forEach(seg => {
+      const pts = seg.pts || [];
+      for (let i = 1; i < pts.length; i++) linearFt += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y) * sc;
+    });
+
+    let crosswalkSqft = 0;
+    hatchZones.forEach(h => { crosswalkSqft += polygonArea(h.pts) * sc * sc; });
+
+    const stallC = markers.filter(m => m.type === 'stall').length;
+    const adaC = markers.filter(m => m.type === 'ada').length;
+    const stallLineFt = parseFloat(document.getElementById('receiptStallLineFt')?.value) || 18;
+    const stripingLineFt = stallC * stallLineFt;
+
+    const tons = closed.reduce((t, z) => {
+      const a = z.sqft || polygonArea(z.pts) * sc * sc;
+      return t + (a * (depth / 12) * 145 / 2000 * comp);
+    }, 0);
+    const baseTons = closed.reduce((t, z) => {
+      const a = z.sqft || polygonArea(z.pts) * sc * sc;
+      return t + (a * (base / 12) * 110 / 2000);
+    }, 0);
+    const pavingCost = tons * pa + baseTons * pb + totalSqft * pl;
+    const sealerGallons = totalSqft * Math.max(1, sealerCoats) / Math.max(1, sealerCov);
+    const sealcoatCost = totalSqft * pseal + linearFt * pcrack + sealerGallons * sealerGal;
+    const stripingCost = stallC * pstripe + adaC * pada + linearFt * plin + crosswalkSqft * pcross;
+
+    const selectedJobTypes = ['paving', 'striping'];
+    let totalCost = pavingCost + stripingCost;
+    const jobType = 'both';
+
+    const planId = 'plan-' + Date.now();
+    const plansArr = [{ id: planId, label: 'Site imagery', imgW: uploadedW, imgH: uploadedH }];
+    const planSlice = {
+      id: planId,
+      label: 'Site imagery',
+      imgW: uploadedW,
+      imgH: uploadedH,
+      zones: JSON.parse(JSON.stringify(zones)),
+      markers: JSON.parse(JSON.stringify(markers)),
+      measurements: [],
+      linearSegs: JSON.parse(JSON.stringify(linearSegs)),
+      hatchZones: JSON.parse(JSON.stringify(hatchZones))
+    };
+
+    const projectName = 'Imagery estimate · ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    const projectData = {
+      status: 'estimating',
+      totalSqft: Math.round(totalSqft),
+      totalCost: Math.round(totalCost),
+      stallCount: stallC,
+      adaCount: adaC,
+      jobType,
+      jobTypes: selectedJobTypes,
+      scalePx: ppf || 70,
+      scaleFt: ppf ? 1 : 40,
+      scaleUnit: 'ft',
+      zones: planSlice.zones,
+      markers: planSlice.markers,
+      measurements: [],
+      linearSegs: planSlice.linearSegs,
+      hatchZones: planSlice.hatchZones,
+      plans: [planSlice],
+      currentPlanIdx: 0,
+      depth, comp, base, pa, pb, pl, plin, pseal, pcrack, pstripe, pada, pcross,
+      sealerGal, sealerCov, sealerCoats,
+      source: 'imagery_estimate',
+      stripingLineFt,
+      receiptStallLineFt: stallLineFt
+    };
+
+    let planPath = null;
+    try {
+      const uc = document.createElement('canvas');
+      uc.width = uploadedW;
+      uc.height = uploadedH;
+      uc.getContext('2d').drawImage(uploadedImage, 0, 0);
+      const blob = await new Promise(res => uc.toBlob(res, 'image/jpeg', 0.85));
+      const fname = session.user.id + '/' + Date.now() + '.jpg';
+      const { error: upErr } = await _sb.storage.from('project-plans').upload(fname, blob, { contentType: 'image/jpeg', upsert: true });
+      if (!upErr) planPath = fname;
+    } catch (e) { console.warn('Plan upload:', e); }
+
+    const dataStr = JSON.stringify({ ...projectData, planPath });
+    const saveResp = await fetch('/api/save-project', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
+      body: JSON.stringify({ name: projectName, data: dataStr })
+    });
+    const savePayload = await saveResp.json().catch(() => ({}));
+    if (!saveResp.ok) {
+      if (saveResp.status === 402 || saveResp.status === 429) {
+        alert(savePayload?.error || 'Monthly proposal limit reached.');
+        window.location.href = '/#pricing';
+        return;
+      }
+      throw new Error(savePayload?.error || 'Save failed.');
+    }
+    const savedId = savePayload?.project_id || savePayload?.projectId;
+    if (!savedId) throw new Error('No project id returned.');
+
+    try {
+      localStorage.removeItem('paveview_proj_status_' + savedId);
+    } catch (_e) {}
+
+    document.getElementById('receiptModal').style.display = 'none';
+    window.location.href = 'project.html?id=' + savedId;
+  } catch (e) {
+    console.error(e);
+    alert(e.message || 'Could not save project.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Continue to Report Generation →'; }
+  }
+}
+
+document.getElementById('receiptExportBtn')?.addEventListener('click', () => { continueImageryToProjectReports(); });
+
+// -- PHASE NAVIGATION ---------------------------------------------------------
+function enterPhase() {
+  const ph = currentPhase();
+  reviewIdx = 0;
+  reviewIsAdding = false; reviewIsRedrawing = false; reviewNewPoly = [];
+  reviewAddTypeWrap.style.display = 'none';
+  reviewRedrawWrap.style.display = 'none';
+  reviewDrawHint.style.display = 'none';
+
+  reviewPhaseLabel.textContent = ph.label;
+  reviewPhaseLabel.style.color = ph.color;
+  if (reviewPhaseInstruction) {
+    reviewPhaseInstruction.textContent = phaseInstructionText(ph);
+    reviewPhaseInstruction.style.borderColor = ph.id === 'missed' ? 'rgba(192,132,252,0.45)' : 'rgba(245,197,66,0.35)';
+    reviewPhaseInstruction.style.color = ph.id === 'missed' ? '#c084fc' : '#f5c542';
+  }
+
+  const isMissed = ph.id === 'missed';
+  reviewDetPanel.style.display   = isMissed ? 'none' : 'flex';
+  reviewMissedPanel.style.display= isMissed ? 'flex' : 'none';
+  document.getElementById('reviewLeftPanel').style.display = isMissed ? 'none' : 'flex';
+
+  reviewPhaseBackBtn.disabled = reviewPhaseIdx === 0;
+  reviewPhaseNextBtn.textContent = reviewPhaseIdx === activePhases().length - 1 ? 'Finish →' : 'Next Phase →';
+
+  buildPhaseStepper();
+  buildPhaseDetList();
+  renderReviewFrame();
+}
+
+function buildPhaseStepper() {
+  reviewPhaseSteps.innerHTML = '';
+  activePhases().forEach((ph, i) => {
+    const dot = document.createElement('div');
+    const active = i === reviewPhaseIdx;
+    const done   = i < reviewPhaseIdx;
+    dot.style.cssText = `width:${active?28:8}px;height:8px;border-radius:4px;background:${active?ph.color:done?'#3a4048':'#1e2328'};transition:all .2s;cursor:pointer;`;
+    dot.title = ph.label;
+    dot.onclick = () => { reviewPhaseIdx = i; enterPhase(); };
+    reviewPhaseSteps.appendChild(dot);
+  });
+}
+
+function buildPhaseDetList() {
+  reviewDetList.innerHTML = '';
+  const list = phaseDetections();
+  if (list.length === 0) {
+    reviewDetList.innerHTML = '<div style="padding:12px 8px;font-size:10px;color:#3a4048;">No detections in this phase.</div>';
+    return;
+  }
+  list.forEach((d, i) => {
+    const cls = normalizeClass(d.class);
+    const color = REVIEW_COLORS[cls] || '#aaa';
+    const row = document.createElement('div');
+    const active = i === reviewIdx;
+    row.style.cssText = `display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:5px;cursor:pointer;background:${active?'#1a1e24':'transparent'};border:1px solid ${active?'#2a3040':'transparent'};margin-bottom:2px;`;
+    row.innerHTML = `<div style="width:7px;height:7px;border-radius:2px;background:${color};flex-shrink:0;"></div><span style="font-size:10px;color:${active?'#fff':'#5a6270'};flex:1;">${cls.replace(/_/g,' ')}</span><span style="font-size:9px;color:#3a4048;">${d.confidence?(d.confidence*100).toFixed(0)+'%':''}</span>`;
+    row.onclick = () => { reviewIdx = i; buildPhaseDetList(); renderReviewFrame(); };
+    reviewDetList.appendChild(row);
+  });
+}
+
+// -- RENDERING ----------------------------------------------------------------
+function renderReviewFrame() {
+  reviewCtx.putImageData(reviewImgSnap, 0, 0);
+  const ph = currentPhase();
+
+  if (ph.id === 'missed') {
+    drawMissedOverlays();
+    return;
+  }
+
+  const list = phaseDetections();
+
+  // Dim all other phases lightly
+  reviewDetections.forEach((d, i) => {
+    if (normalizeClass(d.class) === ph.id) return;
+    drawReviewZone(d, REVIEW_COLORS[normalizeClass(d.class)]?.replace(/[\d.]+\)$/, '0.1)') || 'rgba(200,200,200,0.1)', 0.5);
+  });
+
+  // Draw current phase dimmed
+  list.forEach((d, i) => {
+    if (i === reviewIdx) return;
+    drawReviewZone(d, REVIEW_COLORS[normalizeClass(d.class)]?.replace(/[\d.]+\)$/, '0.25)') || 'rgba(200,200,200,0.25)', 1);
+  });
+
+  // Draw active detection bright
+  if (list.length > 0 && reviewIdx < list.length) {
+    const d = list[reviewIdx];
+    const cls = normalizeClass(d.class);
+    const color = REVIEW_COLORS[cls] || 'rgba(200,200,200,0.7)';
+    drawReviewZone(d, color, 2.5);
+    reviewDetLabel.textContent = cls.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+    reviewDetMeta.textContent  = `Confidence: ${d.confidence?(d.confidence*100).toFixed(0)+'%':'drawn'} · ${d.points?d.points.length+' pts':'bbox'}`;
+  } else {
+    reviewDetLabel.textContent = list.length === 0 ? 'None detected' : '';
+    reviewDetMeta.textContent = list.length === 0 ? 'Use + Add Zone to add one.' : '';
+  }
+
+  // Draw in-progress polygon
+  if ((reviewIsAdding || reviewIsRedrawing) && reviewNewPoly.length > 0) {
+    const polyColor = reviewIsRedrawing ? '#c084fc' : '#f5c542';
+    reviewCtx.strokeStyle = polyColor; reviewCtx.lineWidth = 2; reviewCtx.setLineDash([4,3]);
+    reviewCtx.beginPath(); reviewCtx.moveTo(reviewNewPoly[0].x, reviewNewPoly[0].y);
+    for (let i=1;i<reviewNewPoly.length;i++) reviewCtx.lineTo(reviewNewPoly[i].x, reviewNewPoly[i].y);
+    if (reviewNewPoly.length > 2) reviewCtx.lineTo(reviewNewPoly[0].x, reviewNewPoly[0].y);
+    reviewCtx.stroke(); reviewCtx.setLineDash([]);
+    reviewNewPoly.forEach((p,i) => {
+      reviewCtx.beginPath(); reviewCtx.arc(p.x, p.y, i===0?6:4, 0, Math.PI*2);
+      reviewCtx.fillStyle = polyColor; reviewCtx.fill();
+    });
+  }
+
+  const stallTotal = allRows.reduce((s,r)=>s+r.length,0);
+  reviewStallCount.textContent = stallTotal > 0 ? `${stallTotal} stall lines` : '';
+  updateReviewNav();
+  buildPhaseDetList();
+}
+
+function drawReviewZone(d, color, lw) {
+  reviewCtx.fillStyle = color;
+  reviewCtx.strokeStyle = color.replace(/[\d.]+\)$/, '1)');
+  reviewCtx.lineWidth = lw;
+  reviewCtx.beginPath();
+  if (d.points && d.points.length >= 3) {
+    reviewCtx.moveTo(d.points[0].x, d.points[0].y);
+    for (let i=1;i<d.points.length;i++) reviewCtx.lineTo(d.points[i].x, d.points[i].y);
+    reviewCtx.closePath();
+  } else if (d.width && d.height) {
+    reviewCtx.rect(d.x-d.width/2, d.y-d.height/2, d.width, d.height);
+  }
+  reviewCtx.fill(); reviewCtx.stroke();
+}
+
+function updateReviewNav() {
+  const list = phaseDetections();
+  reviewProgress.textContent = list.length > 0 ? `${reviewIdx+1} / ${list.length}` : '0 / 0';
+  reviewPrevBtn.disabled = reviewIdx <= 0;
+  reviewNextBtn.disabled = reviewIdx >= list.length - 1;
+  reviewDeleteBtn.disabled = list.length === 0;
+}
+
+function reviewCanvasCoords(e) {
+  const rect = reviewCanvas.getBoundingClientRect();
+  return {
+    x: (e.clientX-rect.left)/rect.width  * reviewCanvas.width,
+    y: (e.clientY-rect.top) /rect.height * reviewCanvas.height,
+  };
+}
+
+// -- MISSED PHASE -------------------------------------------------------------
+function drawMissedOverlays() {
+  // Draw all detections dimly
+  reviewDetections.forEach(d => {
+    drawReviewZone(d, REVIEW_COLORS[normalizeClass(d.class)]?.replace(/[\d.]+\)$/, '0.15)') || 'rgba(200,200,200,0.1)', 0.5);
+  });
+  // Draw fire lanes
+  missedFireLines.forEach(fl => {
+    if (fl.points.length < 2) return;
+    reviewCtx.strokeStyle = '#ff6450'; reviewCtx.lineWidth = 4; reviewCtx.setLineDash([8,4]);
+    reviewCtx.beginPath(); reviewCtx.moveTo(fl.points[0].x, fl.points[0].y);
+    for (let i=1;i<fl.points.length;i++) reviewCtx.lineTo(fl.points[i].x, fl.points[i].y);
+    reviewCtx.stroke(); reviewCtx.setLineDash([]);
+  });
+  // In-progress fire lane
+  if (missedFireLinePts.length > 0) {
+    reviewCtx.strokeStyle = 'rgba(255,100,80,0.6)'; reviewCtx.lineWidth = 3; reviewCtx.setLineDash([6,3]);
+    reviewCtx.beginPath(); reviewCtx.moveTo(missedFireLinePts[0].x, missedFireLinePts[0].y);
+    for (let i=1;i<missedFireLinePts.length;i++) reviewCtx.lineTo(missedFireLinePts[i].x, missedFireLinePts[i].y);
+    reviewCtx.stroke(); reviewCtx.setLineDash([]);
+  }
+  // Draw point features
+  missedPoints.forEach(p => {
+    const c = POINT_COLORS[p.type] || '#fff';
+    reviewCtx.beginPath(); reviewCtx.arc(p.x, p.y, 8, 0, Math.PI*2);
+    reviewCtx.fillStyle = c; reviewCtx.fill();
+    reviewCtx.strokeStyle = '#fff'; reviewCtx.lineWidth = 1.5; reviewCtx.stroke();
+    reviewCtx.fillStyle = '#000'; reviewCtx.font = 'bold 8px DM Mono, monospace';
+    reviewCtx.fillText(p.type.replace('_',' ').slice(0,4).toUpperCase(), p.x-10, p.y+3);
+  });
+  // Draw stencils
+  missedStencils.forEach(s => {
+    reviewCtx.fillStyle = '#f5c542'; reviewCtx.font = 'bold 12px DM Mono, monospace';
+    reviewCtx.fillText(s.text, s.x, s.y);
+  });
+}
+
+function cancelMissedDraw() {
+  missedDrawMode = null; missedFireLinePts = [];
+  reviewCanvas.style.cursor = 'default';
+  reviewDrawHint.style.display = 'none';
+}
+
+function buildMissedUI() {
+  // Fire lane list
+  const flList = document.getElementById('missedFireLaneList');
+  if (flList) {
+    flList.innerHTML = missedFireLines.map((fl,i) =>
+      `<div style="font-size:10px;color:#ff6450;display:flex;justify-content:space-between;"><span>Fire Lane ${i+1} (${fl.points.length} pts)</span><span style="cursor:pointer;color:#5a6270;" onclick="missedFireLines.splice(${i},1);renderReviewFrame();buildMissedUI();">✕</span></div>`
+    ).join('');
+  }
+  // Point list
+  const ptList = document.getElementById('missedPointList');
+  if (ptList) {
+    ptList.innerHTML = missedPoints.map((p,i) =>
+      `<div style="font-size:10px;color:${POINT_COLORS[p.type]||'#aaa'};display:flex;justify-content:space-between;"><span>${p.type.replace('_',' ')} (${Math.round(p.x)},${Math.round(p.y)})</span><span style="cursor:pointer;color:#5a6270;" onclick="missedPoints.splice(${i},1);renderReviewFrame();buildMissedUI();">✕</span></div>`
+    ).join('');
+  }
+  // Stencil list
+  const stList = document.getElementById('missedStencilList');
+  if (stList) {
+    stList.innerHTML = missedStencils.map((s,i) =>
+      `<div style="font-size:10px;color:#f5c542;display:flex;justify-content:space-between;"><span>"${s.text}"</span><span style="cursor:pointer;color:#5a6270;" onclick="missedStencils.splice(${i},1);renderReviewFrame();buildMissedUI();">✕</span></div>`
+    ).join('');
+  }
+}
+
+// -- CANVAS INTERACTION -------------------------------------------------------
+function nearestPointOnSegment(px, py, ax, ay, bx, by) {
+  const dx=bx-ax, dy=by-ay, len2=dx*dx+dy*dy;
+  if (len2===0) return {x:ax,y:ay,t:0};
+  const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/len2));
+  return {x:ax+t*dx,y:ay+t*dy,t};
+}
+
+function getHoverInfo(pos, d) {
+  if (!d||!d.points||d.points.length<2) return null;
+  const VTXHIT=12, EDGEHIT=8;
+  for (let vi=0;vi<d.points.length;vi++) {
+    if (Math.hypot(pos.x-d.points[vi].x,pos.y-d.points[vi].y)<VTXHIT) return {type:'vertex',vi};
+  }
+  for (let si=0;si<d.points.length;si++) {
+    const a=d.points[si], b=d.points[(si+1)%d.points.length];
+    const np=nearestPointOnSegment(pos.x,pos.y,a.x,a.y,b.x,b.y);
+    if (Math.hypot(pos.x-np.x,pos.y-np.y)<EDGEHIT) return {type:'edge',si,pt:np};
+  }
+  return null;
+}
+
+reviewCanvas.addEventListener('mousedown', e => {
+  if (reviewIsAdding||reviewIsRedrawing||missedDrawMode) return;
+  const pos = reviewCanvasCoords(e);
+  const list = phaseDetections();
+  if (reviewIdx>=list.length) return;
+  const d = list[reviewIdx];
+  if (!d.points) return;
+  const info = getHoverInfo(pos, d);
+  if (!info) return;
+  if (info.type==='vertex') {
+    reviewDragVtx = {det:d, vi:info.vi};
+  } else {
+    d.points.splice(info.si+1, 0, {x:info.pt.x, y:info.pt.y});
+    reviewDragVtx = {det:d, vi:info.si+1};
+  }
+  e.preventDefault();
+});
+
+reviewCanvas.addEventListener('mousemove', e => {
+  const pos = reviewCanvasCoords(e);
+  if (reviewDragVtx) {
+    reviewDragVtx.det.points[reviewDragVtx.vi] = {x:pos.x, y:pos.y};
+    renderReviewFrame();
+    reviewCtx.beginPath(); reviewCtx.arc(pos.x,pos.y,7,0,Math.PI*2);
+    reviewCtx.fillStyle='#fff'; reviewCtx.fill();
+    reviewCtx.strokeStyle='#f5c542'; reviewCtx.lineWidth=2; reviewCtx.stroke();
+    return;
+  }
+  if (reviewIsAdding||reviewIsRedrawing||missedDrawMode) return;
+  const list = phaseDetections();
+  if (reviewIdx>=list.length) return;
+  const d = list[reviewIdx];
+  if (!d||!d.points) return;
+  const info = getHoverInfo(pos, d);
+  if (info) {
+    renderReviewFrame();
+    const pt = info.type==='vertex' ? d.points[info.vi] : info.pt;
+    reviewCtx.beginPath(); reviewCtx.arc(pt.x,pt.y,7,0,Math.PI*2);
+    reviewCtx.fillStyle = info.type==='vertex'?'#fff':'rgba(255,255,255,0.6)';
+    reviewCtx.fill();
+    reviewCtx.strokeStyle='#f5c542'; reviewCtx.lineWidth=2; reviewCtx.stroke();
+    reviewCanvas.style.cursor='grab';
+    reviewHoverVtx = info.type==='vertex'?info:null;
+    reviewHoverEdge= info.type==='edge'?info:null;
+  } else {
+    reviewCanvas.style.cursor='default';
+    if (reviewHoverVtx||reviewHoverEdge) { reviewHoverVtx=null; reviewHoverEdge=null; renderReviewFrame(); }
+  }
+});
+
+reviewCanvas.addEventListener('mouseup', () => { reviewDragVtx=null; reviewCanvas.style.cursor='default'; });
+reviewCanvas.addEventListener('mouseleave', () => { reviewDragVtx=null; reviewHoverVtx=null; reviewHoverEdge=null; });
+
+reviewCanvas.addEventListener('click', e => {
+  if (e.detail > 1) return; // ignore second click from a double-click
+  const pos = reviewCanvasCoords(e);
+  // Missed phase point/fireline placement
+  if (currentPhase().id==='missed') {
+    if (missedDrawMode==='fireline') {
+      missedFireLinePts.push(pos);
+      renderReviewFrame();
+    } else if (missedDrawMode&&missedDrawMode.startsWith('point:')) {
+      const type = missedDrawMode.replace('point:','');
+      missedPoints.push({type, x:pos.x, y:pos.y});
+      cancelMissedDraw();
+      renderReviewFrame(); buildMissedUI();
+    } else if (missedDrawMode==='stencil') {
+      const txt = document.getElementById('missedStencilType').value;
+      const custom = document.getElementById('missedStencilCustom').value.trim();
+      missedStencils.push({text: txt==='Custom...'?custom||'CUSTOM':txt, x:pos.x, y:pos.y});
+      cancelMissedDraw();
+      renderReviewFrame(); buildMissedUI();
+    }
+    return;
+  }
+  if (reviewIsAdding||reviewIsRedrawing) {
+    const CLOSE_HIT = 14;
+    if (reviewNewPoly.length >= 3) {
+      const start = reviewNewPoly[0];
+      if (Math.hypot(pos.x - start.x, pos.y - start.y) <= CLOSE_HIT) {
+        finalizeReviewPolygon();
+        return;
+      }
+    }
+    reviewNewPoly.push(pos);
+    renderReviewFrame();
+  }
+});
+
+function finalizeReviewPolygon() {
+  if (reviewIsRedrawing && reviewNewPoly.length>=3) {
+    const list=phaseDetections();
+    if (reviewIdx<list.length) list[reviewIdx].points=[...reviewNewPoly];
+    reviewIsRedrawing=false; reviewNewPoly=[];
+    reviewRedrawWrap.style.display='none'; reviewDrawHint.style.display='none';
+    reviewCanvas.style.cursor='default'; renderReviewFrame();
+    return true;
+  }
+  if (reviewIsAdding && reviewNewPoly.length>=3) {
+    const type=reviewAddType.value;
+    reviewDetections.push({class:type,confidence:null,_approved:true,
+      x:reviewNewPoly.reduce((s,p)=>s+p.x,0)/reviewNewPoly.length,
+      y:reviewNewPoly.reduce((s,p)=>s+p.y,0)/reviewNewPoly.length,
+      width:0,height:0,points:[...reviewNewPoly]});
+    reviewIsAdding=false; reviewNewPoly=[];
+    reviewAddTypeWrap.style.display='none'; reviewDrawHint.style.display='none';
+    reviewCanvas.style.cursor='default';
+    reviewIdx=phaseDetections().length-1;
+    renderReviewFrame();
+    return true;
+  }
+  return false;
+}
+
+window.addEventListener('keydown', e => {
+  if (reviewModal.style.display !== 'flex') return;
+  if (!(reviewIsAdding || reviewIsRedrawing)) return;
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  finalizeReviewPolygon();
+});
+
+reviewCanvas.addEventListener('dblclick', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  const pos = reviewCanvasCoords(e);
+  if (currentPhase().id==='missed' && missedDrawMode==='fireline' && missedFireLinePts.length>=2) {
+    missedFireLines.push({points:[...missedFireLinePts]});
+    cancelMissedDraw(); renderReviewFrame(); buildMissedUI(); return;
+  }
+  // Zone polygons now finish via Enter or clicking near the first point.
+});
+
+// -- BUTTON HANDLERS ----------------------------------------------------------
+reviewBtn.addEventListener('click', () => {
+  try { openReview(); }
+  catch(e) { console.error('[PaveView] openReview failed:', e); alert('Review error: ' + e.message); }
+});
+reviewDoneBtn.addEventListener('click', closeReview);
+
+reviewPhaseNextBtn.addEventListener('click', () => {
+  if (reviewPhaseIdx >= activePhases().length - 1) { closeReview(); return; }
+  reviewPhaseIdx++; enterPhase();
+});
+reviewPhaseBackBtn.addEventListener('click', () => {
+  if (reviewPhaseIdx > 0) { reviewPhaseIdx--; enterPhase(); }
+});
+
+reviewPrevBtn.addEventListener('click', () => {
+  if (reviewIdx>0) { reviewIdx--; renderReviewFrame(); }
+});
+reviewNextBtn.addEventListener('click', () => {
+  const list=phaseDetections();
+  if (reviewIdx<list.length-1) { reviewIdx++; renderReviewFrame(); }
+});
+
+reviewDeleteBtn.addEventListener('click', () => {
+  const list=phaseDetections();
+  if (!list.length) return;
+  const gi=reviewDetections.indexOf(list[reviewIdx]);
+  if (gi>=0) reviewDetections.splice(gi,1);
+  reviewIdx=Math.max(0,Math.min(reviewIdx,phaseDetections().length-1));
+  renderReviewFrame();
+});
+
+reviewRedrawBtn.addEventListener('click', () => {
+  reviewIsRedrawing=true; reviewNewPoly=[];
+  reviewRedrawWrap.style.display='block';
+  reviewDrawHint.textContent='Click to trace · Click first point or press Enter to close';
+  reviewDrawHint.style.display='block';
+  reviewCanvas.style.cursor='crosshair';
+});
+reviewCancelRedraw.addEventListener('click', () => {
+  reviewIsRedrawing=false; reviewNewPoly=[];
+  reviewRedrawWrap.style.display='none'; reviewDrawHint.style.display='none';
+  reviewCanvas.style.cursor='default'; renderReviewFrame();
+});
+
+reviewAddBtn.addEventListener('click', () => {
+  reviewIsAdding=true; reviewNewPoly=[];
+  reviewAddTypeWrap.style.display='flex';
+  reviewDrawHint.textContent='Click to place points · Click first point or press Enter to close';
+  reviewDrawHint.style.display='block';
+  reviewCanvas.style.cursor='crosshair';
+});
+reviewCancelAdd.addEventListener('click', () => {
+  reviewIsAdding=false; reviewNewPoly=[];
+  reviewAddTypeWrap.style.display='none'; reviewDrawHint.style.display='none';
+  reviewCanvas.style.cursor='default'; renderReviewFrame();
+});
+
+// Missed phase controls
+document.getElementById('missedFireLaneBtn')?.addEventListener('click', () => {
+  missedDrawMode='fireline'; missedFireLinePts=[];
+  reviewDrawHint.textContent='Click to place fire lane points · Double-click to finish';
+  reviewDrawHint.style.display='block';
+  reviewCanvas.style.cursor='crosshair';
+});
+
+document.querySelectorAll('.missed-point-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    missedDrawMode=`point:${btn.dataset.type}`;
+    reviewDrawHint.textContent=`Click on map to place ${btn.dataset.type.replace('_',' ')}`;
+    reviewDrawHint.style.display='block';
+    reviewCanvas.style.cursor='crosshair';
+  });
+});
+
+document.getElementById('missedAddStencilBtn')?.addEventListener('click', () => {
+  const sel = document.getElementById('missedStencilType').value;
+  const customInput = document.getElementById('missedStencilCustom');
+  if (sel==='Custom...') { customInput.style.display='block'; customInput.focus(); }
+  else { customInput.style.display='none'; }
+  missedDrawMode='stencil';
+  reviewDrawHint.textContent='Click on map to place stencil';
+  reviewDrawHint.style.display='block';
+  reviewCanvas.style.cursor='crosshair';
+});
+
+document.getElementById('missedStencilType')?.addEventListener('change', function() {
+  document.getElementById('missedStencilCustom').style.display = this.value==='Custom...'?'block':'none';
+});
+
+document.getElementById('missedConfirmBtn')?.addEventListener('click', closeReview);
+
+function checkReviewBtn() { reviewBtn.disabled = !lastResults; }
+
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+  const SB_URL='https://rqgyqqyxlwjpbdkapvpz.supabase.co';
+  const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
+  const TRIAL_DURATION_MS=24*60*60*1000;
+  function isTrialPurchase(p){
+    const product=String(p?.product||'').toLowerCase();
+    const hasExplicitFreeAmount=p?.amount_paid!==null&&p?.amount_paid!==undefined&&Number(p?.amount_paid)===0;
+    return product.includes('trial')||hasExplicitFreeAmount;
+  }
+  function hasActiveAccess(p){
+    if(!p||p.status!=='active')return false;
+    if(!isTrialPurchase(p))return true;
+    const createdAt=new Date(p.created_at||0).getTime();
+    if(!createdAt)return false;
+    return(Date.now()-createdAt)<TRIAL_DURATION_MS;
+  }
+  (async function(){
+    try{
+      const sb=supabase.createClient(SB_URL,SB_KEY);
+      window._sbClient=sb;
+      const{data:{session}}=await sb.auth.getSession();
+      if(!session){window.location.replace('login.html');return;}
+      const{data:p}=await sb.from('purchases').select('id,product,status,amount_paid,created_at').eq('user_id',session.user.id).eq('status','active').order('created_at',{ascending:false}).limit(20);
+      if(!p||!p.find(hasActiveAccess)){window.location.replace('index.html');return;}
+      await sb.from('profiles').upsert({id:session.user.id,email:session.user.email||null,updated_at:new Date().toISOString()},{onConflict:'id'});
+      const ac=document.getElementById('auth-check');
+      if(ac)ac.remove();
+    }catch(e){
+      console.warn('imagery auth:',e);
+      window.location.replace('login.html');
+    }
+  })();
+})();
+</script>
+</body>
+</html>

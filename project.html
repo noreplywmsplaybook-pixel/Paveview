@@ -890,7 +890,10 @@ function toggleThemeProj(){
   document.getElementById('ph-type').textContent=selectedHeaderTypes.map(t=>typeLabels[t]||'Paving').join(', ');
   document.getElementById('ph-stalls').textContent=(projectData.stallCount||0)+(projectData.adaCount||0)||'—';
   document.getElementById('ph-date').textContent=new Date(proj.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-  document.getElementById('btn-edit-takeoff').onclick=()=>window.location.href='app.html?project='+projectId;
+  document.getElementById('btn-edit-takeoff').onclick=()=>{
+    const src=String(projectData?.source||'');
+    window.location.href=(src==='imagery_estimate')?('imagery.html?project='+projectId):('app.html?project='+projectId);
+  };
   document.getElementById('btn-delete').onclick=deleteProject;
   // Pre-fill pricing from projectData
   const projectPricingMap={
@@ -1269,7 +1272,18 @@ function loadSavedDetails(){
   if(typeof d.reportSurfacesSyncedAt==='string') reportSurfacesSyncedAt=d.reportSurfacesSyncedAt;
   loadThemesIntoProject();
   const statusKey=(()=>{try{return localStorage.getItem('paveview_proj_status_'+projectId)||'';}catch(e){return'';}})();
-  setStatus(statusKey||d.status||'estimating');
+  const validStatuses=new Set(['estimating','awarded','in_progress','complete','cancelled']);
+  const normSt=s=>String(s||'').toLowerCase();
+  const hadPriorLocal=Object.keys(d).length>0;
+  const blobSt=projectData&&projectData.status!=null&&projectData.status!==''?normSt(projectData.status):'';
+  let initialStatus='estimating';
+  if(hadPriorLocal){
+    if(statusKey&&validStatuses.has(normSt(statusKey)))initialStatus=normSt(statusKey);
+    else if(d.status&&validStatuses.has(normSt(d.status)))initialStatus=normSt(d.status);
+  }else{
+    if(blobSt&&validStatuses.has(blobSt))initialStatus=blobSt;
+  }
+  setStatus(initialStatus);
   populateEqPicker();
   ['client','foreman','contractor'].forEach(t=>renderCustomPageEditor(t));
   if(confirmed) showConfirmedState();

@@ -219,8 +219,9 @@ body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-s
         <div class="lc-title">PaveView Takeoff</div>
         <div class="lc-sub">Upload any parking lot plan PDF, measure zones, count stalls, and generate a professional proposal in minutes.</div>
       </div>
-      <div style="margin-left:auto">
-        <a href="app.html" class="btn primary" style="text-decoration:none;display:inline-block">+ New Takeoff</a>
+      <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+        <a href="app.html" class="btn primary" style="text-decoration:none;display:inline-block">+ New PDF Estimate</a>
+        <a href="imagery.html" class="btn primary" style="text-decoration:none;display:inline-block">+ New Imagery Estimate</a>
       </div>
     </div>
     <div class="kpi-grid">
@@ -238,7 +239,8 @@ body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-s
   <div class="tab-content" id="tab-active">
     <div class="section-hdr">
       <span class="section-title">Active Jobs</span>
-      <a href="app.html" class="btn primary" style="text-decoration:none">+ New Takeoff</a>
+      <a href="app.html" class="btn primary" style="text-decoration:none">+ New PDF Estimate</a>
+      <a href="imagery.html" class="btn primary" style="text-decoration:none">+ New Imagery Estimate</a>
     </div>
     <div class="card">
       <div id="active-body">
@@ -251,7 +253,8 @@ body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-s
   <div class="tab-content" id="tab-history">
     <div class="section-hdr">
       <span class="section-title">All Projects</span>
-      <a href="app.html" class="btn primary" style="text-decoration:none">+ New Takeoff</a>
+      <a href="app.html" class="btn primary" style="text-decoration:none">+ New PDF Estimate</a>
+      <a href="imagery.html" class="btn primary" style="text-decoration:none">+ New Imagery Estimate</a>
     </div>
     <div class="card" style="overflow:hidden">
       <table class="proj-table" id="history-table">
@@ -666,7 +669,7 @@ async function loadHistory(){
       <td><span class="proj-status" style="color:${statusColors[status]||'#444'}">${statusLabels[status]||status}</span></td>
       <td style="text-align:right">
         <div style="display:flex;gap:5px;justify-content:flex-end;align-items:center">
-          <a href="app.html?project=${p.id}" class="btn" style="padding:3px 9px;font-size:8px;text-decoration:none">Edit</a>
+          <a href="${pd.source==='imagery_estimate'?'imagery':'app'}.html?project=${p.id}" class="btn" style="padding:3px 9px;font-size:8px;text-decoration:none">Edit</a>
           <button class="btn" onclick="deleteProject('${p.id}')" style="padding:3px 9px;font-size:8px;border-color:rgba(239,68,68,.3);color:#ef4444">Delete</button>
         </div>
       </td>
