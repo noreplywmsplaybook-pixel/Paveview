@@ -233,10 +233,9 @@
 
     <div>
       <div class="section-label">Job Type</div>
-      <select id="imageryJobType" style="width:100%;background:#0d0f11;color:#fff;border:1px solid #2a2f36;border-radius:6px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:11px;">
-        <option value="sealcoat">Sealcoating</option>
-        <option value="striping">Line Striping</option>
-      </select>
+      <label class="ir"><input type="checkbox" id="imagery-job-sealcoat" checked> <span class="il">Sealcoating</span></label>
+      <label class="ir"><input type="checkbox" id="imagery-job-striping"> <span class="il">Line Striping</span></label>
+      <div id="imagery-job-summary" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);padding:6px 8px 0">Selected: Sealcoating</div>
     </div>
 
     <div>
@@ -593,7 +592,9 @@ const stallHSlider    = document.getElementById('stallHSlider');
 const stallWVal       = document.getElementById('stallWVal');
 const stallHVal       = document.getElementById('stallHVal');
 const runBtn          = document.getElementById('runBtn');
-const imageryJobTypeSel = document.getElementById('imageryJobType');
+const imageryJobSealcoat = document.getElementById('imagery-job-sealcoat');
+const imageryJobStriping = document.getElementById('imagery-job-striping');
+const imageryJobSummary = document.getElementById('imagery-job-summary');
 const calibrateBtn    = document.getElementById('calibrateBtn');
 const setTemplateBtn  = document.getElementById('setTemplateBtn');
 const drawRowBtn      = document.getElementById('drawRowBtn');
@@ -612,17 +613,24 @@ const emptyState      = document.getElementById('emptyState');
 const classList       = document.getElementById('classList');
 const ctx             = mainCanvas.getContext('2d');
 
-function getSelectedImageryJobType() {
-  const v = String(imageryJobTypeSel?.value || 'sealcoat').toLowerCase();
-  return v === 'striping' ? 'striping' : 'sealcoat';
+function getSelectedImageryJobTypes() {
+  const out = [];
+  if (imageryJobSealcoat?.checked) out.push('sealcoat');
+  if (imageryJobStriping?.checked) out.push('striping');
+  return out.length ? out : ['sealcoat'];
 }
 
-function getSelectedImageryJobTypes() {
-  return [getSelectedImageryJobType()];
+function syncImageryJobTypes() {
+  if (!imageryJobSealcoat?.checked && !imageryJobStriping?.checked && imageryJobSealcoat) {
+    imageryJobSealcoat.checked = true;
+  }
+  const labels = { sealcoat: 'Sealcoating', striping: 'Line Striping' };
+  const selected = getSelectedImageryJobTypes();
+  if (imageryJobSummary) imageryJobSummary.textContent = 'Selected: ' + selected.map(v => labels[v] || v).join(', ');
 }
 
 function imageryJobTypeLabel(v) {
-  return v === 'striping' ? 'Line Striping' : 'Sealcoating';
+  return v === 'striping' ? 'Line Striping' : v === 'sealcoat' ? 'Sealcoating' : v;
 }
 
 function setStepLabelState(el, active, done) {
@@ -2709,7 +2717,7 @@ function buildReceipt() {
 
   const items = document.getElementById('receiptItems');
   items.innerHTML = '';
-  const selectedJobType = getSelectedImageryJobType();
+  const selectedJobTypes = getSelectedImageryJobTypes();
 
   function fmt(n) { return n.toLocaleString('en-US', {maximumFractionDigits:0}); }
   function pxToFt(px) { return ppf ? px / ppf : null; }
@@ -2735,7 +2743,7 @@ function buildReceipt() {
   }
 
   addSection('Job Type', '#4fc3f7');
-  addRow('Selected', imageryJobTypeLabel(selectedJobType), 'Will sync to report generation', true);
+  addRow('Selected', selectedJobTypes.map(imageryJobTypeLabel).join(', '), 'Will sync to report generation', true);
 
   // -- LOT PERIMETER --
   const perim = reviewDetections.find(d => normalizeClass(d.class) === 'lot_perimeter');
@@ -2839,9 +2847,13 @@ document.getElementById('receiptManualBtn')?.addEventListener('click', () => {
   if (px > 0 && ft > 0) { receiptPixelsPerFoot = px / ft; buildReceipt(); }
 });
 document.getElementById('receiptStallLineRecalc')?.addEventListener('click', buildReceipt);
-imageryJobTypeSel?.addEventListener('change', () => {
-  if (document.getElementById('receiptModal')?.style.display === 'flex') buildReceipt();
+['imagery-job-sealcoat','imagery-job-striping'].forEach(id => {
+  document.getElementById(id)?.addEventListener('change', () => {
+    syncImageryJobTypes();
+    if (document.getElementById('receiptModal')?.style.display === 'flex') buildReceipt();
+  });
 });
+syncImageryJobTypes();
 syncImageryStepFlow();
 
 function imageryDetectionCenter(d) {
@@ -2970,9 +2982,11 @@ async function continueImageryToProjectReports() {
     const sealcoatCost = totalSqft * pseal + linearFt * pcrack + sealerGallons * sealerGal;
     const stripingCost = stallC * pstripe + adaC * pada + linearFt * plin + crosswalkSqft * pcross;
 
-    const jobType = getSelectedImageryJobType();
     const selectedJobTypes = getSelectedImageryJobTypes();
-    let totalCost = jobType === 'striping' ? stripingCost : sealcoatCost;
+    const jobType = selectedJobTypes.length === 2 ? 'both' : selectedJobTypes[0];
+    let totalCost = 0;
+    if (selectedJobTypes.includes('sealcoat')) totalCost += sealcoatCost;
+    if (selectedJobTypes.includes('striping')) totalCost += stripingCost;
 
     const planId = 'plan-' + Date.now();
     const plansArr = [{ id: planId, label: 'Site imagery', imgW: uploadedW, imgH: uploadedH }];
