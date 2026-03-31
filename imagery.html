@@ -1394,6 +1394,47 @@ function obstructionPoly(obs) {
   return [{x:x1,y:y1},{x:x2,y:y1},{x:x2,y:y2},{x:x1,y:y2}];
 }
 
+function rdpOpen(points, epsilon) {
+  if (!Array.isArray(points) || points.length <= 2) return (points || []).slice();
+  const first = points[0];
+  const last = points[points.length - 1];
+  let maxDist = 0;
+  let maxIdx = 0;
+  const dx = last.x - first.x;
+  const dy = last.y - first.y;
+  const lenSq = dx * dx + dy * dy;
+  for (let i = 1; i < points.length - 1; i++) {
+    let dist;
+    if (lenSq === 0) {
+      dist = Math.hypot(points[i].x - first.x, points[i].y - first.y);
+    } else {
+      const t = Math.max(0, Math.min(1, ((points[i].x - first.x) * dx + (points[i].y - first.y) * dy) / lenSq));
+      const px = first.x + t * dx;
+      const py = first.y + t * dy;
+      dist = Math.hypot(points[i].x - px, points[i].y - py);
+    }
+    if (dist > maxDist) { maxDist = dist; maxIdx = i; }
+  }
+  if (maxDist <= epsilon) return [first, last];
+  const left = rdpOpen(points.slice(0, maxIdx + 1), epsilon);
+  const right = rdpOpen(points.slice(maxIdx), epsilon);
+  return [...left.slice(0, -1), ...right];
+}
+
+function simplifyClosedPolygon(points, epsilon) {
+  if (!Array.isArray(points) || points.length < 4) return (points || []).slice();
+  let startIdx = 0;
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].x < points[startIdx].x || (points[i].x === points[startIdx].x && points[i].y < points[startIdx].y)) {
+      startIdx = i;
+    }
+  }
+  const rotated = [];
+  for (let i = 0; i < points.length; i++) rotated.push(points[(startIdx + i) % points.length]);
+  const simplified = rdpOpen([...rotated, rotated[0]], epsilon).slice(0, -1);
+  return simplified.length >= 3 ? simplified : points.slice();
+}
+
 // -- PERIMETER CORNER SQUARING -------------------------------------------------
 // Find vertices where the turn angle is close to 90° and snap them to a clean
 // right angle. Collapses nearby vertices first so small wiggles don't create
@@ -1412,6 +1453,10 @@ function squarePerimeterCorners(pts) {
       simplified.push(pts[i]);
     }
   }
+
+  // Step 1b: remove small wiggles along otherwise straight edges while preserving
+  // meaningful curves and corners.
+  simplified = simplifyClosedPolygon(simplified, 3.5);
 
   // Step 2: For each vertex, look at the incoming and outgoing edge directions.
   // If the angle between them is within CORNER_TOL of 90°, snap to exact 90°
@@ -1462,7 +1507,7 @@ function squarePerimeterCorners(pts) {
     }
   }
 
-  return result;
+  return simplifyClosedPolygon(result, 2.5);
 }
 
 function clipObstructionsFromPerimeter(perimPts, obstructions) {
