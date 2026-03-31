@@ -726,31 +726,18 @@ function drawCalibBoxes() {
 
   if (dotPoints.length === 2) {
     const p0 = dotPoints[0], p1 = dotPoints[1];
-    const spacing = Math.round(Math.hypot(p1.x-p0.x, p1.y-p0.y));
-    const mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
 
     // Line between stall lines
     ctx.strokeStyle = '#d946ef'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
-
-    // Distance label
-    ctx.fillStyle = '#f0abfc'; ctx.font = 'bold 13px DM Mono, monospace';
-    ctx.fillText(`${spacing}px`, mx + 6, my - 6);
   }
 
   // Endpoint dots = stall lines
-  dotPoints.forEach((p, i) => {
+  dotPoints.forEach((p) => {
     ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2);
     ctx.fillStyle = '#d946ef'; ctx.fill();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = '#f0abfc'; ctx.font = 'bold 11px DM Mono, monospace';
-    ctx.fillText(i === 0 ? 'line 1' : 'line 2', p.x + 7, p.y + 4);
   });
-
-  // Prompt
-  ctx.fillStyle = '#f0abfc'; ctx.font = 'bold 12px DM Mono, monospace';
-  if (dotPoints.length === 0) ctx.fillText('Click a stall line', 10, 20);
-  else if (dotPoints.length === 1) ctx.fillText('Click the next stall line', 10, 20);
 }
 
 drawRowBtn.addEventListener('click', () => {
