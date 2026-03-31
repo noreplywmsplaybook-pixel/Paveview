@@ -3070,6 +3070,7 @@ reviewCanvas.addEventListener('mouseup', () => { reviewDragVtx=null; reviewCanva
 reviewCanvas.addEventListener('mouseleave', () => { reviewDragVtx=null; reviewHoverVtx=null; reviewHoverEdge=null; });
 
 reviewCanvas.addEventListener('click', e => {
+  if (e.detail > 1) return; // ignore second click from a double-click
   const pos = reviewCanvasCoords(e);
   // Missed phase point/fireline placement
   if (currentPhase().id==='missed') {
@@ -3090,22 +3091,28 @@ reviewCanvas.addEventListener('click', e => {
     }
     return;
   }
-  if (reviewIsAdding||reviewIsRedrawing) { reviewNewPoly.push(pos); renderReviewFrame(); }
+  if (reviewIsAdding||reviewIsRedrawing) {
+    const CLOSE_HIT = 14;
+    if (reviewNewPoly.length >= 3) {
+      const start = reviewNewPoly[0];
+      if (Math.hypot(pos.x - start.x, pos.y - start.y) <= CLOSE_HIT) {
+        finalizeReviewPolygon();
+        return;
+      }
+    }
+    reviewNewPoly.push(pos);
+    renderReviewFrame();
+  }
 });
 
-reviewCanvas.addEventListener('dblclick', e => {
-  e.preventDefault();
-  const pos = reviewCanvasCoords(e);
-  if (currentPhase().id==='missed' && missedDrawMode==='fireline' && missedFireLinePts.length>=2) {
-    missedFireLines.push({points:[...missedFireLinePts]});
-    cancelMissedDraw(); renderReviewFrame(); buildMissedUI(); return;
-  }
+function finalizeReviewPolygon() {
   if (reviewIsRedrawing && reviewNewPoly.length>=3) {
     const list=phaseDetections();
     if (reviewIdx<list.length) list[reviewIdx].points=[...reviewNewPoly];
     reviewIsRedrawing=false; reviewNewPoly=[];
     reviewRedrawWrap.style.display='none'; reviewDrawHint.style.display='none';
-    reviewCanvas.style.cursor='default'; renderReviewFrame(); return;
+    reviewCanvas.style.cursor='default'; renderReviewFrame();
+    return true;
   }
   if (reviewIsAdding && reviewNewPoly.length>=3) {
     const type=reviewAddType.value;
@@ -3118,7 +3125,28 @@ reviewCanvas.addEventListener('dblclick', e => {
     reviewCanvas.style.cursor='default';
     reviewIdx=phaseDetections().length-1;
     renderReviewFrame();
+    return true;
   }
+  return false;
+}
+
+window.addEventListener('keydown', e => {
+  if (reviewModal.style.display !== 'flex') return;
+  if (!(reviewIsAdding || reviewIsRedrawing)) return;
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  finalizeReviewPolygon();
+});
+
+reviewCanvas.addEventListener('dblclick', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  const pos = reviewCanvasCoords(e);
+  if (currentPhase().id==='missed' && missedDrawMode==='fireline' && missedFireLinePts.length>=2) {
+    missedFireLines.push({points:[...missedFireLinePts]});
+    cancelMissedDraw(); renderReviewFrame(); buildMissedUI(); return;
+  }
+  // Zone polygons now finish via Enter or clicking near the first point.
 });
 
 // -- BUTTON HANDLERS ----------------------------------------------------------
@@ -3156,7 +3184,7 @@ reviewDeleteBtn.addEventListener('click', () => {
 reviewRedrawBtn.addEventListener('click', () => {
   reviewIsRedrawing=true; reviewNewPoly=[];
   reviewRedrawWrap.style.display='block';
-  reviewDrawHint.textContent='Click to trace · Double-click to close';
+  reviewDrawHint.textContent='Click to trace · Click first point or press Enter to close';
   reviewDrawHint.style.display='block';
   reviewCanvas.style.cursor='crosshair';
 });
@@ -3169,7 +3197,7 @@ reviewCancelRedraw.addEventListener('click', () => {
 reviewAddBtn.addEventListener('click', () => {
   reviewIsAdding=true; reviewNewPoly=[];
   reviewAddTypeWrap.style.display='flex';
-  reviewDrawHint.textContent='Click to place points · Double-click to close';
+  reviewDrawHint.textContent='Click to place points · Click first point or press Enter to close';
   reviewDrawHint.style.display='block';
   reviewCanvas.style.cursor='crosshair';
 });
