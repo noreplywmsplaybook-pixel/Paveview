@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PaveView — Sign In</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/subscription-sync.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -128,13 +129,11 @@ async function markUserActive(user) {
 async function checkPurchaseAndRedirect(user) {
   const userId = typeof user === 'string' ? user : user?.id;
   if (!userId) { setLoading(false); return; }
-  const { data, error } = await sb
-    .from('purchases')
-    .select('id,product,status,amount_paid,created_at')
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .order('created_at', { ascending: false })
-    .limit(20);
+  const sessionRes = await sb.auth.getSession();
+  const session = sessionRes.data?.session || null;
+  const initial = await window.paveviewSubscriptionSync.fetchActivePurchases(sb, userId);
+  const error = initial.error;
+  const data = await window.paveviewSubscriptionSync.syncPaidUpgrade(sb, session, initial.purchases);
   if (error || !data || !data.length) {
     showMsg('login-msg', 'No active purchase found. Contact support@paveview.io', 'error');
     setLoading(false);

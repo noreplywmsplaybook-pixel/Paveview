@@ -3834,6 +3834,7 @@ function checkReviewBtn() { reviewBtn.disabled = !(lastResults || reviewDetectio
 
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/subscription-sync.js"></script>
 <script>
 (function(){
   const SB_URL='https://rqgyqqyxlwjpbdkapvpz.supabase.co';
@@ -3857,7 +3858,8 @@ function checkReviewBtn() { reviewBtn.disabled = !(lastResults || reviewDetectio
       window._sbClient=sb;
       const{data:{session}}=await sb.auth.getSession();
       if(!session){window.location.replace('login.html');return;}
-      const{data:p}=await sb.from('purchases').select('id,product,status,amount_paid,created_at').eq('user_id',session.user.id).eq('status','active').order('created_at',{ascending:false}).limit(20);
+      const initial=await window.paveviewSubscriptionSync.fetchActivePurchases(sb, session.user.id);
+      const p=await window.paveviewSubscriptionSync.syncPaidUpgrade(sb, session, initial.purchases);
       if(!p||!p.find(hasActiveAccess)){window.location.replace('index.html');return;}
       await sb.from('profiles').upsert({id:session.user.id,email:session.user.email||null,updated_at:new Date().toISOString()},{onConflict:'id'});
       await loadImageryProjectFromUrl();

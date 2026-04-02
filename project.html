@@ -828,6 +828,7 @@ textarea.finp{resize:vertical;min-height:58px;font-size:11px;line-height:1.55;pa
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/subscription-sync.js"></script>
 <script>
 const SB_URL='https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
@@ -870,7 +871,8 @@ function toggleThemeProj(){
   const{data:{session}}=await sb.auth.getSession();
   if(!session){window.location.replace('login.html');return;}
   currentUser=session.user;
-  const{data:p}=await sb.from('purchases').select('id,product,status,amount_paid,created_at').eq('user_id',currentUser.id).eq('status','active').order('created_at',{ascending:false}).limit(20);
+  const initial=await window.paveviewSubscriptionSync.fetchActivePurchases(sb, currentUser.id);
+  const p=await window.paveviewSubscriptionSync.syncPaidUpgrade(sb, session, initial.purchases);
   if(!p||!p.find(hasActiveAccess)){window.location.replace('index.html');return;}
   await sb.from('profiles').upsert({id:currentUser.id,email:currentUser.email||null,updated_at:new Date().toISOString()},{onConflict:'id'});
   projectId=new URLSearchParams(window.location.search).get('id');

@@ -445,6 +445,7 @@ body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-s
 </div><!-- /wrap -->
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/subscription-sync.js"></script>
 <script>
 
 
@@ -540,9 +541,9 @@ function updatePlanBanner(plan,used){
   const {data:{session}}=await sb.auth.getSession();
   if(!session){window.location.replace('login.html');return;}
   currentUser=session.user;
-  const {data:purchases}=await sb.from('purchases').select('id,product,status,amount_paid,created_at').eq('user_id',currentUser.id).eq('status','active').order('created_at',{ascending:false}).limit(20);
-  currentPurchases=Array.isArray(purchases)?purchases:[];
-  if(!purchases||!purchases.find(hasActiveAccess)){window.location.replace('index.html');return;}
+  const initial = await window.paveviewSubscriptionSync.fetchActivePurchases(sb, currentUser.id);
+  currentPurchases = await window.paveviewSubscriptionSync.syncPaidUpgrade(sb, session, initial.purchases);
+  if(!currentPurchases.length||!currentPurchases.find(hasActiveAccess)){window.location.replace('index.html');return;}
   await sb.from('profiles').upsert({id:currentUser.id,email:currentUser.email||null,updated_at:new Date().toISOString()},{onConflict:'id'});
   const emailEl=document.getElementById('hdr-email');
   if(emailEl)emailEl.textContent=currentUser.email;
