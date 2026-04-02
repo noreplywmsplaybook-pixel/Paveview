@@ -925,7 +925,7 @@ async function loadData() {
       const profile = profilesById[uid] || {};
       const sup = supplementalById[uid] || {};
       const userPurchases = purchasesByUser[uid] || [];
-      const purchase = userPurchases[0] || null;
+      const purchase = userPurchases.find(isPurchaseAccessActive) || userPurchases[0] || null;
       const mostRecentPurchase = userPurchases
         .map(p => toDateOrNull(p.updated_at) || toDateOrNull(p.created_at))
         .filter(Boolean)

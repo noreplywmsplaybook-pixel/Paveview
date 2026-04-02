@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PaveView Takeoff</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -61,10 +61,11 @@ body.light .mbox  { background: var(--surface) }
 body.light #report-content { background:#fff }
 
 *{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
 body {
   background:var(--bg);color:var(--text);
   font-family:'Syne',sans-serif;font-size:var(--fs);
-  height:100vh;display:flex;flex-direction:column;
+  height:100vh;height:100dvh;min-height:0;display:flex;flex-direction:column;
   overflow:hidden;user-select:none;zoom:var(--ui-zoom);
 }
 
@@ -727,6 +728,140 @@ select.sc-inp{cursor:pointer;width:40px}
 #btn-add-plan:active{transform:scale(.97)}
 .plan-tab:hover{background:var(--surface);color:var(--text2)}
 
+/* ========== Responsive: tablet — narrower panels, modal fit ========== */
+@media (max-width:1180px){
+  .sidebar.expanded{width:200px}
+  #calib-modal .mbox,
+  #settings-modal .mbox{max-width:min(96vw,700px)}
+  #page-modal .mbox{max-width:min(96vw,780px)}
+  #report-modal .mbox{max-width:min(98vw,960px)}
+  .modal .mhdr{flex-wrap:wrap;gap:8px;row-gap:6px}
+  .modal .mhdr .mtitle{min-width:0}
+  #page-modal .mhdr{align-items:flex-start}
+  #map-preview{height:min(420px,50vh)}
+}
+
+@media (max-width:1023px){
+  .sidebar.expanded{width:180px}
+}
+
+/* ========== Responsive: mobile — canvas first, controls scroll below ========== */
+@media (max-width:639px){
+  body{height:100dvh;height:-webkit-fill-available;min-height:0}
+  #hdr{
+    flex-wrap:wrap;height:auto;min-height:44px;padding:6px 10px;
+    padding-left:max(10px,env(safe-area-inset-left));
+    padding-right:max(10px,env(safe-area-inset-right));
+    padding-top:max(6px,env(safe-area-inset-top));
+    gap:6px 10px;
+  }
+  #hdr > span:nth-of-type(2){display:none}
+  #hdr .logo{padding-right:8px;margin-right:8px;border-right-width:1px}
+  #proj-name{width:min(160px,42vw);font-size:11px}
+  #calib-badge{margin-left:4px}
+  #hdr .hright{
+    flex:1;flex-wrap:wrap;justify-content:flex-end;gap:4px;
+    min-width:0;margin-left:0;
+  }
+  #hdr .hright .hd{display:none}
+  #hdr .hright .btn{padding:5px 7px;font-size:8px;touch-action:manipulation}
+
+  #toolbar{
+    flex-wrap:wrap;height:auto;min-height:30px;padding:6px 8px;gap:6px;
+    padding-left:max(8px,env(safe-area-inset-left));
+    padding-right:max(8px,env(safe-area-inset-right));
+  }
+  #toolbar .tsep{display:none}
+  #search-inp{width:min(120px,28vw)!important}
+  #toolbar > span:last-of-type{display:none}
+
+  #plan-tabs{
+    padding-left:max(4px,env(safe-area-inset-left));
+    padding-right:max(4px,env(safe-area-inset-right));
+  }
+
+  #main{
+    flex-direction:column;
+    flex:1;
+    min-height:0;
+    overflow:hidden;
+  }
+  #cview{
+    order:1;
+    flex:1;
+    min-height:0;
+    width:100%!important;
+  }
+  .sidebar-left{
+    order:2;
+    width:100%!important;
+    max-height:min(30vh,260px);
+    border-right:none;
+    border-bottom:1px solid var(--border);
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .sidebar-right{
+    order:3;
+    width:100%!important;
+    max-height:min(36vh,300px);
+    border-left:none;
+    border-top:1px solid var(--border2);
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .sidebar-left .sb-handle,
+  .sidebar-right .sb-handle{
+    top:8px;transform:none;
+  }
+  .sidebar.expanded{width:100%!important}
+
+  #sb{
+    flex-wrap:wrap;height:auto;min-height:22px;padding:6px 10px;gap:8px 12px;
+    padding-bottom:max(6px,env(safe-area-inset-bottom));
+    font-size:7px;
+  }
+  #sb .si{line-height:1.35}
+
+  #tools-panel{
+    top:auto!important;
+    left:max(8px,env(safe-area-inset-left))!important;
+    right:auto!important;
+    bottom:max(36px,calc(22px + env(safe-area-inset-bottom) + 8px));
+    max-width:min(360px,calc(100vw - 16px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    box-shadow:0 -2px 20px rgba(0,0,0,.35);
+  }
+  .tb-fp,.zbtn,.btn{touch-action:manipulation}
+
+  .modal{
+    padding:max(8px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));
+    align-items:flex-start!important;
+    justify-content:flex-start!important;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .modal .mbox{
+    width:calc(100vw - 20px)!important;
+    max-width:100%!important;
+    max-height:min(92dvh,92vh)!important;
+    margin:8px auto;
+  }
+  #calib-modal .mbox,
+  #page-modal .mbox,
+  #settings-modal .mbox,
+  #report-modal .mbox{
+    width:auto!important;
+  }
+  .modal .mfooter{
+    flex-wrap:wrap;
+    padding-bottom:max(10px,env(safe-area-inset-bottom));
+  }
+  #map-preview{height:min(280px,40vh)}
+  .map-row{gap:4px}
+  #map-search{min-width:0;width:100%}
+  .import-grid{grid-template-columns:1fr}
+}
+
 </style>
 
 </head>
@@ -1256,6 +1391,23 @@ select.sc-inp{cursor:pointer;width:40px}
 
 
 <script>
+(function initPvViewportDevice(){
+  function apply(){
+    const w=window.innerWidth;
+    const h=window.innerHeight;
+    const shortSide=Math.min(w,h);
+    let device='desktop';
+    if(w<=639||(shortSide<=600&&w<=767)){device='mobile';}
+    else if(w<=1180){device='tablet';}
+    document.documentElement.dataset.pvDevice=device;
+    document.documentElement.classList.remove('pv-mobile','pv-tablet','pv-desktop');
+    document.documentElement.classList.add('pv-'+device);
+  }
+  apply();
+  window.getPvDevice=()=>document.documentElement.dataset.pvDevice||'desktop';
+  window.addEventListener('resize',apply);
+  window.addEventListener('orientationchange',()=>setTimeout(apply,200));
+})();
 
 // ── SIDEBAR TOGGLE ──
 function toggleSidebar(side){

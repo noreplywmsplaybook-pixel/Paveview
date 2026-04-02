@@ -341,6 +341,18 @@ body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-s
       <div class="prow" style="justify-content:flex-end;padding:12px 16px"><button class="btn primary" onclick="saveEmail()">Update Email</button></div>
     </div>
 
+    <!-- Subscription (Stripe tier plans) -->
+    <div class="card" style="margin-bottom:14px;display:none" id="card-subscription-settings">
+      <div class="card-hdr"><span class="card-title">Subscription</span></div>
+      <div style="padding:12px 16px;font-size:11px;color:var(--text2);line-height:1.65">
+        Cancel or change your plan in Stripe’s secure billing portal. If you cancel, you keep access until the end of the current billing period.
+      </div>
+      <div class="msg" id="msg-subscription" style="display:none"></div>
+      <div class="prow" style="justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--border2)">
+        <button type="button" class="btn danger" id="btn-billing-portal" onclick="openBillingPortal()">Cancel or manage subscription</button>
+      </div>
+    </div>
+
     <!-- Password -->
     <div class="card" style="margin-bottom:14px">
       <div class="card-hdr"><span class="card-title">Change Password</span></div>
@@ -518,6 +530,47 @@ function getBestPlanFromPurchases(purchases){
   });
   return best||{limit:Infinity,label:'Active Access'};
 }
+const TIER_AMOUNT_CENTS=new Set([9999,99900,19999,199999,39999,399999]);
+function hasActiveTierSubscription(){
+  const list=Array.isArray(currentPurchases)?currentPurchases:[];
+  for(const p of list){
+    if(!hasActiveAccess(p)||isTrialPurchase(p))continue;
+    const prod=String(p.product||'').trim().toLowerCase();
+    if(prod.startsWith('takeoff_tier'))return true;
+    if((!prod||prod==='')&&TIER_AMOUNT_CENTS.has(Number(p.amount_paid||0)))return true;
+  }
+  return false;
+}
+function updateSubscriptionCard(){
+  const card=document.getElementById('card-subscription-settings');
+  if(card)card.style.display=hasActiveTierSubscription()?'block':'none';
+}
+async function openBillingPortal(){
+  const btn=document.getElementById('btn-billing-portal');
+  const msgEl=document.getElementById('msg-subscription');
+  if(msgEl){msgEl.style.display='none';msgEl.textContent='';}
+  if(btn){btn.disabled=true;btn.textContent='Opening…';}
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session?.access_token){
+    showMsg('msg-subscription','Sign in again to manage billing.','ok',true);
+    if(btn){btn.disabled=false;btn.textContent='Cancel or manage subscription';}
+    return;
+  }
+  try{
+    const resp=await fetch('/api/billing-portal',{
+      method:'POST',
+      headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},
+      body:'{}'
+    });
+    const payload=await resp.json().catch(()=>({}));
+    if(!resp.ok)throw new Error(payload.error||'Could not open billing portal.');
+    if(payload.url)window.location.href=payload.url;
+    else throw new Error('No portal URL returned.');
+  }catch(e){
+    showMsg('msg-subscription',e.message||'Something went wrong.','ok',true);
+    if(btn){btn.disabled=false;btn.textContent='Cancel or manage subscription';}
+  }
+}
 function monthRangeUtcIso(date=new Date()){
   const start=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),1,0,0,0,0));
   const end=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,1,0,0,0,0));
@@ -550,6 +603,7 @@ function updatePlanBanner(plan,used){
   const authCheck=document.getElementById('auth-check');
   if(authCheck)authCheck.remove();
   document.getElementById('wrap').style.display='block';
+  updateSubscriptionCard();
   loadProfile();
   loadStats();
 })();
