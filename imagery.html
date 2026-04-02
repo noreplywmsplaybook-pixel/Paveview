@@ -3803,6 +3803,10 @@ if (reviewCanvasCol) {
       return;
     }
     if (e.touches.length === 1) {
+      // Single-finger pan/zoom column only for chrome (not the image). Touches on the
+      // canvas are reserved for vertex/edge drag and taps — otherwise pan steals the gesture.
+      const onCanvas = e.target === reviewCanvas || (e.target && e.target.closest && e.target.closest('#reviewCanvas'));
+      if (onCanvas) return;
       reviewTouchOne = {
         x: e.touches[0].clientX,
         y: e.touches[0].clientY,
