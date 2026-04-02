@@ -587,14 +587,8 @@
             <button id="reviewCancelRedraw" style="background:transparent;color:#5a6270;border:1px solid #2a2f36;padding:5px;border-radius:4px;font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;width:100%;">Cancel</button>
           </div>
           <div id="reviewAddTypeWrap" style="display:none;flex-direction:column;gap:5px;padding:8px;background:#13161a;border-radius:5px;border:1px solid #2a2f36;">
-            <select id="reviewAddType" style="background:#0d0f11;color:#fff;border:1px solid #2a2f36;border-radius:4px;padding:6px;font-family:'DM Mono',monospace;font-size:11px;width:100%;">
-              <option value="lot_perimeter">Lot Perimeter</option>
-              <option value="obstruction">Obstruction</option>
-              <option value="hatching">Hatching / ADA</option>
-              <option value="stencil">Stencil</option>
-              <option value="arrow">Arrow</option>
-              <option value="handicap">Handicap</option>
-            </select>
+            <select id="reviewAddType" style="display:none;" aria-hidden="true"></select>
+            <div id="reviewAddTypeLabel" style="font-size:11px;color:#f5c542;font-family:'DM Mono',monospace;"></div>
             <button id="reviewCancelAdd" style="background:transparent;color:#5a6270;border:1px solid #2a2f36;padding:5px;border-radius:4px;font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;">Cancel</button>
           </div>
         </div>
@@ -2793,6 +2787,7 @@ const reviewAddBtn     = document.getElementById('reviewAddBtn');
 const reviewCancelAdd  = document.getElementById('reviewCancelAdd');
 const reviewCancelRedraw = document.getElementById('reviewCancelRedraw');
 const reviewAddType    = document.getElementById('reviewAddType');
+const reviewAddTypeLabel = document.getElementById('reviewAddTypeLabel');
 const reviewAddTypeWrap= document.getElementById('reviewAddTypeWrap');
 const reviewRedrawWrap = document.getElementById('reviewRedrawWrap');
 const reviewDrawHint   = document.getElementById('reviewDrawHint');
@@ -2839,6 +2834,8 @@ let reviewPinch = null;
 let reviewTouchOne = null;
 let reviewTouchPanning = false;
 let reviewSyntheticClickGuardUntil = 0;
+let reviewCanvasTouchDidMove = false;
+let reviewCanvasTouchStartClient = null;
 
 function applyReviewViewportTransform() {
   if (!reviewCanvas) return;
@@ -3984,9 +3981,11 @@ function nearestPointOnSegment(px, py, ax, ay, bx, by) {
   return {x:ax+t*dx,y:ay+t*dy,t};
 }
 
-function getHoverInfo(pos, d) {
+function getHoverInfo(pos, d, hitOpts) {
   if (!d||!d.points||d.points.length<2) return null;
-  const VTXHIT=12, EDGEHIT=8;
+  const ho = hitOpts || {};
+  const VTXHIT = ho.vtxHit != null ? ho.vtxHit : 12;
+  const EDGEHIT = ho.edgeHit != null ? ho.edgeHit : 8;
   for (let vi=0;vi<d.points.length;vi++) {
     if (Math.hypot(pos.x-d.points[vi].x,pos.y-d.points[vi].y)<VTXHIT) return {type:'vertex',vi};
   }
@@ -4087,6 +4086,106 @@ reviewCanvas.addEventListener('mouseleave', () => {
   reviewHoverEdge = null;
 });
 
+reviewCanvas.addEventListener('touchstart', e => {
+  if (reviewModal.style.display !== 'flex') return;
+  if (e.touches.length !== 1) return;
+  const t = e.touches[0];
+  reviewCanvasTouchDidMove = false;
+  reviewCanvasTouchStartClient = { x: t.clientX, y: t.clientY };
+  const pos = reviewCanvasPosFromClient(t.clientX, t.clientY);
+  const touchHit = { vtxHit: 22, edgeHit: 14 };
+
+  if (reviewIsAdding || reviewIsRedrawing || missedDrawMode) return;
+
+  const list = phaseDetections();
+  if (reviewIdx >= list.length) return;
+  const d = list[reviewIdx];
+  if (!d) return;
+  const cls = normalizeClass(d.class);
+  if (cls === 'handicap' && (!d.points || d.points.length < 3) && Number.isFinite(d.x) && Number.isFinite(d.y)) {
+    if (Math.hypot(pos.x - d.x, pos.y - d.y) <= 26) {
+      reviewDragHandicapDot = { det: d };
+      e.preventDefault();
+    }
+    return;
+  }
+  if (!d.points) return;
+  const info = getHoverInfo(pos, d, touchHit);
+  if (info) {
+    if (info.type === 'vertex') {
+      reviewDragVtx = { det: d, vi: info.vi };
+    } else {
+      d.points.splice(info.si + 1, 0, { x: info.pt.x, y: info.pt.y });
+      reviewDragVtx = { det: d, vi: info.si + 1 };
+    }
+    e.preventDefault();
+  }
+}, { passive: false });
+
+reviewCanvas.addEventListener('touchmove', e => {
+  if (reviewModal.style.display !== 'flex') return;
+  if (e.touches.length !== 1) return;
+  const t = e.touches[0];
+  if (reviewCanvasTouchStartClient) {
+    const dx = t.clientX - reviewCanvasTouchStartClient.x;
+    const dy = t.clientY - reviewCanvasTouchStartClient.y;
+    if (Math.hypot(dx, dy) > 10) reviewCanvasTouchDidMove = true;
+  }
+  const pos = reviewCanvasPosFromClient(t.clientX, t.clientY);
+  if (reviewDragHandicapDot) {
+    e.preventDefault();
+    reviewDragHandicapDot.det.x = pos.x;
+    reviewDragHandicapDot.det.y = pos.y;
+    renderReviewFrame();
+    return;
+  }
+  if (reviewDragVtx) {
+    e.preventDefault();
+    reviewDragVtx.det.points[reviewDragVtx.vi] = { x: pos.x, y: pos.y };
+    renderReviewFrame();
+    return;
+  }
+}, { passive: false });
+
+reviewCanvas.addEventListener('touchend', e => {
+  if (reviewModal.style.display !== 'flex') return;
+  const t = e.changedTouches && e.changedTouches[0];
+  if (!t) return;
+
+  const adding = reviewIsAdding || reviewIsRedrawing || missedDrawMode;
+  if (adding) {
+    processReviewCanvasClick(reviewCanvasPosFromClient(t.clientX, t.clientY));
+    reviewSyntheticClickGuardUntil = Date.now() + 450;
+    e.preventDefault();
+    reviewCanvasTouchStartClient = null;
+    reviewDragVtx = null;
+    reviewDragHandicapDot = null;
+    reviewCanvas.style.cursor = 'default';
+    return;
+  }
+
+  const hadVertexDrag = !!(reviewDragVtx || reviewDragHandicapDot);
+  reviewDragVtx = null;
+  reviewDragHandicapDot = null;
+  reviewCanvas.style.cursor = 'default';
+
+  if (hadVertexDrag) {
+    reviewSyntheticClickGuardUntil = Date.now() + 400;
+    e.preventDefault();
+    reviewCanvasTouchStartClient = null;
+    return;
+  }
+  if (reviewCanvasTouchDidMove) {
+    reviewSyntheticClickGuardUntil = Date.now() + 400;
+    reviewCanvasTouchStartClient = null;
+    return;
+  }
+  processReviewCanvasClick(reviewCanvasPosFromClient(t.clientX, t.clientY));
+  reviewSyntheticClickGuardUntil = Date.now() + 450;
+  e.preventDefault();
+  reviewCanvasTouchStartClient = null;
+}, { passive: false });
+
 reviewCanvas.addEventListener('click', e => {
   if (Date.now() < reviewSyntheticClickGuardUntil) return;
   if (e.detail > 1) return;
@@ -4118,19 +4217,49 @@ function finalizeReviewPolygon() {
   return false;
 }
 
-function beginReviewAddType(type) {
-  reviewAddType.value = type;
-  focusReviewPhaseForClass(type);
-  enterPhase();
+function reviewPhaseLabelForClass(cls) {
+  const ph = activePhases().find(p => p.id === normalizeClass(cls));
+  return ph ? ph.label : cls.replace(/_/g, ' ');
+}
+
+function setReviewAddTypeSingle(type) {
+  const t = normalizeClass(type);
+  reviewAddType.innerHTML = '';
+  const opt = document.createElement('option');
+  opt.value = t;
+  opt.textContent = reviewPhaseLabelForClass(t);
+  reviewAddType.appendChild(opt);
+  reviewAddType.value = t;
+  if (reviewAddTypeLabel) {
+    reviewAddTypeLabel.textContent = 'Adding: ' + reviewPhaseLabelForClass(t);
+  }
+}
+
+function beginReviewAddType(type, opts) {
+  const o = opts || {};
+  const t = normalizeClass(type);
+  setReviewAddTypeSingle(t);
+  if (!o.fromActivePhase) {
+    focusReviewPhaseForClass(t);
+    enterPhase();
+  } else {
+    focusReviewPhaseForClass(t);
+  }
   reviewIsAdding = true;
   reviewNewPoly = [];
   reviewAddTypeWrap.style.display = 'flex';
-  reviewDrawHint.textContent = type === 'handicap'
-    ? 'Click once to place a handicap marker'
-    : 'Click to place points · Click first point or press Enter to close';
+  reviewDrawHint.textContent = t === 'handicap'
+    ? 'Tap or click once to place a handicap marker'
+    : 'Tap or click to place points · Tap near first point or press Enter to close';
   reviewDrawHint.style.display = 'block';
   reviewCanvas.style.cursor = 'crosshair';
   renderReviewFrame();
+}
+
+function startAddZoneForActivePhase() {
+  const ph = currentPhase();
+  if (!ph || ph.id === 'missed') return;
+  beginReviewAddType(ph.id, { fromActivePhase: true });
 }
 
 window.addEventListener('keydown', e => {
@@ -4213,21 +4342,7 @@ reviewCancelRedraw.addEventListener('click', () => {
   reviewCanvas.style.cursor='default'; renderReviewFrame();
 });
 
-reviewAddBtn.addEventListener('click', () => {
-  reviewIsAdding=true; reviewNewPoly=[];
-  reviewAddTypeWrap.style.display='flex';
-  reviewDrawHint.textContent = reviewAddType.value === 'handicap'
-    ? 'Click once to place a handicap marker'
-    : 'Click to place points · Click first point or press Enter to close';
-  reviewDrawHint.style.display='block';
-  reviewCanvas.style.cursor='crosshair';
-});
-reviewAddType.addEventListener('change', () => {
-  if (!reviewIsAdding) return;
-  reviewDrawHint.textContent = reviewAddType.value === 'handicap'
-    ? 'Click once to place a handicap marker'
-    : 'Click to place points · Click first point or press Enter to close';
-});
+reviewAddBtn.addEventListener('click', () => startAddZoneForActivePhase());
 reviewCancelAdd.addEventListener('click', () => {
   reviewIsAdding=false; reviewNewPoly=[];
   reviewAddTypeWrap.style.display='none'; reviewDrawHint.style.display='none';
