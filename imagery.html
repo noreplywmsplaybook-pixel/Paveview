@@ -156,6 +156,7 @@
     display: flex; align-items: center; justify-content: center;
     overflow: hidden;
     cursor: default;
+    touch-action: none;
   }
   .canvas-wrap.panning { cursor: grab; }
   .canvas-wrap.panning:active { cursor: grabbing; }
@@ -252,20 +253,21 @@
     .sidebar {
       grid-row: 3;
       grid-column: 1;
-      max-height: min(42vh, 340px);
+      max-height: min(30vh, 220px);
       border-right: none;
       border-top: 1px solid var(--border);
-      padding: 10px 12px;
-      gap: 10px;
+      padding: 6px 8px;
+      gap: 6px;
       -webkit-overflow-scrolling: touch;
     }
-    .section-label { margin-bottom: 6px; }
-    .upload-zone { padding: 14px 8px; }
-    .upload-zone p { font-size: 10px; }
+    .section-label { margin-bottom: 4px; font-size: 8px; letter-spacing: 1.8px; }
+    .upload-zone { padding: 10px 6px; }
+    .upload-zone p { font-size: 9px; }
+    .upload-icon { font-size: 22px !important; margin-bottom: 4px !important; }
     .run-btn {
-      font-size: 11px;
-      padding: 10px;
-      letter-spacing: 0.5px;
+      font-size: 10px;
+      padding: 7px 8px;
+      letter-spacing: 0.35px;
       touch-action: manipulation;
     }
     .topbar button { touch-action: manipulation; }
@@ -347,6 +349,7 @@
       flex: 1 1 auto !important;
       min-height: 42vh;
       max-height: 52vh;
+      touch-action: none;
     }
     #reviewModal .review-panel-left {
       order: 2;
@@ -823,6 +826,10 @@ let panX       = 0;
 let panY       = 0;
 let isPanning  = false;
 let panStart   = null;
+let mainPinch  = null;
+let mainTouchOne = null;
+let mainTouchPanning = false;
+let mainPointerIgnoreClickUntil = 0;
 
 // Calibration state
 let isCalibrateMode = false;
@@ -1139,6 +1146,65 @@ window.addEventListener('mouseup', e => {
 });
 canvasWrap.addEventListener('contextmenu', e => e.preventDefault());
 
+function touchClientDist(a, b) {
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+}
+
+canvasWrap.addEventListener('touchstart', e => {
+  if (!uploadedImage) return;
+  if (e.touches.length === 2) {
+    mainPinch = {
+      dist0: touchClientDist(e.touches[0], e.touches[1]),
+      zoom0: zoomLevel
+    };
+    mainTouchOne = null;
+    return;
+  }
+  if (e.touches.length === 1) {
+    mainTouchOne = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      panX: panX,
+      panY: panY
+    };
+    mainTouchPanning = false;
+    mainPinch = null;
+  }
+}, { passive: true });
+
+canvasWrap.addEventListener('touchmove', e => {
+  if (!uploadedImage) return;
+  if (e.touches.length === 2 && mainPinch && mainPinch.dist0 > 1) {
+    e.preventDefault();
+    const d = touchClientDist(e.touches[0], e.touches[1]);
+    zoomLevel = Math.max(0.3, Math.min(8, mainPinch.zoom0 * (d / mainPinch.dist0)));
+    applyTransform();
+    mainPointerIgnoreClickUntil = Date.now() + 400;
+    return;
+  }
+  if (e.touches.length === 1 && mainTouchOne) {
+    const dx = e.touches[0].clientX - mainTouchOne.x;
+    const dy = e.touches[0].clientY - mainTouchOne.y;
+    if (Math.hypot(dx, dy) > 12) {
+      mainTouchPanning = true;
+      e.preventDefault();
+      panX = mainTouchOne.panX + dx;
+      panY = mainTouchOne.panY + dy;
+      applyTransform();
+      mainPointerIgnoreClickUntil = Date.now() + 400;
+    }
+  }
+}, { passive: false });
+
+canvasWrap.addEventListener('touchend', e => {
+  if (mainTouchPanning) mainPointerIgnoreClickUntil = Date.now() + 400;
+  if (e.touches.length < 2) mainPinch = null;
+  if (e.touches.length === 0) {
+    mainTouchOne = null;
+    mainTouchPanning = false;
+  }
+}, { passive: true });
+
 // Get canvas-space coords from mouse event — correctly handles CSS zoom/pan transform
 function canvasCoords(e) {
   const rect = mainCanvas.getBoundingClientRect();
@@ -1256,6 +1322,7 @@ mainCanvas.addEventListener('mousemove', e => {
 });
 
 mainCanvas.addEventListener('click', e => {
+  if (Date.now() < mainPointerIgnoreClickUntil) return;
   const pos = canvasCoords(e);
 
   if (isCalibrateMode) {
@@ -2714,6 +2781,7 @@ runBtn.addEventListener('click', async () => {
 
 const reviewModal      = document.getElementById('reviewModal');
 const reviewCanvas     = document.getElementById('reviewCanvas');
+const reviewCanvasCol  = document.querySelector('#reviewModal .review-canvas-col');
 const reviewCtx        = reviewCanvas.getContext('2d');
 const reviewBtn        = document.getElementById('reviewBtn');
 const reviewDoneBtn    = document.getElementById('reviewDoneBtn');
@@ -2764,6 +2832,18 @@ let reviewNewPoly    = [];
 let reviewHoverVtx   = null;
 let reviewHoverEdge  = null;
 let reviewDragHandicapDot = null;
+let reviewPanX = 0;
+let reviewPanY = 0;
+let reviewZoomLevel = 1;
+let reviewPinch = null;
+let reviewTouchOne = null;
+let reviewTouchPanning = false;
+let reviewSyntheticClickGuardUntil = 0;
+
+function applyReviewViewportTransform() {
+  if (!reviewCanvas) return;
+  reviewCanvas.style.transform = `translate(calc(-50% + ${reviewPanX}px), calc(-50% + ${reviewPanY}px)) scale(${reviewZoomLevel})`;
+}
 
 // Missed phase state
 let missedFireLines  = []; // [{points:[{x,y},...]}]
@@ -2901,6 +2981,11 @@ function openReview(opts) {
   reviewCanvas.height = uploadedH;
   reviewCtx.drawImage(uploadedImage, 0, 0);
   reviewImgSnap = reviewCtx.getImageData(0, 0, uploadedW, uploadedH);
+
+  reviewPanX = 0;
+  reviewPanY = 0;
+  reviewZoomLevel = 1;
+  applyReviewViewportTransform();
 
   reviewModal.style.display = 'flex';
   enterPhase();
@@ -3695,6 +3780,91 @@ function reviewCanvasCoords(e) {
   return reviewCanvasPosFromClient(e.clientX, e.clientY);
 }
 
+if (reviewCanvasCol) {
+  function reviewTouchIgnoresTarget(el) {
+    return el && el.closest && el.closest('button');
+  }
+
+  reviewCanvasCol.addEventListener('wheel', e => {
+    if (reviewModal.style.display !== 'flex') return;
+    if (reviewTouchIgnoresTarget(e.target)) return;
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    reviewZoomLevel = Math.max(0.25, Math.min(8, reviewZoomLevel * factor));
+    applyReviewViewportTransform();
+  }, { passive: false });
+
+  reviewCanvasCol.addEventListener('touchstart', e => {
+    if (reviewModal.style.display !== 'flex') return;
+    if (reviewTouchIgnoresTarget(e.target)) return;
+    if (e.touches.length === 2) {
+      reviewPinch = {
+        dist0: touchClientDist(e.touches[0], e.touches[1]),
+        zoom0: reviewZoomLevel
+      };
+      reviewTouchOne = null;
+      return;
+    }
+    if (e.touches.length === 1) {
+      reviewTouchOne = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        panX: reviewPanX,
+        panY: reviewPanY
+      };
+      reviewTouchPanning = false;
+      reviewPinch = null;
+    }
+  }, { passive: true });
+
+  reviewCanvasCol.addEventListener('touchmove', e => {
+    if (reviewModal.style.display !== 'flex') return;
+    if (!reviewTouchOne && !reviewPinch && e.touches.length < 2) return;
+    if (e.touches.length === 2 && reviewPinch && reviewPinch.dist0 > 1) {
+      e.preventDefault();
+      const d = touchClientDist(e.touches[0], e.touches[1]);
+      reviewZoomLevel = Math.max(0.25, Math.min(8, reviewPinch.zoom0 * (d / reviewPinch.dist0)));
+      applyReviewViewportTransform();
+      reviewSyntheticClickGuardUntil = Date.now() + 400;
+      return;
+    }
+    if (e.touches.length === 1 && reviewTouchOne) {
+      const dx = e.touches[0].clientX - reviewTouchOne.x;
+      const dy = e.touches[0].clientY - reviewTouchOne.y;
+      if (Math.hypot(dx, dy) > 12) {
+        reviewTouchPanning = true;
+        e.preventDefault();
+        reviewPanX = reviewTouchOne.panX + dx;
+        reviewPanY = reviewTouchOne.panY + dy;
+        applyReviewViewportTransform();
+        reviewSyntheticClickGuardUntil = Date.now() + 400;
+      }
+    }
+  }, { passive: false });
+
+  reviewCanvasCol.addEventListener('touchend', e => {
+    if (reviewModal.style.display !== 'flex') return;
+    if (reviewTouchIgnoresTarget(e.target)) {
+      if (e.touches.length === 0) { reviewTouchOne = null; reviewTouchPanning = false; reviewPinch = null; }
+      return;
+    }
+    if (e.touches.length < 2) reviewPinch = null;
+    if (reviewTouchPanning) reviewSyntheticClickGuardUntil = Date.now() + 400;
+    if (e.touches.length === 0 && reviewTouchOne && !reviewTouchPanning) {
+      const t = e.changedTouches && e.changedTouches[0];
+      if (t) {
+        processReviewCanvasClick(reviewCanvasPosFromClient(t.clientX, t.clientY));
+        reviewSyntheticClickGuardUntil = Date.now() + 450;
+      }
+      e.preventDefault();
+    }
+    if (e.touches.length === 0) {
+      reviewTouchOne = null;
+      reviewTouchPanning = false;
+    }
+  }, { passive: false });
+}
+
 function processReviewCanvasClick(pos) {
   if (currentPhase().id === 'missed') {
     if (missedDrawMode === 'fireline') {
@@ -3918,17 +4088,10 @@ reviewCanvas.addEventListener('mouseleave', () => {
 });
 
 reviewCanvas.addEventListener('click', e => {
+  if (Date.now() < reviewSyntheticClickGuardUntil) return;
   if (e.detail > 1) return;
   processReviewCanvasClick(reviewCanvasCoords(e));
 });
-
-reviewCanvas.addEventListener('touchend', e => {
-  if (reviewModal.style.display !== 'flex') return;
-  e.preventDefault();
-  const t = e.changedTouches && e.changedTouches[0];
-  if (!t) return;
-  processReviewCanvasClick(reviewCanvasPosFromClient(t.clientX, t.clientY));
-}, { passive: false });
 
 function finalizeReviewPolygon() {
   if (reviewIsRedrawing && reviewNewPoly.length>=3) {
