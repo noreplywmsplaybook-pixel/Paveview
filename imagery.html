@@ -2836,6 +2836,8 @@ let reviewTouchPanning = false;
 let reviewSyntheticClickGuardUntil = 0;
 let reviewCanvasTouchDidMove = false;
 let reviewCanvasTouchStartClient = null;
+/** Set on canvas touchstart (before col runs): when true, column must not arm single-finger viewport pan. */
+let reviewTouchBlocksColPan = false;
 
 function applyReviewViewportTransform() {
   if (!reviewCanvas) return;
@@ -3803,10 +3805,10 @@ if (reviewCanvasCol) {
       return;
     }
     if (e.touches.length === 1) {
-      // Single-finger pan/zoom column only for chrome (not the image). Touches on the
-      // canvas are reserved for vertex/edge drag and taps — otherwise pan steals the gesture.
+      // Pan/zoom viewport on canvas unless canvas touchstart reserved this finger for
+      // polygon edit (vertex drag, add/redraw, missed draw) — see reviewTouchBlocksColPan.
       const onCanvas = e.target === reviewCanvas || (e.target && e.target.closest && e.target.closest('#reviewCanvas'));
-      if (onCanvas) return;
+      if (onCanvas && reviewTouchBlocksColPan) return;
       reviewTouchOne = {
         x: e.touches[0].clientX,
         y: e.touches[0].clientY,
@@ -4093,13 +4095,17 @@ reviewCanvas.addEventListener('mouseleave', () => {
 reviewCanvas.addEventListener('touchstart', e => {
   if (reviewModal.style.display !== 'flex') return;
   if (e.touches.length !== 1) return;
+  reviewTouchBlocksColPan = false;
   const t = e.touches[0];
   reviewCanvasTouchDidMove = false;
   reviewCanvasTouchStartClient = { x: t.clientX, y: t.clientY };
   const pos = reviewCanvasPosFromClient(t.clientX, t.clientY);
   const touchHit = { vtxHit: 22, edgeHit: 14 };
 
-  if (reviewIsAdding || reviewIsRedrawing || missedDrawMode) return;
+  if (reviewIsAdding || reviewIsRedrawing || missedDrawMode) {
+    reviewTouchBlocksColPan = true;
+    return;
+  }
 
   const list = phaseDetections();
   if (reviewIdx >= list.length) return;
@@ -4109,6 +4115,7 @@ reviewCanvas.addEventListener('touchstart', e => {
   if (cls === 'handicap' && (!d.points || d.points.length < 3) && Number.isFinite(d.x) && Number.isFinite(d.y)) {
     if (Math.hypot(pos.x - d.x, pos.y - d.y) <= 26) {
       reviewDragHandicapDot = { det: d };
+      reviewTouchBlocksColPan = true;
       e.preventDefault();
     }
     return;
@@ -4116,6 +4123,7 @@ reviewCanvas.addEventListener('touchstart', e => {
   if (!d.points) return;
   const info = getHoverInfo(pos, d, touchHit);
   if (info) {
+    reviewTouchBlocksColPan = true;
     if (info.type === 'vertex') {
       reviewDragVtx = { det: d, vi: info.vi };
     } else {
