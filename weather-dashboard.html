@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PaveView Weather Calendar</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0c0c0c;--card:#171717;--border:#2a2a2a;--accent:#5dd39e;--text:#e8e4dd;--dim:#7f7a72;--good:#22c55e;--warn:#f5c842;--bad:#ef4444}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-bottom:1px solid var(--border);background:#111}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.09em;color:var(--accent)}
+.logo span{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:.14em;margin-left:8px;text-transform:uppercase}
+.btn{border:1px solid var(--border);background:transparent;color:var(--text);padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.active{border-color:var(--accent);color:var(--accent)}
+main{max-width:1200px;margin:24px auto;padding:0 20px}
+.muted{color:var(--dim)}
+.status{font-family:'IBM Plex Mono',monospace;font-size:11px;margin-bottom:8px;color:var(--accent)}
+.toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0}
+.toolbar-left{display:flex;align-items:center;gap:8px}
+.month-title{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:.03em}
+.layout{display:grid;grid-template-columns:2fr 1fr;gap:14px}
+.panel{background:var(--card);border:1px solid var(--border);padding:16px}
+.weekdays,.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.weekday{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;padding:6px 4px}
+.day{background:#111;border:1px solid #252525;padding:8px;min-height:106px;cursor:pointer}
+.day.other{opacity:.35}
+.day.selected{outline:1px solid var(--accent)}
+.day-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.day-num{font-family:'IBM Plex Mono',monospace;font-size:11px}
+.score{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 6px;border-radius:999px}
+.score.good{background:rgba(34,197,94,.2);color:#8de3ac}
+.score.warn{background:rgba(245,200,66,.2);color:#f5c842}
+.score.bad{background:rgba(239,68,68,.2);color:#ffa2a2}
+.window{font-size:12px;color:var(--dim)}
+.legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.legend span{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 8px}
+.l-good{background:rgba(34,197,94,.2);color:#8de3ac}
+.l-warn{background:rgba(245,200,66,.2);color:#f5c842}
+.l-bad{background:rgba(239,68,68,.2);color:#ffa2a2}
+.detail-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.03em}
+.metric{display:flex;justify-content:space-between;border-bottom:1px solid #252525;padding:8px 0;font-size:13px}
+.metric:last-child{border-bottom:none}
+.warn-list{margin-top:8px}
+.warn-item{font-size:12px;padding:7px 8px;background:#111;border:1px solid #252525;margin-bottom:6px}
+.hour-list{margin-top:10px;max-height:280px;overflow:auto}
+.hour{display:grid;grid-template-columns:58px 1fr auto;gap:8px;padding:6px 0;border-bottom:1px solid #252525;font-size:12px}
+@media (max-width:1000px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">PaveView <span>Weather Calendar</span></div>
+  <div>
+    <span id="email" class="muted" style="font-family:'IBM Plex Mono',monospace;font-size:10px;margin-right:10px"></span>
+    <button class="btn" id="signout">Sign Out</button>
+  </div>
+</header>
+<main>
+  <div class="status">Weather Calendar Access Active</div>
+  <h1 style="font-family:'Bebas Neue',sans-serif;font-size:58px;line-height:.95;letter-spacing:.02em">Contractor Weather Intelligence</h1>
+  <p class="muted" style="margin-top:10px;max-width:760px">Calendar days are scored for contractor work viability. Click any day to view best work window, warnings, and hour-by-hour details.</p>
+
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <button class="btn" id="prev">Prev</button>
+      <div class="month-title" id="month-title">Month</div>
+      <button class="btn" id="next">Next</button>
+    </div>
+    <div>
+      <button class="btn active" id="view-month">Month</button>
+      <button class="btn" id="view-week">Week</button>
+    </div>
+  </div>
+  <div class="toolbar" style="margin-top:-2px">
+    <div class="toolbar-left">
+      <input id="location-input" placeholder="Job address (e.g. Dallas, TX)" style="background:#111;border:1px solid #2a2a2a;color:#e8e4dd;padding:8px 10px;min-width:280px">
+      <select id="job-type" style="background:#111;border:1px solid #2a2a2a;color:#e8e4dd;padding:8px 10px">
+        <option value="sealcoating">Sealcoating</option>
+        <option value="crack_fill">Crack Fill</option>
+        <option value="line_striping">Line Striping</option>
+        <option value="asphalt_paving">Asphalt Paving</option>
+      </select>
+      <button class="btn" id="load-weather">Load Forecast</button>
+    </div>
+    <div class="muted" id="location-label"></div>
+  </div>
+
+  <div class="layout">
+    <div class="panel">
+      <div class="weekdays">
+        <div class="weekday">Sun</div><div class="weekday">Mon</div><div class="weekday">Tue</div><div class="weekday">Wed</div><div class="weekday">Thu</div><div class="weekday">Fri</div><div class="weekday">Sat</div>
+      </div>
+      <div class="calendar-grid" id="calendar-grid"></div>
+      <div class="legend">
+        <span class="l-good">Green - Ideal</span>
+        <span class="l-warn">Yellow - Risky</span>
+        <span class="l-bad">Red - Do Not Schedule</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="detail-title" id="detail-date">Select a Day</div>
+      <div class="muted" id="detail-summary" style="margin-bottom:10px">Click a calendar day to inspect weather scheduling intelligence.</div>
+      <div class="metric"><span>Go / No-Go Score</span><strong id="detail-score">-</strong></div>
+      <div class="metric"><span>Best Work Window</span><strong id="detail-window">-</strong></div>
+      <div class="metric"><span>Surface Temp Range</span><strong id="detail-surface">-</strong></div>
+      <div class="metric"><span>Dew Point Spread</span><strong id="detail-dew">-</strong></div>
+      <div class="metric"><span>Rain Timing Risk</span><strong id="detail-rain">-</strong></div>
+      <div class="warn-list" id="warn-list"></div>
+      <div class="hour-list" id="hour-list"></div>
+    </div>
+  </div>
+</main>
+<script>
+const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
+if (!window.supabase) {
+  alert('Weather Calendar failed to load auth library. Refresh and try again.');
+}
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const WEATHER_PRODUCTS = ['weather_calendar_trial_24h', 'weather_calendar'];
+let viewMode = 'month';
+let cursor = new Date();
+let selectedKey = '';
+let forecast = null;
+
+function dateKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function fToC(f) {
+  return (f - 32) * 5 / 9;
+}
+
+function cToF(c) {
+  return (c * 9 / 5) + 32;
+}
+
+function getRules(jobType) {
+  if (jobType === 'line_striping') return { minTemp: 50, maxRain: 35, minDewSpread: 4, maxWind: 16 };
+  if (jobType === 'crack_fill') return { minTemp: 45, maxRain: 40, minDewSpread: 3, maxWind: 18 };
+  if (jobType === 'asphalt_paving') return { minTemp: 55, maxRain: 25, minDewSpread: 5, maxWind: 14 };
+  return { minTemp: 50, maxRain: 30, minDewSpread: 5, maxWind: 15 };
+}
+
+function getDayIndices(d) {
+  if (!forecast?.hourly?.time) return [];
+  const prefix = dateKey(d);
+  const out = [];
+  for (let i = 0; i < forecast.hourly.time.length; i += 1) {
+    if (String(forecast.hourly.time[i]).startsWith(prefix)) out.push(i);
+  }
+  return out;
+}
+
+function calculateSurfaceTempF(airF, cloud) {
+  return airF + (8 - Math.min(8, cloud / 12.5));
+}
+
+function generateDayData(d) {
+  const idx = getDayIndices(d);
+  if (!idx.length) {
+    return { score: 0, label: 'bad', bestWindow: 'No data', surface: '-', dewSpread: '-', rainTiming: '-', warnings: ['No forecast data for this day.'], hours: [] };
+  }
+  const rules = getRules(document.getElementById('job-type').value);
+  const h = forecast.hourly;
+  const hours = [];
+  let maxSurface = -Infinity;
+  let minSurface = Infinity;
+  let minSpread = Infinity;
+  let maxRain = 0;
+  let maxWind = 0;
+  let bestStart = null;
+  let bestEnd = null;
+
+  idx.forEach((i) => {
+    const ts = new Date(h.time[i]);
+    const hour = ts.getHours();
+    const airF = cToF(Number(h.temperature_2m[i] ?? 0));
+    const dewF = cToF(Number(h.dew_point_2m[i] ?? 0));
+    const rain = Number(h.precipitation_probability[i] ?? 0);
+    const wind = Number(h.wind_speed_10m[i] ?? 0) * 0.621371;
+    const cloud = Number(h.cloud_cover[i] ?? 50);
+    const surfaceF = calculateSurfaceTempF(airF, cloud);
+    const spread = Math.max(0, surfaceF - dewF);
+    const ok = hour >= 7 && hour <= 19 && surfaceF >= rules.minTemp && rain <= rules.maxRain && spread >= rules.minDewSpread && wind <= rules.maxWind;
+    if (ok && bestStart === null) bestStart = hour;
+    if (ok) bestEnd = hour;
+    maxSurface = Math.max(maxSurface, surfaceF);
+    minSurface = Math.min(minSurface, surfaceF);
+    minSpread = Math.min(minSpread, spread);
+    maxRain = Math.max(maxRain, rain);
+    maxWind = Math.max(maxWind, wind);
+    hours.push({
+      label: `${String(hour).padStart(2, '0')}:00`,
+      temp: Math.round(surfaceF),
+      rain: Math.round(rain),
+      dew: Number(spread.toFixed(1)),
+      state: ok ? 'good' : (rain <= rules.maxRain + 15 ? 'warn' : 'bad')
+    });
+  });
+
+  let score = 100;
+  score -= Math.max(0, rules.minTemp - maxSurface) * 1.1;
+  score -= Math.max(0, maxRain - rules.maxRain) * 0.8;
+  score -= Math.max(0, rules.minDewSpread - minSpread) * 11;
+  score -= Math.max(0, maxWind - rules.maxWind) * 1.4;
+  score = Math.max(20, Math.min(99, Math.round(score)));
+  const label = score >= 90 ? 'good' : score >= 70 ? 'warn' : 'bad';
+  const warnings = [];
+  if (minSpread < rules.minDewSpread) warnings.push(`Dew point spread drops below target (${minSpread.toFixed(1)}F).`);
+  if (maxRain > rules.maxRain) warnings.push(`Rain probability peaks at ${Math.round(maxRain)}% (threshold ${rules.maxRain}%).`);
+  if (maxSurface < rules.minTemp) warnings.push(`Surface temp remains under ${rules.minTemp}F requirement.`);
+  if (maxWind > rules.maxWind) warnings.push(`Wind reaches ${Math.round(maxWind)} mph, which may affect cure/dry time.`);
+
+  return {
+    score,
+    label,
+    bestWindow: bestStart === null ? 'No safe window' : `${bestStart}:00-${bestEnd}:00`,
+    surface: `${Math.round(minSurface)}F-${Math.round(maxSurface)}F`,
+    dewSpread: `${minSpread.toFixed(1)}F min`,
+    rainTiming: `${Math.round(maxRain)}% max`,
+    warnings: warnings.length ? warnings : ['No critical warnings for selected job type.'],
+    hours
+  };
+}
+
+function getCalendarDates(base, mode) {
+  if (mode === 'week') {
+    const start = new Date(base);
+    start.setDate(start.getDate() - start.getDay());
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      return { date: d, inMonth: true };
+    });
+  }
+  const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
+  const start = new Date(monthStart);
+  start.setDate(monthStart.getDate() - monthStart.getDay());
+  return Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return { date: d, inMonth: d.getMonth() === base.getMonth() };
+  });
+}
+
+function renderCalendar() {
+  document.getElementById('month-title').textContent = cursor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const grid = document.getElementById('calendar-grid');
+  const dates = getCalendarDates(cursor, viewMode);
+  grid.innerHTML = '';
+  dates.forEach(({ date, inMonth }) => {
+    const key = dateKey(date);
+    const info = generateDayData(date);
+    const cell = document.createElement('div');
+    cell.className = `day ${inMonth ? '' : 'other'} ${selectedKey === key ? 'selected' : ''}`;
+    cell.innerHTML = `
+      <div class="day-head">
+        <span class="day-num">${date.getDate()}</span>
+        <span class="score ${info.label}">${info.score}</span>
+      </div>
+      <div class="window">${info.bestWindow}</div>
+    `;
+    cell.addEventListener('click', () => selectDay(date));
+    grid.appendChild(cell);
+  });
+}
+
+function selectDay(date) {
+  selectedKey = dateKey(date);
+  const info = generateDayData(date);
+  document.getElementById('detail-date').textContent = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  document.getElementById('detail-summary').textContent = info.score >= 90
+    ? 'Ideal conditions for sealcoating/paving operations.'
+    : (info.score >= 70 ? 'Usable conditions with caution and monitoring.' : 'High risk day. Reschedule recommended.');
+  document.getElementById('detail-score').textContent = `${info.score} / 100`;
+  document.getElementById('detail-window').textContent = info.bestWindow;
+  document.getElementById('detail-surface').textContent = info.surface;
+  document.getElementById('detail-dew').textContent = info.dewSpread;
+  document.getElementById('detail-rain').textContent = info.rainTiming;
+
+  const warnList = document.getElementById('warn-list');
+  warnList.innerHTML = info.warnings.length
+    ? info.warnings.map((w) => `<div class="warn-item">${w}</div>`).join('')
+    : '<div class="warn-item">No major warnings detected in primary work window.</div>';
+
+  const hourList = document.getElementById('hour-list');
+  hourList.innerHTML = info.hours.map((h) => `
+    <div class="hour">
+      <span>${h.label}</span>
+      <span>${h.temp}F | Rain ${h.rain}% | Dew spread ${h.dew}F</span>
+      <span class="score ${h.state}">${h.state.toUpperCase()}</span>
+    </div>
+  `).join('');
+
+  renderCalendar();
+}
+
+async function enforceWeatherAccess() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session?.user?.id) {
+    window.location.replace('/weather-calendar.html');
+    return;
+  }
+  document.getElementById('email').textContent = session.user.email || '';
+  const { data, error } = await sb
+    .from('purchases')
+    .select('id')
+    .eq('user_id', session.user.id)
+    .eq('status', 'active')
+    .in('product', WEATHER_PRODUCTS)
+    .limit(1);
+  if (error || !Array.isArray(data) || !data.length) {
+    await sb.auth.signOut();
+    window.location.replace('/weather-calendar.html');
+  }
+}
+
+async function loadForecast() {
+  const input = document.getElementById('location-input');
+  const q = String(input.value || '').trim();
+  if (!q) return;
+  document.getElementById('location-label').textContent = 'Loading forecast...';
+  const resp = await fetch(`/api/weather-forecast?address=${encodeURIComponent(q)}`);
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok || !payload?.hourly) {
+    document.getElementById('location-label').textContent = payload.error || 'Forecast load failed.';
+    return;
+  }
+  forecast = payload;
+  document.getElementById('location-label').textContent = payload.location?.label || q;
+  renderCalendar();
+  selectDay(new Date());
+}
+
+document.getElementById('signout').addEventListener('click', async () => {
+  await sb.auth.signOut();
+  window.location.replace('/weather-calendar.html');
+});
+
+document.getElementById('prev').addEventListener('click', () => {
+  cursor = new Date(cursor.getFullYear(), cursor.getMonth() + (viewMode === 'month' ? -1 : 0), cursor.getDate() + (viewMode === 'week' ? -7 : 0));
+  renderCalendar();
+});
+document.getElementById('next').addEventListener('click', () => {
+  cursor = new Date(cursor.getFullYear(), cursor.getMonth() + (viewMode === 'month' ? 1 : 0), cursor.getDate() + (viewMode === 'week' ? 7 : 0));
+  renderCalendar();
+});
+document.getElementById('view-month').addEventListener('click', () => {
+  viewMode = 'month';
+  document.getElementById('view-month').classList.add('active');
+  document.getElementById('view-week').classList.remove('active');
+  renderCalendar();
+});
+document.getElementById('view-week').addEventListener('click', () => {
+  viewMode = 'week';
+  document.getElementById('view-week').classList.add('active');
+  document.getElementById('view-month').classList.remove('active');
+  renderCalendar();
+});
+document.getElementById('load-weather').addEventListener('click', loadForecast);
+document.getElementById('job-type').addEventListener('change', () => {
+  renderCalendar();
+  if (selectedKey) {
+    const [y, m, d] = selectedKey.split('-').map(Number);
+    selectDay(new Date(y, m - 1, d));
+  }
+});
+
+(async () => {
+  await enforceWeatherAccess();
+  document.getElementById('location-input').value = 'Dallas, TX';
+  await loadForecast();
+})();
+</script>
+</body>
+</html>

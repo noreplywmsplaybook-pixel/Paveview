@@ -1,5 +1,9 @@
 const DEFAULT_SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
-const TRIAL_PRODUCT_KEY = 'takeoff_trial_24h';
+const DEFAULT_TRIAL_PRODUCT_KEY = 'takeoff_trial_24h';
+const ALLOWED_TRIAL_PRODUCT_KEYS = new Set([
+  DEFAULT_TRIAL_PRODUCT_KEY,
+  'weather_calendar_trial_24h'
+]);
 const TRIAL_DURATION_MS = 24 * 60 * 60 * 1000;
 
 function sendJson(res, statusCode, payload) {
@@ -79,6 +83,10 @@ async function handlePost(req, res, serviceRoleKey) {
   const email = normalizeEmail(body.email);
   const password = String(body.password || '');
   const fullName = String(body.name || '').trim();
+  const requestedProduct = String(body.product || '').trim().toLowerCase();
+  const trialProductKey = ALLOWED_TRIAL_PRODUCT_KEYS.has(requestedProduct)
+    ? requestedProduct
+    : DEFAULT_TRIAL_PRODUCT_KEY;
 
   if (!email || !password) {
     sendJson(res, 400, { error: 'Email and password are required.' });
@@ -137,7 +145,7 @@ async function handlePost(req, res, serviceRoleKey) {
   }
 
   await supabaseFetch(
-    `/rest/v1/purchases?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&product=eq.${encodeURIComponent(TRIAL_PRODUCT_KEY)}`,
+    `/rest/v1/purchases?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&product=eq.${encodeURIComponent(trialProductKey)}`,
     {
       method: 'PATCH',
       serviceRoleKey,
@@ -150,7 +158,7 @@ async function handlePost(req, res, serviceRoleKey) {
     serviceRoleKey,
     body: [{
       user_id: userId,
-      product: TRIAL_PRODUCT_KEY,
+      product: trialProductKey,
       amount_paid: 0,
       status: 'active'
     }]
@@ -164,7 +172,7 @@ async function handlePost(req, res, serviceRoleKey) {
     ok: true,
     user: { id: userId, email, full_name: fullName || '' },
     trial: {
-      product: TRIAL_PRODUCT_KEY,
+      product: trialProductKey,
       expires_at: toIsoDatePlusMs(TRIAL_DURATION_MS)
     }
   });

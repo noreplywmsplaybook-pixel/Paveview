@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PaveView Weather Planner</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0a0a;--bg2:#111;--bg3:#171717;--accent:#5dd39e;--accent2:#f5c842;--text:#e6e2db;--dim:#7e7971;--ok:#22c55e;--warn:#f5c842;--bad:#ef4444}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;line-height:1.6}
+a{text-decoration:none;color:inherit}
+nav{position:sticky;top:0;z-index:100;background:rgba(10,10,10,.92);border-bottom:1px solid rgba(93,211,158,.2);padding:0 26px;height:58px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.1em;color:var(--accent)}
+.logo span{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.15em;color:var(--dim);margin-left:6px;text-transform:uppercase}
+.nav-links{display:flex;gap:14px;align-items:center}
+.nav-btn{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.nav-btn:hover{color:var(--accent)}
+.nav-cta{padding:8px 14px;border:1px solid var(--accent);color:var(--accent)}
+.hero{padding:92px 26px 72px;max-width:1100px;margin:0 auto}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:18px}
+h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(46px,8vw,86px);line-height:.96;letter-spacing:.02em;color:#fff;margin-bottom:20px}
+.sub{font-size:18px;max-width:700px;color:var(--dim);margin-bottom:26px}
+.cta-row{display:flex;gap:12px;flex-wrap:wrap}
+.btn{display:inline-block;padding:14px 20px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;border:1px solid #2b2b2b;color:var(--text);cursor:pointer;background:transparent}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#042114;font-weight:600}
+.btn.primary:hover{background:#81ddb4;border-color:#81ddb4}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+section{padding:72px 26px}
+.inner{max-width:1100px;margin:0 auto}
+.title{font-family:'Bebas Neue',sans-serif;font-size:48px;line-height:1;letter-spacing:.03em;margin-bottom:16px}
+.muted{color:var(--dim)}
+.grid{display:grid;gap:16px}
+.feature-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:30px}
+.card{background:var(--bg3);border:1px solid #232323;padding:22px}
+.card h3{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.03em;margin-bottom:8px}
+.pill{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 8px;border:1px solid #2e2e2e;margin-bottom:10px}
+.signal{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.badge{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 8px}
+.g{background:rgba(34,197,94,.14);color:#7cf0a4}
+.y{background:rgba(245,200,66,.14);color:#f5c842}
+.r{background:rgba(239,68,68,.14);color:#ff8d8d}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}
+footer{padding:24px 26px;border-top:1px solid #1c1c1c;color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:10px}
+
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:200}
+.modal.open{display:flex}
+.modal-card{width:min(520px,94vw);background:#121212;border:1px solid #2b2b2b;border-top:2px solid var(--accent);padding:22px}
+.tabs{display:flex;border-bottom:1px solid #2b2b2b;margin-bottom:14px}
+.tab{flex:1;text-align:center;padding:9px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);cursor:pointer}
+.tab.active{color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-1px}
+.field{margin-bottom:12px}
+.field label{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px}
+.field input,.field select{width:100%;background:#0b0b0b;border:1px solid #262626;color:var(--text);padding:10px 11px;font-size:14px}
+.field input:focus,.field select:focus{outline:none;border-color:var(--accent)}
+.msg{display:none;margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:8px 10px}
+.msg.err{display:block;background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.35);color:#ff9090}
+.msg.ok{display:block;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);color:#8ae8ad}
+.close-row{display:flex;justify-content:flex-end;margin-bottom:4px}
+.close{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);cursor:pointer}
+@media (max-width:800px){.two-col{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">PaveView <span>Weather Planner</span></a>
+  <div class="nav-links">
+    <a href="#features" class="nav-btn">Features</a>
+    <a href="#architecture" class="nav-btn">Architecture</a>
+    <a href="#" class="nav-btn nav-cta" id="open-auth">Login / Sign Up</a>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="eyebrow">Contractor-Specific Scheduling Intelligence</div>
+  <h1>PaveView<br>Weather Planner</h1>
+  <p class="sub">Not just forecast data. Decision-grade guidance that answers: <strong>"Can I sealcoat this lot on this day at this time?"</strong></p>
+  <div class="cta-row">
+    <button class="btn primary" id="open-auth-hero">Start Free Weather Calendar Access</button>
+    <a href="#features" class="btn">See Core Features</a>
+  </div>
+</section>
+
+<section id="features">
+  <div class="inner">
+    <div class="title">Built For Go / No-Go Decisions</div>
+    <p class="muted">This is a contractor operations layer, not a generic weather app.</p>
+    <div class="grid feature-grid">
+      <div class="card">
+        <span class="pill">1. Weather Calendar</span>
+        <h3>Daily Scheduling Hook</h3>
+        <p>Week/month calendar with hour-level detail, best work window, and warnings for dew point spread and rain timing.</p>
+        <div class="signal"><span class="badge g">Green: Ideal</span><span class="badge y">Yellow: Risky</span><span class="badge r">Red: Do Not Schedule</span></div>
+      </div>
+      <div class="card">
+        <span class="pill">2. Job Forecasting</span>
+        <h3>Address + Job Type Specific</h3>
+        <p>Add a job location and type (sealcoat, crack fill, striping, paving) to calculate surface temp, cure viability, and rain buffer windows.</p>
+      </div>
+      <div class="card">
+        <span class="pill">3. Smart Alerts</span>
+        <h3>Retention Engine</h3>
+        <p>Receive risk alerts when forecasts shift: rain moves earlier, cure threshold drops, or planned jobs become unsafe.</p>
+      </div>
+      <div class="card">
+        <span class="pill">4. Contractor Metrics</span>
+        <h3>Your Operational Moat</h3>
+        <p>Track air/surface temperature, dew point spread, humidity, rain timing, wind, UV, and cloud cover with derived cure-risk logic.</p>
+      </div>
+      <div class="card">
+        <span class="pill">5. Go / No-Go Score</span>
+        <h3>Simple Action Signal</h3>
+        <p>Each job/day receives a score: 90-100 excellent, 70-89 caution, below 70 not recommended.</p>
+      </div>
+      <div class="card">
+        <span class="pill">6. Rescheduling Assistant</span>
+        <h3>Recover Lost Days Fast</h3>
+        <p>When weather turns against a planned job, suggest next-best days and support auto-reschedule workflows.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="architecture" style="background:var(--bg2)">
+  <div class="inner">
+    <div class="title">MVP Architecture</div>
+    <div class="two-col">
+      <div class="card">
+        <h3>Rule-Based Decision Layer</h3>
+        <p>Per-job-type rulesets for threshold logic (temp, rain buffers, dew point spread, wind constraints) drive the decision engine.</p>
+      </div>
+      <div class="card">
+        <h3>Forecast Change Detector</h3>
+        <p>Periodic refresh compares previous and new forecast snapshots to trigger risk alerts and reschedule recommendations.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="modal" id="auth-modal">
+  <div class="modal-card">
+    <div class="close-row"><span class="close" id="close-auth">Close ✕</span></div>
+    <div class="tabs">
+      <div class="tab active" id="tab-signup">Sign Up</div>
+      <div class="tab" id="tab-login">Login</div>
+    </div>
+
+    <div id="view-signup">
+      <div class="field"><label>Full Name (optional)</label><input id="signup-name" type="text" placeholder="Your name"></div>
+      <div class="field"><label>Email</label><input id="signup-email" type="email" placeholder="you@example.com"></div>
+      <div class="field"><label>Password</label><input id="signup-password" type="password" placeholder="Minimum 6 characters"></div>
+      <button class="btn primary" id="btn-signup" style="width:100%">Create Weather Calendar Account</button>
+      <div class="msg" id="signup-msg"></div>
+    </div>
+
+    <div id="view-login" style="display:none">
+      <div class="field"><label>Email</label><input id="login-email" type="email" placeholder="you@example.com"></div>
+      <div class="field"><label>Password</label><input id="login-password" type="password" placeholder="Your password"></div>
+      <button class="btn primary" id="btn-login" style="width:100%">Login to Weather Calendar</button>
+      <div class="msg" id="login-msg"></div>
+    </div>
+  </div>
+</div>
+
+<footer>© 2026 PaveView Weather Planner</footer>
+
+<script>
+const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
+const WEATHER_TRIAL_PRODUCT = 'weather_calendar_trial_24h';
+if (!window.supabase) {
+  alert('Weather Planner failed to load auth library. Refresh and try again.');
+}
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+function setMsg(id, text, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'msg ' + (type === 'error' ? 'err' : 'ok');
+}
+
+function setTab(mode) {
+  const isSignup = mode === 'signup';
+  document.getElementById('tab-signup').classList.toggle('active', isSignup);
+  document.getElementById('tab-login').classList.toggle('active', !isSignup);
+  document.getElementById('view-signup').style.display = isSignup ? 'block' : 'none';
+  document.getElementById('view-login').style.display = isSignup ? 'none' : 'block';
+}
+
+function openAuth() {
+  document.getElementById('auth-modal').classList.add('open');
+}
+
+function closeAuth() {
+  document.getElementById('auth-modal').classList.remove('open');
+}
+
+async function routeIfWeatherAccess(userId) {
+  const { data, error } = await sb
+    .from('purchases')
+    .select('id,product,status,created_at')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .in('product', [WEATHER_TRIAL_PRODUCT, 'weather_calendar'])
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error || !Array.isArray(data) || !data.length) {
+    return false;
+  }
+  window.location.href = '/weather-dashboard.html';
+  return true;
+}
+
+async function signupWeather() {
+  const name = document.getElementById('signup-name').value.trim();
+  const email = document.getElementById('signup-email').value.trim().toLowerCase();
+  const password = document.getElementById('signup-password').value;
+  if (!email || !password) {
+    setMsg('signup-msg', 'Email and password are required.', 'error');
+    return;
+  }
+  const btn = document.getElementById('btn-signup');
+  btn.disabled = true;
+  btn.textContent = 'Creating account...';
+  try {
+    const resp = await fetch('/api/trial-signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password, product: WEATHER_TRIAL_PRODUCT })
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      throw new Error(payload.error || 'Signup failed.');
+    }
+    const loginRes = await sb.auth.signInWithPassword({ email, password });
+    if (loginRes.error) throw new Error(loginRes.error.message || 'Account created, but sign in failed.');
+    window.location.href = '/weather-dashboard.html';
+  } catch (e) {
+    setMsg('signup-msg', e.message || 'Unable to create account.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create Weather Calendar Account';
+  }
+}
+
+async function loginWeather() {
+  const email = document.getElementById('login-email').value.trim().toLowerCase();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) {
+    setMsg('login-msg', 'Email and password are required.', 'error');
+    return;
+  }
+  const btn = document.getElementById('btn-login');
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(error.message || 'Sign in failed.');
+    const hasWeather = await routeIfWeatherAccess(data.user.id);
+    if (!hasWeather) {
+      await sb.auth.signOut();
+      throw new Error('This account does not have Weather Calendar access.');
+    }
+  } catch (e) {
+    setMsg('login-msg', e.message || 'Unable to sign in.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Login to Weather Calendar';
+  }
+}
+
+document.getElementById('open-auth').addEventListener('click', (e) => { e.preventDefault(); openAuth(); });
+document.getElementById('open-auth-hero').addEventListener('click', openAuth);
+document.getElementById('close-auth').addEventListener('click', closeAuth);
+document.getElementById('auth-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'auth-modal') closeAuth();
+});
+document.getElementById('tab-signup').addEventListener('click', () => setTab('signup'));
+document.getElementById('tab-login').addEventListener('click', () => setTab('login'));
+document.getElementById('btn-signup').addEventListener('click', signupWeather);
+document.getElementById('btn-login').addEventListener('click', loginWeather);
+
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user?.id) {
+    await routeIfWeatherAccess(session.user.id);
+  }
+})();
+</script>
+</body>
+</html>
