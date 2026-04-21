@@ -90,6 +90,7 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .suggestion-list{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow:auto}
 .suggestion{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;border:1px solid #2a4f70;background:#0f2a44;border-radius:8px;padding:8px}
 .suggestion-date{font-size:12px}
+.create-suggestions .suggestion-date{color:#ffffff}
 .suggestion-meta{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#9ac5de}
 .suggestion .mini-btn{min-height:30px;padding:4px 8px}
 .hero-weather{display:grid;grid-template-columns:1.15fr .85fr;gap:10px;margin-top:8px}
@@ -136,6 +137,9 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 </header>
 <main>
   <div class="status">Weather Calendar Active</div>
+  <div style="margin-bottom:8px">
+    <button class="btn" id="open-schedule" style="min-height:34px;padding:6px 12px">Schedule</button>
+  </div>
   <div class="hero-weather">
     <div class="panel map-panel">
       <div class="map-head">Live Weather Radar (Timeline on Map)</div>
@@ -160,28 +164,6 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
       </div>
     </div>
   </div>
-  <div class="panel alerts">
-    <div class="alerts-title">Future Schedule Alerts</div>
-    <div class="alerts-sub">Alerts are generated from future scheduled jobs that may need rescheduling due to weather risk.</div>
-    <div class="event-form">
-      <input id="event-name" placeholder="Job name (e.g. Walmart Lot A)">
-      <input id="event-location" placeholder="Event location (city/address)">
-      <input id="event-date" type="date">
-      <select id="event-job-type">
-        <option value="sealcoating">Sealcoating</option>
-        <option value="crack_fill">Crack Fill</option>
-        <option value="line_striping">Line Striping</option>
-        <option value="asphalt_paving">Asphalt Paving</option>
-      </select>
-      <button class="btn" id="add-event">Add Scheduled Event</button>
-    </div>
-    <div class="create-suggestions">
-      <div class="suggestions-title">Best Days To Schedule</div>
-      <div class="suggestion-list" id="create-suggestion-list"></div>
-    </div>
-    <div id="alerts-list"></div>
-  </div>
-
   <div class="toolbar" style="margin-top:-2px">
     <div class="toolbar-left">
       <input id="location-input" placeholder="Job address (e.g. Lynchburg, VA)" style="background:#fff;border:1px solid #8fb7ff;color:#0c2148;padding:8px 10px;min-width:280px">
@@ -232,6 +214,35 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
     </div>
   </div>
 </main>
+<div class="modal-backdrop" id="schedule-modal">
+  <div class="modal-card">
+    <div class="modal-title">Schedule Jobs</div>
+    <div class="alerts-sub">Add events and pick the strongest weather windows.</div>
+    <div class="event-form">
+      <input id="event-name" placeholder="Job name (e.g. Walmart Lot A)">
+      <input id="event-location" placeholder="Event location (city/address)">
+      <input id="event-date" type="date">
+      <select id="event-job-type">
+        <option value="sealcoating">Sealcoating</option>
+        <option value="crack_fill">Crack Fill</option>
+        <option value="line_striping">Line Striping</option>
+        <option value="asphalt_paving">Asphalt Paving</option>
+      </select>
+      <button class="btn" id="add-event">Add Scheduled Event</button>
+    </div>
+    <div class="create-suggestions">
+      <div class="suggestions-title">Best Days To Schedule</div>
+      <div class="suggestion-list" id="create-suggestion-list"></div>
+    </div>
+    <div id="alerts-list"></div>
+    <div class="modal-actions">
+      <div></div>
+      <div class="modal-actions-right">
+        <button class="mini-btn" id="close-schedule">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="modal-backdrop" id="event-modal">
   <div class="modal-card">
     <div class="modal-title">Reschedule Event</div>
@@ -1046,6 +1057,12 @@ function openProfileModal() {
 function closeProfileModal() {
   document.getElementById('profile-modal').classList.remove('open');
 }
+function openScheduleModal() {
+  document.getElementById('schedule-modal').classList.add('open');
+}
+function closeScheduleModal() {
+  document.getElementById('schedule-modal').classList.remove('open');
+}
 async function saveProfile() {
   const email = String(document.getElementById('profile-email').value || '').trim();
   const mainLocation = String(document.getElementById('profile-location').value || '').trim() || 'Lynchburg, VA';
@@ -1164,6 +1181,8 @@ document.getElementById('signout').addEventListener('click', async () => {
   await sb.auth.signOut();
   window.location.replace('/weather-calendar.html');
 });
+document.getElementById('open-schedule').addEventListener('click', openScheduleModal);
+document.getElementById('close-schedule').addEventListener('click', closeScheduleModal);
 document.getElementById('open-profile').addEventListener('click', openProfileModal);
 document.getElementById('profile-close').addEventListener('click', closeProfileModal);
 document.getElementById('profile-save').addEventListener('click', saveProfile);
@@ -1173,6 +1192,9 @@ document.getElementById('toggle-hourly').addEventListener('click', () => {
 });
 document.getElementById('profile-modal').addEventListener('click', (e) => {
   if (e.target.id === 'profile-modal') closeProfileModal();
+});
+document.getElementById('schedule-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'schedule-modal') closeScheduleModal();
 });
 
 document.getElementById('location-input').addEventListener('change', loadForecast);
