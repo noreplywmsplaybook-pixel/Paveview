@@ -18,6 +18,20 @@ async function geocode(query) {
   };
 }
 
+async function resolveLocation(address) {
+  const direct = await geocode(address);
+  if (direct) return direct;
+  const base = String(address || '').trim();
+  if (!base) return null;
+  if (!base.includes(',')) {
+    const us = await geocode(`${base}, United States`);
+    if (us) return us;
+  }
+  const regional = await geocode(`${base}, VA`);
+  if (regional) return regional;
+  return null;
+}
+
 async function forecast(latitude, longitude) {
   const params = new URLSearchParams({
     latitude: String(latitude),
@@ -55,7 +69,7 @@ module.exports = async (req, res) => {
   if (Number.isFinite(lat) && Number.isFinite(lon)) {
     resolved = { latitude: lat, longitude: lon, label: 'Pinned coordinates' };
   } else if (address) {
-    resolved = await geocode(address);
+    resolved = await resolveLocation(address);
   }
 
   if (!resolved) {

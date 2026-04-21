@@ -307,16 +307,25 @@ function getMainLocationKey() {
 function getMainLocation() {
   const userKey = getMainLocationKey();
   const userValue = localStorage.getItem(userKey);
-  if (userValue) return userValue;
+  if (userValue) return normalizeMainLocation(userValue);
   const legacy = localStorage.getItem(MAIN_LOCATION_KEY);
-  if (legacy) return legacy;
+  if (legacy) return normalizeMainLocation(legacy);
   return 'Lynchburg, VA';
 }
 
 function setMainLocation(value) {
-  const normalized = String(value || '').trim() || 'Lynchburg, VA';
+  const normalized = normalizeMainLocation(value);
   localStorage.setItem(getMainLocationKey(), normalized);
   localStorage.setItem(MAIN_LOCATION_KEY, normalized);
+}
+
+function normalizeMainLocation(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Lynchburg, VA';
+  const lower = raw.toLowerCase();
+  if (lower === 'lynchburg') return 'Lynchburg, VA';
+  if (lower === 'lynchburg va') return 'Lynchburg, VA';
+  return raw;
 }
 
 async function loadMainLocationFromProfile() {
