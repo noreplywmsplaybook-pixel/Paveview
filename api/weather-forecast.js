@@ -49,6 +49,7 @@ module.exports = async (req, res) => {
   const address = String(req.query?.address || '').trim();
   const lat = Number(req.query?.lat);
   const lon = Number(req.query?.lon);
+  const defaultLocation = { latitude: 32.7767, longitude: -96.7970, label: 'Dallas, TX, United States' };
 
   let resolved = null;
   if (Number.isFinite(lat) && Number.isFinite(lon)) {
@@ -57,10 +58,7 @@ module.exports = async (req, res) => {
     resolved = await geocode(address);
   }
 
-  if (!resolved) {
-    sendJson(res, 400, { error: 'Provide valid lat/lon or an address.' });
-    return;
-  }
+  if (!resolved) resolved = defaultLocation;
 
   const data = await forecast(resolved.latitude, resolved.longitude);
   if (!data?.hourly?.time?.length) {

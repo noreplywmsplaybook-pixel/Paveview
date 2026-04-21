@@ -421,6 +421,40 @@ function upsertDefaultEvents() {
   saveScheduledEventsLocal();
 }
 
+function buildDemoEvents() {
+  const today = new Date();
+  const templates = [
+    { name: 'Target - North Lot Sealcoat', dayOffset: 1, jobType: 'sealcoating' },
+    { name: 'School ADA Restripe', dayOffset: 2, jobType: 'line_striping' },
+    { name: 'Retail Crack Fill Package', dayOffset: 4, jobType: 'crack_fill' },
+    { name: 'Warehouse Overlay Prep', dayOffset: 7, jobType: 'asphalt_paving' },
+    { name: 'Hospital Visitor Lot Sealcoat', dayOffset: 10, jobType: 'sealcoating' },
+    { name: 'Church Parking Lot Striping', dayOffset: 13, jobType: 'line_striping' }
+  ];
+  return templates.map((t, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() + t.dayOffset);
+    return {
+      id: `evt-demo-${Date.now()}-${i}`,
+      name: t.name,
+      date: dateKey(d),
+      jobType: t.jobType
+    };
+  });
+}
+
+async function ensureDemoSchedule() {
+  const todayKey = dateKey(new Date());
+  const futureCount = scheduledEvents.filter((e) => e.date >= todayKey).length;
+  if (futureCount >= 5) return;
+  const demo = buildDemoEvents();
+  for (const evt of demo) {
+    if (scheduledEvents.some((x) => x.name === evt.name && x.date === evt.date)) continue;
+    scheduledEvents.push(evt);
+    await persistEvent(evt);
+  }
+}
+
 async function loadScheduledEvents() {
   if (!currentUserId) {
     loadScheduledEventsLocal();
@@ -844,6 +878,8 @@ document.getElementById('event-modal').addEventListener('click', (e) => {
   }
   document.getElementById('location-input').value = 'Dallas, TX';
   await loadForecast();
+  await ensureDemoSchedule();
+  renderAlerts();
 })();
 </script>
 </body>
