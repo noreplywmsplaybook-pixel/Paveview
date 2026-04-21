@@ -28,6 +28,7 @@ async function forecast(latitude, longitude) {
       'temperature_2m',
       'dew_point_2m',
       'relative_humidity_2m',
+      'precipitation',
       'precipitation_probability',
       'wind_speed_10m',
       'cloud_cover',

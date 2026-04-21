@@ -47,6 +47,9 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
 .detail-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.03em}
 .metric{display:flex;justify-content:space-between;border-bottom:1px solid #252525;padding:8px 0;font-size:13px}
 .metric:last-child{border-bottom:none}
+.why-list{margin-top:10px}
+.why-item{font-size:12px;color:var(--dim);padding:6px 0;border-bottom:1px dashed #2a2a2a}
+.why-item:last-child{border-bottom:none}
 .warn-list{margin-top:8px}
 .warn-item{font-size:12px;padding:7px 8px;background:#111;border:1px solid #252525;margin-bottom:6px}
 .hour-list{margin-top:10px;max-height:280px;overflow:auto}
@@ -174,8 +177,16 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
       <div class="metric"><span>Go / No-Go Score</span><strong id="detail-score">-</strong></div>
       <div class="metric"><span>Best Work Window</span><strong id="detail-window">-</strong></div>
       <div class="metric"><span>Surface Temp Range</span><strong id="detail-surface">-</strong></div>
+      <div class="metric"><span>Air Temp Range</span><strong id="detail-air">-</strong></div>
       <div class="metric"><span>Dew Point Spread</span><strong id="detail-dew">-</strong></div>
       <div class="metric"><span>Rain Timing Risk</span><strong id="detail-rain">-</strong></div>
+      <div class="metric"><span>Total Rain</span><strong id="detail-rain-total">-</strong></div>
+      <div class="metric"><span>Cloud Coverage</span><strong id="detail-cloud">-</strong></div>
+      <div class="metric"><span>Humidity Range</span><strong id="detail-humidity">-</strong></div>
+      <div class="metric"><span>UV Peak</span><strong id="detail-uv">-</strong></div>
+      <div class="metric"><span>Wind Peak</span><strong id="detail-wind">-</strong></div>
+      <div class="metric"><span>Radar</span><a id="detail-radar" href="#" target="_blank" rel="noopener" style="color:var(--accent)">Open Live Radar</a></div>
+      <div class="why-list" id="detail-why"></div>
       <div class="warn-list" id="warn-list"></div>
       <div class="hour-list" id="hour-list"></div>
     </div>
@@ -220,6 +231,7 @@ let scheduledEvents = [];
 let currentUserId = '';
 let weatherEventsTableReady = true;
 let modalEditingEventId = '';
+let radarUrl = '#';
 
 function dateKey(d) {
   const y = d.getFullYear();
@@ -265,6 +277,12 @@ function generateDayData(d, jobTypeOverride) {
   const rules = getRules(jobTypeOverride || document.getElementById('job-type').value);
   const h = forecast.hourly;
   const hours = [];
+  const airVals = [];
+  const humidityVals = [];
+  const uvVals = [];
+  let totalRainInches = 0;
+  let cloudSum = 0;
+  let cloudCount = 0;
   let maxSurface = -Infinity;
   let minSurface = Infinity;
   let minSpread = Infinity;
@@ -278,9 +296,12 @@ function generateDayData(d, jobTypeOverride) {
     const hour = ts.getHours();
     const airF = cToF(Number(h.temperature_2m[i] ?? 0));
     const dewF = cToF(Number(h.dew_point_2m[i] ?? 0));
+    const humidity = Number(h.relative_humidity_2m[i] ?? 0);
+    const precipMm = Number(h.precipitation[i] ?? 0);
     const rain = Number(h.precipitation_probability[i] ?? 0);
     const wind = Number(h.wind_speed_10m[i] ?? 0) * 0.621371;
     const cloud = Number(h.cloud_cover[i] ?? 50);
+    const uv = Number(h.uv_index[i] ?? 0);
     const surfaceF = calculateSurfaceTempF(airF, cloud);
     const spread = Math.max(0, surfaceF - dewF);
     const ok = hour >= 7 && hour <= 19 && surfaceF >= rules.minTemp && rain <= rules.maxRain && spread >= rules.minDewSpread && wind <= rules.maxWind;
@@ -288,14 +309,26 @@ function generateDayData(d, jobTypeOverride) {
     if (ok) bestEnd = hour;
     maxSurface = Math.max(maxSurface, surfaceF);
     minSurface = Math.min(minSurface, surfaceF);
+    airVals.push(airF);
+    humidityVals.push(humidity);
+    uvVals.push(uv);
+    totalRainInches += precipMm / 25.4;
+    cloudSum += cloud;
+    cloudCount += 1;
     minSpread = Math.min(minSpread, spread);
     maxRain = Math.max(maxRain, rain);
     maxWind = Math.max(maxWind, wind);
     hours.push({
       label: `${String(hour).padStart(2, '0')}:00`,
       temp: Math.round(surfaceF),
+      air: Math.round(airF),
       rain: Math.round(rain),
+      rainAmt: Number((precipMm / 25.4).toFixed(2)),
       dew: Number(spread.toFixed(1)),
+      humidity: Math.round(humidity),
+      cloud: Math.round(cloud),
+      uv: Number(uv.toFixed(1)),
+      wind: Math.round(wind),
       state: ok ? 'good' : (rain <= rules.maxRain + 15 ? 'warn' : 'bad')
     });
   });
@@ -317,9 +350,15 @@ function generateDayData(d, jobTypeOverride) {
     score,
     label,
     bestWindow: bestStart === null ? 'No safe window' : `${bestStart}:00-${bestEnd}:00`,
+    air: `${Math.round(Math.min(...airVals))}F-${Math.round(Math.max(...airVals))}F`,
     surface: `${Math.round(minSurface)}F-${Math.round(maxSurface)}F`,
     dewSpread: `${minSpread.toFixed(1)}F min`,
     rainTiming: `${Math.round(maxRain)}% max`,
+    rainTotal: `${totalRainInches.toFixed(2)} in`,
+    cloudAvg: `${Math.round(cloudCount ? cloudSum / cloudCount : 0)}% avg`,
+    humidity: `${Math.round(Math.min(...humidityVals))}%-${Math.round(Math.max(...humidityVals))}%`,
+    uvPeak: Number(Math.max(...uvVals, 0).toFixed(1)),
+    windPeak: `${Math.round(maxWind)} mph`,
     warnings: warnings.length ? warnings : ['No critical warnings for selected job type.'],
     hours
   };
@@ -587,9 +626,22 @@ function selectDay(date) {
     : (info.score >= 70 ? 'Usable conditions with caution and monitoring.' : 'High risk day. Reschedule recommended.');
   document.getElementById('detail-score').textContent = `${info.score} / 100`;
   document.getElementById('detail-window').textContent = info.bestWindow;
+  document.getElementById('detail-air').textContent = info.air;
   document.getElementById('detail-surface').textContent = info.surface;
   document.getElementById('detail-dew').textContent = info.dewSpread;
   document.getElementById('detail-rain').textContent = info.rainTiming;
+  document.getElementById('detail-rain-total').textContent = info.rainTotal;
+  document.getElementById('detail-cloud').textContent = info.cloudAvg;
+  document.getElementById('detail-humidity').textContent = info.humidity;
+  document.getElementById('detail-uv').textContent = String(info.uvPeak);
+  document.getElementById('detail-wind').textContent = info.windPeak;
+  document.getElementById('detail-radar').href = radarUrl;
+  document.getElementById('detail-why').innerHTML = `
+    <div class="why-item">Cloud cover affects surface heating and can delay reaching cure temperature.</div>
+    <div class="why-item">Dew point spread indicates condensation risk that can ruin adhesion.</div>
+    <div class="why-item">UV and wind together change dry/cure speed and stripe set times.</div>
+    <div class="why-item">Rain timing and accumulation decide if the job should be rescheduled.</div>
+  `;
 
   const warnList = document.getElementById('warn-list');
   warnList.innerHTML = info.warnings.length
@@ -600,7 +652,7 @@ function selectDay(date) {
   hourList.innerHTML = info.hours.map((h) => `
     <div class="hour">
       <span>${h.label}</span>
-      <span>${h.temp}F | Rain ${h.rain}% | Dew spread ${h.dew}F</span>
+      <span>Surf ${h.temp}F / Air ${h.air}F | Rain ${h.rain}% (${h.rainAmt} in) | RH ${h.humidity}% | Cloud ${h.cloud}% | UV ${h.uv} | Wind ${h.wind} mph | Dew spread ${h.dew}F</span>
       <span class="score ${h.state}">${h.state.toUpperCase()}</span>
     </div>
   `).join('');
@@ -651,6 +703,11 @@ async function loadForecast() {
   }
   forecast = payload;
   document.getElementById('location-label').textContent = payload.location?.label || q;
+  const lat = Number(payload.location?.latitude);
+  const lon = Number(payload.location?.longitude);
+  radarUrl = Number.isFinite(lat) && Number.isFinite(lon)
+    ? `https://www.windy.com/${lat.toFixed(4)}/${lon.toFixed(4)}?radar`
+    : '#';
   renderCalendar();
   selectDay(new Date());
 }
