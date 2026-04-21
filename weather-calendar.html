@@ -18,6 +18,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(10,10,10,.92);border-botto
 .nav-btn{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
 .nav-btn:hover{color:var(--accent)}
 .nav-cta{padding:8px 14px;border:1px solid var(--accent);color:var(--accent)}
+.cta-link{display:inline-block}
 .hero{padding:92px 26px 72px;max-width:1100px;margin:0 auto}
 .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:18px}
 h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(46px,8vw,86px);line-height:.96;letter-spacing:.02em;color:#fff;margin-bottom:20px}
@@ -78,7 +79,7 @@ footer{padding:24px 26px;border-top:1px solid #1c1c1c;color:var(--dim);font-fami
     <a href="#features" class="nav-btn">Features</a>
     <a href="#architecture" class="nav-btn">Architecture</a>
     <a href="#pricing" class="nav-btn">Pricing</a>
-    <a href="#" class="nav-btn nav-cta" id="open-auth">Login / Sign Up</a>
+    <a href="#" class="nav-btn nav-cta" id="open-auth">Login</a>
   </div>
 </nav>
 
@@ -87,7 +88,7 @@ footer{padding:24px 26px;border-top:1px solid #1c1c1c;color:var(--dim);font-fami
   <h1>PaveView<br>Weather Planner</h1>
   <p class="sub">Not just forecast data. Decision-grade guidance that answers: <strong>"Can I sealcoat this lot on this day at this time?"</strong></p>
   <div class="cta-row">
-    <button class="btn primary" id="open-auth-hero">Start Free Weather Calendar Access</button>
+    <a class="btn primary cta-link" href="https://buy.stripe.com/aFa7sM84F53Cfys6PS6Vq1a" target="_blank" rel="noopener">Try now - Just $20 a month</a>
     <a href="#features" class="btn">See Core Features</a>
   </div>
 </section>
@@ -174,22 +175,13 @@ footer{padding:24px 26px;border-top:1px solid #1c1c1c;color:var(--dim);font-fami
   <div class="modal-card">
     <div class="close-row"><span class="close" id="close-auth">Close ✕</span></div>
     <div class="tabs">
-      <div class="tab active" id="tab-signup">Sign Up</div>
-      <div class="tab" id="tab-login">Login</div>
+      <div class="tab active" id="tab-login">Login</div>
     </div>
-
-    <div id="view-signup">
-      <div class="field"><label>Full Name (optional)</label><input id="signup-name" type="text" placeholder="Your name"></div>
-      <div class="field"><label>Email</label><input id="signup-email" type="email" placeholder="you@example.com"></div>
-      <div class="field"><label>Password</label><input id="signup-password" type="password" placeholder="Minimum 6 characters"></div>
-      <button class="btn primary" id="btn-signup" style="width:100%">Create Weather Calendar Account</button>
-      <div class="msg" id="signup-msg"></div>
-    </div>
-
-    <div id="view-login" style="display:none">
+    <div id="view-login">
       <div class="field"><label>Email</label><input id="login-email" type="email" placeholder="you@example.com"></div>
       <div class="field"><label>Password</label><input id="login-password" type="password" placeholder="Your password"></div>
       <button class="btn primary" id="btn-login" style="width:100%">Login to Weather Calendar</button>
+      <div class="msg ok" style="display:block;margin-bottom:10px">No free access. Subscribe for $20/month, then log in.</div>
       <div class="msg" id="login-msg"></div>
     </div>
   </div>
@@ -213,11 +205,9 @@ function setMsg(id, text, type) {
 }
 
 function setTab(mode) {
-  const isSignup = mode === 'signup';
-  document.getElementById('tab-signup').classList.toggle('active', isSignup);
-  document.getElementById('tab-login').classList.toggle('active', !isSignup);
-  document.getElementById('view-signup').style.display = isSignup ? 'block' : 'none';
-  document.getElementById('view-login').style.display = isSignup ? 'none' : 'block';
+  const isLogin = mode === 'login';
+  document.getElementById('tab-login').classList.toggle('active', isLogin);
+  document.getElementById('view-login').style.display = isLogin ? 'block' : 'none';
 }
 
 function openAuth() {
@@ -241,39 +231,6 @@ async function routeIfWeatherAccess(userId) {
   if (error || !Array.isArray(data) || !data.length) return false;
   window.location.href = '/weather-dashboard.html';
   return true;
-}
-
-async function signupWeather() {
-  const name = document.getElementById('signup-name').value.trim();
-  const email = document.getElementById('signup-email').value.trim().toLowerCase();
-  const password = document.getElementById('signup-password').value;
-  if (!email || !password) {
-    setMsg('signup-msg', 'Email and password are required.', 'error');
-    return;
-  }
-  const btn = document.getElementById('btn-signup');
-  btn.disabled = true;
-  btn.textContent = 'Creating account...';
-  try {
-    const resp = await sb.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: name }
-      }
-    });
-    if (resp.error) {
-      throw new Error(resp.error.message || 'Signup failed.');
-    }
-    setMsg('signup-msg', 'Account created. Complete payment, then log in for dashboard access.', 'ok');
-    setTab('login');
-    document.getElementById('login-email').value = email;
-  } catch (e) {
-    setMsg('signup-msg', e.message || 'Unable to create account.', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Create Weather Calendar Account';
-  }
 }
 
 async function loginWeather() {
@@ -303,14 +260,11 @@ async function loginWeather() {
 }
 
 document.getElementById('open-auth').addEventListener('click', (e) => { e.preventDefault(); openAuth(); });
-document.getElementById('open-auth-hero').addEventListener('click', openAuth);
 document.getElementById('close-auth').addEventListener('click', closeAuth);
 document.getElementById('auth-modal').addEventListener('click', (e) => {
   if (e.target.id === 'auth-modal') closeAuth();
 });
-document.getElementById('tab-signup').addEventListener('click', () => setTab('signup'));
 document.getElementById('tab-login').addEventListener('click', () => setTab('login'));
-document.getElementById('btn-signup').addEventListener('click', signupWeather);
 document.getElementById('btn-login').addEventListener('click', loginWeather);
 
 (async () => {
