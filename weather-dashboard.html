@@ -7,14 +7,14 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#071423;--card:#0f2236;--border:#23435f;--accent:#38bdf8;--text:#e6f6ff;--dim:#8eb3cc;--good:#22c55e;--warn:#facc15;--bad:#ef4444}
+:root{--bg:#1e5dff;--card:#e9f4ff;--border:#8fb7ff;--accent:#1d4ed8;--text:#0c2148;--dim:#4f6b9a;--good:#22c55e;--warn:#facc15;--bad:#ef4444}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:radial-gradient(circle at 20% 10%, #123a5a, #071423 42%),linear-gradient(180deg,#0b1f33,#071423);color:var(--text);font-family:'Barlow',sans-serif}
-header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border);background:rgba(9,24,40,.92);backdrop-filter:blur(8px);position:sticky;top:0;z-index:20}
-.logo{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:.08em;color:#7dd3fc;text-shadow:0 0 20px rgba(56,189,248,.35)}
+body{background:linear-gradient(180deg,#5da8ff 0%,#2d7dff 40%,#1e5dff 100%);color:var(--text);font-family:'Barlow',sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border);background:rgba(240,248,255,.95);backdrop-filter:blur(8px);position:sticky;top:0;z-index:20}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:.08em;color:#1d4ed8}
 .logo span{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:.14em;margin-left:8px;text-transform:uppercase}
-.btn{border:1px solid #2f5777;background:linear-gradient(180deg,#12314f,#0e2640);color:var(--text);padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;min-height:42px}
-.btn:hover{border-color:#67d0ff;color:#cdefff;box-shadow:0 0 0 1px rgba(56,189,248,.25) inset}
+.btn{border:1px solid #0f2d78;background:linear-gradient(180deg,#1e40af,#1d2f85);color:#eaf2ff;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;min-height:42px}
+.btn:hover{border-color:#0a235f;color:#fff;box-shadow:none}
 .btn:active{transform:translateY(1px);background:#1a1a1a}
 .btn.active{border-color:var(--accent);color:var(--accent)}
 main{max-width:1200px;margin:10px auto;padding:0 12px}
@@ -23,7 +23,7 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0}
 .toolbar-left{display:flex;align-items:center;gap:8px}
 .layout{display:grid;grid-template-columns:2fr 1fr;gap:14px}
-.panel{background:linear-gradient(180deg,rgba(17,40,64,.9),rgba(12,29,47,.9));border:1px solid var(--border);padding:16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
+.panel{background:var(--card);border:1px solid var(--border);padding:16px;border-radius:10px;box-shadow:0 8px 20px rgba(16,56,140,.18)}
 .outlook-strip{display:grid;grid-template-columns:repeat(14,minmax(120px,1fr));gap:8px;overflow-x:auto;padding-bottom:4px}
 .outlook-day{background:linear-gradient(180deg,#11304d,#0d243b);border:1px solid #2a4f70;border-radius:8px;padding:8px;cursor:pointer;min-height:82px}
 .outlook-day:active{transform:translateY(1px)}
@@ -53,9 +53,9 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .alerts-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.03em}
 .alerts-sub{font-size:13px;color:var(--dim);margin-bottom:10px}
 .event-form{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
-.event-form input,.event-form select{background:#111;border:1px solid #2a2a2a;color:#e8e4dd;padding:8px 10px;min-height:42px}
+.event-form input,.event-form select{background:#fff;border:1px solid #8fb7ff;color:#0c2148;padding:8px 10px;min-height:42px}
 .event-form input[type="date"]{font-family:'IBM Plex Mono',monospace;font-size:11px}
-.alert-item{border:1px solid #2a2a2a;background:#111;padding:10px;margin-bottom:8px}
+.alert-item{border:1px solid #a8c8ff;background:#f4f9ff;padding:10px;margin-bottom:8px}
 .alert-top{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:4px}
 .alert-name{font-size:14px;font-weight:600}
 .alert-meta{font-size:11px;color:var(--dim)}
@@ -64,7 +64,7 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .alert-level.medium{background:rgba(245,200,66,.2);color:#f5c842}
 .alert-level.low{background:rgba(34,197,94,.2);color:#8de3ac}
 .alert-actions{display:flex;gap:8px;margin-top:8px}
-.mini-btn{border:1px solid #2a2a2a;background:transparent;color:#e8e4dd;padding:6px 10px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;min-height:38px}
+.mini-btn{border:1px solid #0f2d78;background:#1f357f;color:#e8f6ff;padding:6px 10px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;min-height:38px}
 .mini-btn:hover{border-color:var(--accent);color:var(--accent)}
 .mini-btn:active{transform:translateY(1px);background:#1a1a1a}
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;z-index:400}
@@ -86,13 +86,13 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .suggestion .mini-btn{min-height:30px;padding:4px 8px}
 .hero-weather{display:grid;grid-template-columns:1.15fr .85fr;gap:10px;margin-top:8px}
 .map-panel{padding:0;overflow:hidden}
-.map-head{padding:10px 12px;border-bottom:1px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#9ed8fb;background:rgba(11,29,47,.8)}
+.map-head{padding:10px 12px;border-bottom:1px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#1d4ed8;background:#edf5ff}
 .map-frame{height:220px;width:100%;border:0;display:block;background:#0a1d30}
 .map-empty{height:220px;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:13px}
 .current-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px}
-.chip{background:linear-gradient(180deg,#123556,#0f2b46);border:1px solid #2a4f70;border-radius:8px;padding:10px}
-.chip-k{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#9ac5de;text-transform:uppercase}
-.chip-v{font-size:19px;font-weight:600;color:#def6ff}
+.chip{background:#f3f8ff;border:1px solid #a8c8ff;border-radius:8px;padding:10px}
+.chip-k{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#4b6ca3;text-transform:uppercase}
+.chip-v{font-size:19px;font-weight:600;color:#163c91}
 .btn,.mini-btn,.day,.modal-input,.event-form input,.event-form select{-webkit-tap-highlight-color:rgba(93,211,158,.22)}
 @media (max-width:1000px){.layout{grid-template-columns:1fr}}
 @media (max-width:780px){
@@ -152,6 +152,7 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
     <div class="alerts-sub">Alerts are generated from future scheduled jobs that may need rescheduling due to weather risk.</div>
     <div class="event-form">
       <input id="event-name" placeholder="Job name (e.g. Walmart Lot A)">
+      <input id="event-location" placeholder="Event location (city/address)">
       <input id="event-date" type="date">
       <select id="event-job-type">
         <option value="sealcoating">Sealcoating</option>
@@ -166,14 +167,13 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 
   <div class="toolbar" style="margin-top:-2px">
     <div class="toolbar-left">
-      <input id="location-input" placeholder="Job address (e.g. Dallas, TX)" style="background:#111;border:1px solid #2a2a2a;color:#e8e4dd;padding:8px 10px;min-width:280px">
-      <select id="job-type" style="background:#111;border:1px solid #2a2a2a;color:#e8e4dd;padding:8px 10px">
+      <input id="location-input" placeholder="Job address (e.g. Lynchburg, VA)" style="background:#fff;border:1px solid #8fb7ff;color:#0c2148;padding:8px 10px;min-width:280px">
+      <select id="job-type" style="background:#fff;border:1px solid #8fb7ff;color:#0c2148;padding:8px 10px">
         <option value="sealcoating">Sealcoating</option>
         <option value="crack_fill">Crack Fill</option>
         <option value="line_striping">Line Striping</option>
         <option value="asphalt_paving">Asphalt Paving</option>
       </select>
-      <button class="btn" id="load-weather">Load Forecast</button>
     </div>
     <div class="muted" id="location-label"></div>
   </div>
@@ -217,6 +217,7 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
     <div class="modal-title">Reschedule Event</div>
     <div class="modal-grid">
       <input class="modal-input full" id="modal-event-name" placeholder="Job name">
+      <input class="modal-input full" id="modal-event-location" placeholder="Event location (city/address)">
       <input class="modal-input" id="modal-event-date" type="date">
       <select class="modal-input" id="modal-event-job-type">
         <option value="sealcoating">Sealcoating</option>
@@ -244,6 +245,7 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
     <div class="modal-title">Profile</div>
     <div class="modal-grid">
       <input class="modal-input full" id="profile-email" type="email" placeholder="Email">
+      <input class="modal-input full" id="profile-location" type="text" placeholder="Main location (city/address)">
       <input class="modal-input full" id="profile-pass1" type="password" placeholder="New password">
       <input class="modal-input full" id="profile-pass2" type="password" placeholder="Confirm new password">
     </div>
@@ -274,12 +276,17 @@ let modalEditingEventId = '';
 let radarUrl = '#';
 let mapUrl = '';
 let currentSession = null;
+const MAIN_LOCATION_KEY = 'paveview_weather_main_location';
 
 function dateKey(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function getMainLocation() {
+  return localStorage.getItem(MAIN_LOCATION_KEY) || 'Lynchburg, VA';
 }
 
 function fToC(f) {
@@ -426,8 +433,8 @@ function upsertDefaultEvents() {
   const d1 = new Date(today); d1.setDate(today.getDate() + 1);
   const d2 = new Date(today); d2.setDate(today.getDate() + 2);
   scheduledEvents = [
-    { id: `evt-${Date.now()}-1`, name: 'Scheduled Sealcoat Job', date: dateKey(d1), jobType: 'sealcoating' },
-    { id: `evt-${Date.now()}-2`, name: 'Scheduled Striping Job', date: dateKey(d2), jobType: 'line_striping' }
+    { id: `evt-${Date.now()}-1`, name: 'Scheduled Sealcoat Job', location: getMainLocation(), date: dateKey(d1), jobType: 'sealcoating' },
+    { id: `evt-${Date.now()}-2`, name: 'Scheduled Striping Job', location: getMainLocation(), date: dateKey(d2), jobType: 'line_striping' }
   ];
   saveScheduledEventsLocal();
 }
@@ -448,6 +455,7 @@ function buildDemoEvents() {
     return {
       id: `evt-demo-${Date.now()}-${i}`,
       name: t.name,
+      location: getMainLocation(),
       date: dateKey(d),
       jobType: t.jobType
     };
@@ -473,7 +481,7 @@ async function loadScheduledEvents() {
   }
   const { data, error } = await sb
     .from('weather_events')
-    .select('id,name,scheduled_date,job_type')
+    .select('id,name,scheduled_date,job_type,location')
     .eq('user_id', currentUserId)
     .order('scheduled_date', { ascending: true });
   if (error) {
@@ -485,6 +493,7 @@ async function loadScheduledEvents() {
   scheduledEvents = (Array.isArray(data) ? data : []).map((row) => ({
     id: row.id,
     name: row.name,
+    location: row.location || getMainLocation(),
     date: row.scheduled_date,
     jobType: row.job_type
   }));
@@ -498,6 +507,7 @@ async function persistEvent(eventItem) {
   const { error } = await sb.from('weather_events').insert([{
     user_id: currentUserId,
     name: eventItem.name,
+    location: eventItem.location || getMainLocation(),
     scheduled_date: eventItem.date,
     job_type: eventItem.jobType
   }]);
@@ -518,6 +528,7 @@ async function updateEvent(eventId, patch) {
   }
   const payload = {};
   if (patch.name !== undefined) payload.name = patch.name;
+  if (patch.location !== undefined) payload.location = patch.location;
   if (patch.date !== undefined) payload.scheduled_date = patch.date;
   if (patch.jobType !== undefined) payload.job_type = patch.jobType;
   const { error } = await sb.from('weather_events').update(payload).eq('id', eventId).eq('user_id', currentUserId);
@@ -565,7 +576,7 @@ function renderAlerts() {
           <div class="alert-name">${evt.name}</div>
           <span class="alert-level ${level}">${level.toUpperCase()}</span>
         </div>
-        <div class="alert-meta">${evt.date} · ${evt.jobType.replace('_', ' ')} · Score ${info.score} · Best window ${info.bestWindow}</div>
+        <div class="alert-meta">${evt.date} · ${evt.location || getMainLocation()} · ${evt.jobType.replace('_', ' ')} · Score ${info.score} · Best window ${info.bestWindow}</div>
         <div style="font-size:12px;margin-top:6px">${message}</div>
         <div class="alert-actions">
           <button class="mini-btn" onclick="editEvent('${evt.id}')">Reschedule</button>
@@ -602,6 +613,7 @@ function openEventModal(eventId) {
   if (!target) return;
   modalEditingEventId = String(eventId);
   document.getElementById('modal-event-name').value = target.name;
+  document.getElementById('modal-event-location').value = target.location || getMainLocation();
   document.getElementById('modal-event-date').value = target.date;
   document.getElementById('modal-event-job-type').value = target.jobType;
   setModalMsg('');
@@ -676,6 +688,7 @@ window.useSuggestion = useSuggestion;
 async function saveModalEvent() {
   if (!modalEditingEventId) return;
   const name = String(document.getElementById('modal-event-name').value || '').trim();
+  const location = String(document.getElementById('modal-event-location').value || '').trim() || getMainLocation();
   const date = String(document.getElementById('modal-event-date').value || '').trim();
   const jobType = String(document.getElementById('modal-event-job-type').value || '').trim();
   if (!name) {
@@ -686,7 +699,7 @@ async function saveModalEvent() {
     setModalMsg('Scheduled date is required.');
     return;
   }
-  const ok = await updateEvent(modalEditingEventId, { name, date, jobType });
+  const ok = await updateEvent(modalEditingEventId, { name, location, date, jobType });
   if (!ok) {
     setModalMsg('Unable to save changes. Please try again.');
     return;
@@ -819,6 +832,7 @@ async function enforceWeatherAccess() {
 function openProfileModal() {
   if (!currentSession) return;
   document.getElementById('profile-email').value = currentSession.user?.email || '';
+  document.getElementById('profile-location').value = getMainLocation();
   document.getElementById('profile-pass1').value = '';
   document.getElementById('profile-pass2').value = '';
   setProfileMsg('');
@@ -829,12 +843,16 @@ function closeProfileModal() {
 }
 async function saveProfile() {
   const email = String(document.getElementById('profile-email').value || '').trim();
+  const mainLocation = String(document.getElementById('profile-location').value || '').trim() || 'Lynchburg, VA';
   const p1 = String(document.getElementById('profile-pass1').value || '');
   const p2 = String(document.getElementById('profile-pass2').value || '');
   if (!email) {
     setProfileMsg('Email is required.');
     return;
   }
+  localStorage.setItem(MAIN_LOCATION_KEY, mainLocation);
+  document.getElementById('location-input').value = mainLocation;
+  await loadForecast();
   if ((p1 || p2) && p1 !== p2) {
     setProfileMsg('Passwords do not match.');
     return;
@@ -893,7 +911,7 @@ async function loadForecast() {
     ? `https://www.windy.com/${lat.toFixed(4)}/${lon.toFixed(4)}?radar`
     : '#';
   mapUrl = Number.isFinite(lat) && Number.isFinite(lon)
-    ? `https://www.rainviewer.com/map.html?loc=${lat.toFixed(4)},${lon.toFixed(4)},8&oFa=0&oC=0&oU=0&oCS=1&oF=0&c=1&o=83&lm=1&layer=radar&sm=1&sn=1`
+    ? `https://embed.windy.com/embed2.html?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&detailLat=${lat.toFixed(4)}&detailLon=${lon.toFixed(4)}&width=100%25&height=220&zoom=8&level=surface&overlay=radar&product=ecmwf&menu=true&message=true&marker=true&calendar=now&pressure=true&type=map&location=coordinates&detail=true&metricWind=mph&metricTemp=%C2%B0F`
     : '';
   const mapFrame = document.getElementById('weather-map');
   const mapEmpty = document.getElementById('map-empty');
@@ -938,7 +956,10 @@ document.getElementById('profile-modal').addEventListener('click', (e) => {
   if (e.target.id === 'profile-modal') closeProfileModal();
 });
 
-document.getElementById('load-weather').addEventListener('click', loadForecast);
+document.getElementById('location-input').addEventListener('change', loadForecast);
+document.getElementById('location-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loadForecast();
+});
 document.getElementById('job-type').addEventListener('change', () => {
   renderOutlookSelector();
   if (selectedKey) {
@@ -948,12 +969,14 @@ document.getElementById('job-type').addEventListener('change', () => {
 });
 document.getElementById('add-event').addEventListener('click', async () => {
   const name = String(document.getElementById('event-name').value || '').trim();
+  const location = String(document.getElementById('event-location').value || '').trim() || getMainLocation();
   const date = String(document.getElementById('event-date').value || '').trim();
   const jobType = String(document.getElementById('event-job-type').value || 'sealcoating');
   if (!name || !date) return;
   const newItem = {
     id: `evt-${Date.now()}`,
     name,
+    location,
     date,
     jobType
   };
@@ -963,6 +986,7 @@ document.getElementById('add-event').addEventListener('click', async () => {
     document.getElementById('location-label').textContent = 'Using local event storage (weather_events table unavailable).';
   }
   document.getElementById('event-name').value = '';
+  document.getElementById('event-location').value = '';
   renderAlerts();
 });
 document.getElementById('modal-cancel').addEventListener('click', closeEventModal);
@@ -980,6 +1004,9 @@ document.getElementById('event-modal').addEventListener('click', (e) => {
 
 (async () => {
   await enforceWeatherAccess();
+  if (!localStorage.getItem(MAIN_LOCATION_KEY)) {
+    localStorage.setItem(MAIN_LOCATION_KEY, 'Lynchburg, VA');
+  }
   await loadScheduledEvents();
   upsertDefaultEvents();
   if (scheduledEvents.length && weatherEventsTableReady && currentUserId) {
@@ -988,7 +1015,7 @@ document.getElementById('event-modal').addEventListener('click', (e) => {
     }
     await loadScheduledEvents();
   }
-  document.getElementById('location-input').value = 'Dallas, TX';
+  document.getElementById('location-input').value = getMainLocation();
   await loadForecast();
   await ensureDemoSchedule();
   renderAlerts();
