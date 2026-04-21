@@ -92,6 +92,7 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .map-head{padding:10px 12px;border-bottom:1px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#1d4ed8;background:#edf5ff}
 .map-frame{height:220px;width:100%;border:0;display:block;background:#0a1d30}
 .map-empty{height:220px;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:13px}
+.map-fallback{padding:10px 12px;border-top:1px solid var(--border);display:none;gap:8px;align-items:center;justify-content:space-between}
 .current-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px}
 .chip{background:#f3f8ff;border:1px solid #a8c8ff;border-radius:8px;padding:10px}
 .chip-k{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#4b6ca3;text-transform:uppercase}
@@ -135,6 +136,10 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
       <div class="map-head">Live Weather Radar (Timeline on Map)</div>
       <iframe id="weather-map" class="map-frame" title="Weather radar map"></iframe>
       <div id="map-empty" class="map-empty">Load a location to display interactive radar and weather map.</div>
+      <div class="map-fallback" id="map-fallback">
+        <span class="muted" style="font-size:12px">Embedded map failed to load.</span>
+        <a id="map-full-link" class="btn" target="_blank" rel="noopener" href="#">Open Full Map</a>
+      </div>
     </div>
     <div class="panel">
       <div class="map-head">Now Snapshot</div>
@@ -284,6 +289,9 @@ let mapUrl = '';
 let currentSession = null;
 const MAIN_LOCATION_KEY = 'paveview_weather_main_location';
 let hourlyOpen = false;
+let mapLoadTimer = null;
+let mapPrimaryUrl = '';
+let mapFallbackUrl = '';
 
 function dateKey(d) {
   const y = d.getFullYear();
@@ -473,6 +481,52 @@ function setHourlyOpen(open) {
   if (!wrap || !btn) return;
   wrap.classList.toggle('collapsed', !hourlyOpen);
   btn.textContent = hourlyOpen ? 'Hide Hourly Outlook' : 'Open Hourly Outlook';
+}
+
+function setMapFallbackVisible(show) {
+  const fallback = document.getElementById('map-fallback');
+  if (!fallback) return;
+  fallback.style.display = show ? 'flex' : 'none';
+}
+
+function configureMapFrame({ primaryUrl, fallbackUrl, externalUrl }) {
+  const mapFrame = document.getElementById('weather-map');
+  const mapEmpty = document.getElementById('map-empty');
+  const fullLink = document.getElementById('map-full-link');
+  if (!mapFrame || !mapEmpty || !fullLink) return;
+
+  fullLink.href = externalUrl || '#';
+  mapPrimaryUrl = primaryUrl || '';
+  mapFallbackUrl = fallbackUrl || '';
+  setMapFallbackVisible(false);
+
+  if (!mapPrimaryUrl) {
+    mapFrame.style.display = 'none';
+    mapEmpty.style.display = 'flex';
+    return;
+  }
+
+  mapFrame.style.display = 'block';
+  mapEmpty.style.display = 'none';
+  mapFrame.src = mapPrimaryUrl;
+
+  mapFrame.onerror = () => {
+    if (mapFallbackUrl && mapFrame.src !== mapFallbackUrl) {
+      mapFrame.src = mapFallbackUrl;
+      return;
+    }
+    setMapFallbackVisible(true);
+  };
+
+  if (mapLoadTimer) clearTimeout(mapLoadTimer);
+  mapLoadTimer = setTimeout(() => {
+    try {
+      const current = String(mapFrame.src || '');
+      if (!current) setMapFallbackVisible(true);
+    } catch (e) {
+      setMapFallbackVisible(true);
+    }
+  }, 4500);
 }
 
 function saveScheduledEventsLocal() {
@@ -980,16 +1034,14 @@ async function loadForecast() {
   mapUrl = Number.isFinite(lat) && Number.isFinite(lon)
     ? `https://embed.windy.com/embed2.html?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&detailLat=${lat.toFixed(4)}&detailLon=${lon.toFixed(4)}&width=100%25&height=220&zoom=8&level=surface&overlay=radar&product=ecmwf&menu=true&message=true&marker=true&calendar=now&pressure=true&type=map&location=coordinates&detail=true&metricWind=mph&metricTemp=%C2%B0F`
     : '';
-  const mapFrame = document.getElementById('weather-map');
-  const mapEmpty = document.getElementById('map-empty');
-  if (mapUrl) {
-    mapFrame.src = mapUrl;
-    mapFrame.style.display = 'block';
-    mapEmpty.style.display = 'none';
-  } else {
-    mapFrame.style.display = 'none';
-    mapEmpty.style.display = 'flex';
-  }
+  const backupMapUrl = Number.isFinite(lat) && Number.isFinite(lon)
+    ? `https://www.rainviewer.com/map.html?loc=${lat.toFixed(4)},${lon.toFixed(4)},8&oFa=0&oC=0&oU=0&oCS=1&oF=0&c=1&o=83&lm=1&layer=radar&sm=1&sn=1`
+    : '';
+  configureMapFrame({
+    primaryUrl: mapUrl,
+    fallbackUrl: backupMapUrl,
+    externalUrl: radarUrl
+  });
   if (payload.hourly?.time?.length) {
     const nowIdx = 0;
     const airF = Math.round(cToF(Number(payload.hourly.temperature_2m?.[nowIdx] ?? 0)));
