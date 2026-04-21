@@ -132,7 +132,7 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
   <div class="status">Weather Calendar Active</div>
   <div class="hero-weather">
     <div class="panel map-panel">
-      <div class="map-head">Live Weather Radar</div>
+      <div class="map-head">Live Weather Radar (Timeline on Map)</div>
       <iframe id="weather-map" class="map-frame" title="Weather radar map"></iframe>
       <div id="map-empty" class="map-empty">Load a location to display interactive radar and weather map.</div>
     </div>
@@ -978,7 +978,7 @@ async function loadForecast() {
     ? `https://www.windy.com/${lat.toFixed(4)}/${lon.toFixed(4)}?radar`
     : '#';
   mapUrl = Number.isFinite(lat) && Number.isFinite(lon)
-    ? `https://www.rainviewer.com/map.html?loc=${lat.toFixed(4)},${lon.toFixed(4)},8&oFa=0&oC=0&oU=0&oCS=1&oF=0&c=1&o=83&lm=1&layer=radar&sm=1&sn=1`
+    ? `https://embed.windy.com/embed2.html?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&detailLat=${lat.toFixed(4)}&detailLon=${lon.toFixed(4)}&width=100%25&height=220&zoom=8&level=surface&overlay=radar&product=ecmwf&menu=true&message=true&marker=true&calendar=now&pressure=true&type=map&location=coordinates&detail=true&metricWind=mph&metricTemp=%C2%B0F`
     : '';
   const mapFrame = document.getElementById('weather-map');
   const mapEmpty = document.getElementById('map-empty');
