@@ -23,8 +23,8 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0}
 .toolbar-left{display:flex;align-items:center;gap:8px}
 .service-filters{display:flex;gap:6px;flex-wrap:wrap}
-.service-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #8fb7ff;border-radius:999px;background:#fff;color:#0c2148;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer}
-.service-chip input{accent-color:#1d4ed8}
+.service-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #8fb7ff;border-radius:999px;background:#fff;color:#0c2148;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;min-height:34px}
+.service-chip input{accent-color:#1d4ed8;transform:scale(1.05)}
 .layout{display:grid;grid-template-columns:2fr 1fr;gap:14px}
 .panel{background:var(--card);border:1px solid var(--border);padding:16px;border-radius:10px;box-shadow:0 8px 20px rgba(16,56,140,.18)}
 .outlook-strip{display:grid;grid-template-columns:repeat(14,minmax(120px,1fr));gap:8px;overflow-x:auto;padding-bottom:4px}
@@ -116,8 +116,22 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
   header{padding:8px 10px}
   .logo{font-size:17px}
   .toolbar{margin:8px 0}
-  .toolbar-left{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .toolbar-left{width:100%;display:flex;flex-direction:column;gap:8px}
   #location-input{min-width:0 !important;width:100%}
+  .service-filters{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:6px;
+    width:100%;
+  }
+  .service-chip{
+    width:100%;
+    justify-content:flex-start;
+    padding:8px 10px;
+    min-height:38px;
+    border-radius:10px;
+    font-size:11px;
+  }
   .event-form{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .event-form #event-name{grid-column:1/-1}
   .event-form #add-event{grid-column:1/-1}
