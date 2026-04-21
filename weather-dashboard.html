@@ -339,6 +339,7 @@ let hourlyOpen = false;
 let mapLoadTimer = null;
 let mapPrimaryUrl = '';
 let mapFallbackUrl = '';
+let forecastTimezone = 'America/New_York';
 
 function dateKey(d) {
   const y = d.getFullYear();
@@ -414,6 +415,28 @@ function cToF(c) {
   return (c * 9 / 5) + 32;
 }
 
+function getTimezoneAbbr(timezone, referenceDate) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone || 'America/New_York',
+      timeZoneName: 'short'
+    }).formatToParts(referenceDate || new Date());
+    const zone = parts.find((p) => p.type === 'timeZoneName')?.value || 'ET';
+    return zone.replace('GMT', 'UTC');
+  } catch (e) {
+    return 'ET';
+  }
+}
+
+function toAmericanHourLabel(timeText, timezone) {
+  const hh = Number(String(timeText || '0').slice(0, 2));
+  const mm = String(timeText || '00:00').slice(3, 5) || '00';
+  const hour12 = ((hh + 11) % 12) + 1;
+  const ampm = hh >= 12 ? 'PM' : 'AM';
+  const zone = getTimezoneAbbr(timezone, new Date());
+  return `${hour12}:${mm} ${ampm} ${zone}`;
+}
+
 function nearestHourlyIndex(hourlyTimes) {
   if (!Array.isArray(hourlyTimes) || !hourlyTimes.length) return 0;
   const now = Date.now();
@@ -476,7 +499,8 @@ function generateDayData(d, jobTypeOverride) {
 
   idx.forEach((i) => {
     const ts = new Date(h.time[i]);
-    const hour = ts.getHours();
+    const timeText = String(h.time[i] || '').slice(11, 16) || '00:00';
+    const hour = Number(timeText.slice(0, 2));
     const airF = cToF(Number(h.temperature_2m[i] ?? 0));
     const dewF = cToF(Number(h.dew_point_2m[i] ?? 0));
     const humidity = Number(h.relative_humidity_2m[i] ?? 0);
@@ -502,7 +526,7 @@ function generateDayData(d, jobTypeOverride) {
     maxRain = Math.max(maxRain, rain);
     maxWind = Math.max(maxWind, wind);
     hours.push({
-      label: `${String(hour).padStart(2, '0')}:00`,
+      label: toAmericanHourLabel(timeText, forecastTimezone),
       temp: Math.round(surfaceF),
       air: Math.round(airF),
       rain: Math.round(rain),
@@ -1200,6 +1224,7 @@ async function loadForecast() {
     return;
   }
   forecast = payload;
+  forecastTimezone = String(payload.timezone || forecastTimezone || 'America/New_York');
   document.getElementById('location-label').textContent = payload.location?.label || q;
   if (payload.location?.label) setMainLocation(payload.location.label);
   const lat = Number(payload.location?.latitude);
