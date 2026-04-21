@@ -311,6 +311,37 @@ function setMainLocation(value) {
   localStorage.setItem(MAIN_LOCATION_KEY, normalized);
 }
 
+async function loadMainLocationFromProfile() {
+  if (!currentUserId) return;
+  const { data, error } = await sb
+    .from('profiles')
+    .select('weather_main_location')
+    .eq('id', currentUserId)
+    .maybeSingle();
+  if (error) return;
+  const saved = String(data?.weather_main_location || '').trim();
+  if (saved) setMainLocation(saved);
+}
+
+async function saveMainLocationToProfile(location) {
+  if (!currentUserId) return;
+  const payload = {
+    weather_main_location: String(location || '').trim() || 'Lynchburg, VA',
+    updated_at: new Date().toISOString()
+  };
+  let { error } = await sb
+    .from('profiles')
+    .update(payload)
+    .eq('id', currentUserId);
+  if (error) {
+    const fallback = await sb
+      .from('profiles')
+      .update({ updated_at: payload.updated_at })
+      .eq('id', currentUserId);
+    error = fallback.error || null;
+  }
+}
+
 function fToC(f) {
   return (f - 32) * 5 / 9;
 }
@@ -839,6 +870,9 @@ async function enforceWeatherAccess() {
   }
   currentSession = session;
   currentUserId = session.user.id;
+  await loadMainLocationFromProfile();
+  const locationInput = document.getElementById('location-input');
+  if (locationInput) locationInput.value = getMainLocation();
   const { data, error } = await sb
     .from('purchases')
     .select('id')
@@ -882,6 +916,7 @@ async function saveProfile() {
     return;
   }
   setMainLocation(mainLocation);
+  await saveMainLocationToProfile(mainLocation);
   document.getElementById('location-input').value = mainLocation;
   await loadForecast();
   if ((p1 || p2) && p1 !== p2) {
