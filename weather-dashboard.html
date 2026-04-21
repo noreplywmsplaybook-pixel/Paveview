@@ -22,6 +22,9 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .status{font-family:'IBM Plex Mono',monospace;font-size:10px;margin-bottom:6px;color:var(--accent)}
 .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0}
 .toolbar-left{display:flex;align-items:center;gap:8px}
+.service-filters{display:flex;gap:6px;flex-wrap:wrap}
+.service-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #8fb7ff;border-radius:999px;background:#fff;color:#0c2148;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer}
+.service-chip input{accent-color:#1d4ed8}
 .layout{display:grid;grid-template-columns:2fr 1fr;gap:14px}
 .panel{background:var(--card);border:1px solid var(--border);padding:16px;border-radius:10px;box-shadow:0 8px 20px rgba(16,56,140,.18)}
 .outlook-strip{display:grid;grid-template-columns:repeat(14,minmax(120px,1fr));gap:8px;overflow-x:auto;padding-bottom:4px}
@@ -185,12 +188,12 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
   <div class="toolbar" style="margin-top:-2px">
     <div class="toolbar-left">
       <input id="location-input" placeholder="Job address (e.g. Lynchburg, VA)" style="background:#fff;border:1px solid #8fb7ff;color:#0c2148;padding:8px 10px;min-width:280px">
-      <select id="job-type" style="background:#fff;border:1px solid #8fb7ff;color:#0c2148;padding:8px 10px">
-        <option value="sealcoating">Sealcoating</option>
-        <option value="crack_fill">Crack Fill</option>
-        <option value="line_striping">Line Striping</option>
-        <option value="asphalt_paving">Asphalt Paving</option>
-      </select>
+      <div class="service-filters" id="service-filters">
+        <label class="service-chip"><input type="checkbox" class="service-filter" value="sealcoating" checked>Sealcoating</label>
+        <label class="service-chip"><input type="checkbox" class="service-filter" value="crack_fill">Crack Fill</label>
+        <label class="service-chip"><input type="checkbox" class="service-filter" value="line_striping">Line Striping</label>
+        <label class="service-chip"><input type="checkbox" class="service-filter" value="asphalt_paving">Asphalt Paving</label>
+      </div>
     </div>
     <div class="muted" id="location-label"></div>
   </div>
@@ -500,6 +503,11 @@ function getRules(jobType) {
   return { minTemp: 50, maxRain: 30, minDewSpread: 5, maxWind: 15 };
 }
 
+function getSelectedServiceTypes() {
+  const checks = Array.from(document.querySelectorAll('.service-filter:checked')).map((el) => String(el.value));
+  return checks.length ? checks : ['sealcoating'];
+}
+
 function getDayIndices(d) {
   if (!forecast?.hourly?.time) return [];
   const prefix = dateKey(d);
@@ -514,12 +522,12 @@ function calculateSurfaceTempF(airF, cloud) {
   return airF + (8 - Math.min(8, cloud / 12.5));
 }
 
-function generateDayData(d, jobTypeOverride) {
+function generateDayDataForType(d, singleJobType) {
   const idx = getDayIndices(d);
   if (!idx.length) {
     return { score: 0, label: 'bad', bestWindow: 'No data', surface: '-', dewSpread: '-', rainTiming: '-', warnings: ['No forecast data for this day.'], hours: [] };
   }
-  const rules = getRules(jobTypeOverride || document.getElementById('job-type').value);
+  const rules = getRules(singleJobType || 'sealcoating');
   const h = forecast.hourly;
   const hours = [];
   const airVals = [];
@@ -608,6 +616,21 @@ function generateDayData(d, jobTypeOverride) {
     warnings: warnings.length ? warnings : ['No critical warnings for selected job type.'],
     hours
   };
+}
+
+function generateDayData(d, jobTypeOverride) {
+  if (Array.isArray(jobTypeOverride) && jobTypeOverride.length) {
+    const all = jobTypeOverride.map((jt) => generateDayDataForType(d, jt));
+    let picked = all[0];
+    all.forEach((item) => {
+      if (item.score < picked.score) picked = item;
+    });
+    return picked;
+  }
+  if (typeof jobTypeOverride === 'string' && jobTypeOverride.trim()) {
+    return generateDayDataForType(d, jobTypeOverride);
+  }
+  return generateDayData(d, getSelectedServiceTypes());
 }
 
 function setHourlyOpen(open) {
@@ -1349,12 +1372,14 @@ document.getElementById('location-input').addEventListener('change', loadForecas
 document.getElementById('location-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') loadForecast();
 });
-document.getElementById('job-type').addEventListener('change', () => {
-  renderOutlookSelector();
-  if (selectedKey) {
-    const [y, m, d] = selectedKey.split('-').map(Number);
-    selectDay(new Date(y, m - 1, d));
-  }
+document.querySelectorAll('.service-filter').forEach((el) => {
+  el.addEventListener('change', () => {
+    renderOutlookSelector();
+    if (selectedKey) {
+      const [y, m, d] = selectedKey.split('-').map(Number);
+      selectDay(new Date(y, m - 1, d));
+    }
+  });
 });
 document.getElementById('event-job-type').addEventListener('change', renderCreateSuggestions);
 document.getElementById('event-location').addEventListener('change', renderCreateSuggestions);
