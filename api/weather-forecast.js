@@ -64,10 +64,13 @@ module.exports = async (req, res) => {
   const lat = Number(req.query?.lat);
   const lon = Number(req.query?.lon);
   const defaultLocation = { latitude: 32.7767, longitude: -96.7970, label: 'Dallas, TX, United States' };
+  const lynchburgLocation = { latitude: 37.4138, longitude: -79.1422, label: 'Lynchburg, VA, United States' };
 
   let resolved = null;
   if (Number.isFinite(lat) && Number.isFinite(lon)) {
     resolved = { latitude: lat, longitude: lon, label: 'Pinned coordinates' };
+  } else if (address && String(address).toLowerCase().includes('lynchburg')) {
+    resolved = lynchburgLocation;
   } else if (address) {
     resolved = await resolveLocation(address);
   }

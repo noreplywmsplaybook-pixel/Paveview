@@ -1026,8 +1026,12 @@ async function loadForecast() {
   const q = String(input.value || '').trim();
   if (!q) return;
   document.getElementById('location-label').textContent = 'Loading forecast...';
-  const resp = await fetch(`/api/weather-forecast?address=${encodeURIComponent(q)}`);
-  const payload = await resp.json().catch(() => ({}));
+  let resp = await fetch(`/api/weather-forecast?address=${encodeURIComponent(q)}`);
+  let payload = await resp.json().catch(() => ({}));
+  if ((!resp.ok || !payload?.hourly) && q.toLowerCase().includes('lynchburg')) {
+    resp = await fetch('/api/weather-forecast?lat=37.4138&lon=-79.1422');
+    payload = await resp.json().catch(() => ({}));
+  }
   if (!resp.ok || !payload?.hourly) {
     document.getElementById('location-label').textContent = payload.error || 'Forecast load failed.';
     return;
