@@ -78,7 +78,7 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;z-index:400}
 .modal-backdrop.open{display:flex}
 .modal-card{width:min(560px,94vw);background:#121212;border:1px solid #2a2a2a;padding:16px;padding-top:18px;border-radius:10px}
-.modal-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.03em;margin-bottom:8px}
+.modal-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.03em;margin-bottom:8px;color:#eaf3ff;text-shadow:0 1px 0 rgba(0,0,0,.25)}
 .modal-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .modal-x{width:34px;height:34px;border:1px solid #2a2a2a;background:#1a1a1a;color:#fff;font-size:18px;line-height:1;cursor:pointer;border-radius:8px}
 .modal-x:active{transform:translateY(1px)}
@@ -124,9 +124,22 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
   .chip{padding:8px}
   .chip-v{font-size:16px}
   .hour-list{max-height:200px}
-  .modal-card{width:100vw;height:100vh;max-width:none;border:none;padding:16px;padding-top:calc(env(safe-area-inset-top) + 16px);display:flex;flex-direction:column;justify-content:flex-start;border-radius:0}
+  .modal-backdrop{align-items:flex-start;padding-top:calc(env(safe-area-inset-top) + 12px);padding-left:8px;padding-right:8px}
+  .modal-card{
+    width:min(96vw,560px);
+    height:auto;
+    max-height:88vh;
+    overflow-y:auto;
+    border:1px solid #2a2a2a;
+    padding:14px;
+    padding-top:16px;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-start;
+    border-radius:12px;
+  }
   .modal-grid{grid-template-columns:1fr}
-  .modal-actions{margin-top:auto}
+  .modal-actions{margin-top:12px}
 }
 </style>
 </head>
