@@ -65,6 +65,16 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
 .alert-actions{display:flex;gap:8px;margin-top:8px}
 .mini-btn{border:1px solid #2a2a2a;background:transparent;color:#e8e4dd;padding:4px 8px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer}
 .mini-btn:hover{border-color:var(--accent);color:var(--accent)}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;z-index:400}
+.modal-backdrop.open{display:flex}
+.modal-card{width:min(560px,94vw);background:#121212;border:1px solid #2a2a2a;padding:14px}
+.modal-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.03em}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.modal-grid .full{grid-column:1/-1}
+.modal-input{background:#0f0f0f;border:1px solid #2a2a2a;color:#e8e4dd;padding:9px 10px}
+.modal-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px}
+.modal-actions-right{display:flex;gap:8px}
+.modal-msg{font-size:12px;color:#ff8b8b;margin-top:8px;display:none}
 @media (max-width:1000px){.layout{grid-template-columns:1fr}}
 </style>
 </head>
@@ -148,6 +158,29 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
     </div>
   </div>
 </main>
+<div class="modal-backdrop" id="event-modal">
+  <div class="modal-card">
+    <div class="modal-title">Edit Scheduled Event</div>
+    <div class="modal-grid">
+      <input class="modal-input full" id="modal-event-name" placeholder="Job name">
+      <input class="modal-input" id="modal-event-date" type="date">
+      <select class="modal-input" id="modal-event-job-type">
+        <option value="sealcoating">Sealcoating</option>
+        <option value="crack_fill">Crack Fill</option>
+        <option value="line_striping">Line Striping</option>
+        <option value="asphalt_paving">Asphalt Paving</option>
+      </select>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-actions">
+      <button class="mini-btn" id="modal-delete">Delete Event</button>
+      <div class="modal-actions-right">
+        <button class="mini-btn" id="modal-cancel">Cancel</button>
+        <button class="btn" id="modal-save">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
 const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
@@ -163,6 +196,7 @@ let forecast = null;
 let scheduledEvents = [];
 let currentUserId = '';
 let weatherEventsTableReady = true;
+let modalEditingEventId = '';
 
 function dateKey(d) {
   const y = d.getFullYear();
@@ -404,22 +438,69 @@ function renderAlerts() {
   }).join('');
 }
 
-async function editEvent(eventId) {
+function setModalMsg(text) {
+  const el = document.getElementById('modal-msg');
+  if (!text) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+  el.textContent = text;
+  el.style.display = 'block';
+}
+
+function openEventModal(eventId) {
   const target = scheduledEvents.find((e) => String(e.id) === String(eventId));
   if (!target) return;
-  const name = prompt('Edit job name', target.name);
-  if (name === null) return;
-  const date = prompt('Edit date (YYYY-MM-DD)', target.date);
-  if (date === null) return;
-  const jobType = prompt('Edit job type (sealcoating|crack_fill|line_striping|asphalt_paving)', target.jobType);
-  if (jobType === null) return;
-  const ok = await updateEvent(eventId, {
-    name: String(name).trim() || target.name,
-    date: String(date).trim() || target.date,
-    jobType: String(jobType).trim() || target.jobType
-  });
-  if (!ok) alert('Unable to update event.');
+  modalEditingEventId = String(eventId);
+  document.getElementById('modal-event-name').value = target.name;
+  document.getElementById('modal-event-date').value = target.date;
+  document.getElementById('modal-event-job-type').value = target.jobType;
+  setModalMsg('');
+  document.getElementById('event-modal').classList.add('open');
+}
+
+function closeEventModal() {
+  modalEditingEventId = '';
+  setModalMsg('');
+  document.getElementById('event-modal').classList.remove('open');
+}
+
+async function saveModalEvent() {
+  if (!modalEditingEventId) return;
+  const name = String(document.getElementById('modal-event-name').value || '').trim();
+  const date = String(document.getElementById('modal-event-date').value || '').trim();
+  const jobType = String(document.getElementById('modal-event-job-type').value || '').trim();
+  if (!name) {
+    setModalMsg('Job name is required.');
+    return;
+  }
+  if (!date) {
+    setModalMsg('Scheduled date is required.');
+    return;
+  }
+  const ok = await updateEvent(modalEditingEventId, { name, date, jobType });
+  if (!ok) {
+    setModalMsg('Unable to save changes. Please try again.');
+    return;
+  }
+  closeEventModal();
   renderAlerts();
+}
+
+async function deleteModalEvent() {
+  if (!modalEditingEventId) return;
+  const ok = await deleteEvent(modalEditingEventId);
+  if (!ok) {
+    setModalMsg('Unable to delete event. Please try again.');
+    return;
+  }
+  closeEventModal();
+  renderAlerts();
+}
+
+async function editEvent(eventId) {
+  openEventModal(eventId);
 }
 
 async function removeEvent(eventId) {
@@ -602,6 +683,12 @@ document.getElementById('add-event').addEventListener('click', async () => {
   }
   document.getElementById('event-name').value = '';
   renderAlerts();
+});
+document.getElementById('modal-cancel').addEventListener('click', closeEventModal);
+document.getElementById('modal-save').addEventListener('click', saveModalEvent);
+document.getElementById('modal-delete').addEventListener('click', deleteModalEvent);
+document.getElementById('event-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'event-modal') closeEventModal();
 });
 
 (async () => {
