@@ -49,6 +49,9 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .warn-item{font-size:12px;padding:7px 8px;background:#111;border:1px solid #252525;margin-bottom:6px}
 .hour-list{margin-top:10px;max-height:280px;overflow:auto}
 .hour{display:grid;grid-template-columns:58px 1fr auto;gap:8px;padding:6px 0;border-bottom:1px solid #252525;font-size:12px}
+.hour-wrap{margin-top:8px}
+.hour-wrap.collapsed .hour-list{display:none}
+.hour-toggle{width:100%}
 .alerts{margin-top:18px}
 .alerts-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.03em}
 .alerts-sub{font-size:13px;color:var(--dim);margin-bottom:10px}
@@ -200,7 +203,10 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
       <div class="metric"><span>Radar</span><a id="detail-radar" href="#" target="_blank" rel="noopener" style="color:var(--accent)">Open Live Radar</a></div>
       <div class="why-list" id="detail-why"></div>
       <div class="warn-list" id="warn-list"></div>
-      <div class="hour-list" id="hour-list"></div>
+      <div class="hour-wrap collapsed" id="hour-wrap">
+        <button class="btn hour-toggle" id="toggle-hourly">Open Hourly Outlook</button>
+        <div class="hour-list" id="hour-list"></div>
+      </div>
     </div>
     <div class="panel">
       <div class="map-head">Scoring Legend</div>
@@ -277,6 +283,7 @@ let radarUrl = '#';
 let mapUrl = '';
 let currentSession = null;
 const MAIN_LOCATION_KEY = 'paveview_weather_main_location';
+let hourlyOpen = false;
 
 function dateKey(d) {
   const y = d.getFullYear();
@@ -411,6 +418,15 @@ function generateDayData(d, jobTypeOverride) {
     warnings: warnings.length ? warnings : ['No critical warnings for selected job type.'],
     hours
   };
+}
+
+function setHourlyOpen(open) {
+  hourlyOpen = !!open;
+  const wrap = document.getElementById('hour-wrap');
+  const btn = document.getElementById('toggle-hourly');
+  if (!wrap || !btn) return;
+  wrap.classList.toggle('collapsed', !hourlyOpen);
+  btn.textContent = hourlyOpen ? 'Hide Hourly Outlook' : 'Open Hourly Outlook';
 }
 
 function saveScheduledEventsLocal() {
@@ -911,7 +927,7 @@ async function loadForecast() {
     ? `https://www.windy.com/${lat.toFixed(4)}/${lon.toFixed(4)}?radar`
     : '#';
   mapUrl = Number.isFinite(lat) && Number.isFinite(lon)
-    ? `https://embed.windy.com/embed2.html?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&detailLat=${lat.toFixed(4)}&detailLon=${lon.toFixed(4)}&width=100%25&height=220&zoom=8&level=surface&overlay=radar&product=ecmwf&menu=true&message=true&marker=true&calendar=now&pressure=true&type=map&location=coordinates&detail=true&metricWind=mph&metricTemp=%C2%B0F`
+    ? `https://www.rainviewer.com/map.html?loc=${lat.toFixed(4)},${lon.toFixed(4)},8&oFa=0&oC=0&oU=0&oCS=1&oF=0&c=1&o=83&lm=1&layer=radar&sm=1&sn=1`
     : '';
   const mapFrame = document.getElementById('weather-map');
   const mapEmpty = document.getElementById('map-empty');
@@ -952,6 +968,9 @@ document.getElementById('open-profile').addEventListener('click', openProfileMod
 document.getElementById('profile-close').addEventListener('click', closeProfileModal);
 document.getElementById('profile-save').addEventListener('click', saveProfile);
 document.getElementById('profile-billing').addEventListener('click', openBilling);
+document.getElementById('toggle-hourly').addEventListener('click', () => {
+  setHourlyOpen(!hourlyOpen);
+});
 document.getElementById('profile-modal').addEventListener('click', (e) => {
   if (e.target.id === 'profile-modal') closeProfileModal();
 });
@@ -1007,6 +1026,7 @@ document.getElementById('event-modal').addEventListener('click', (e) => {
   if (!localStorage.getItem(MAIN_LOCATION_KEY)) {
     localStorage.setItem(MAIN_LOCATION_KEY, 'Lynchburg, VA');
   }
+  setHourlyOpen(false);
   await loadScheduledEvents();
   upsertDefaultEvents();
   if (scheduledEvents.length && weatherEventsTableReady && currentUserId) {
