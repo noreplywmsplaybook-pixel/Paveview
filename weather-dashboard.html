@@ -33,6 +33,10 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .score.good{background:rgba(34,197,94,.2);color:#8de3ac}
 .score.warn{background:rgba(245,200,66,.2);color:#f5c842}
 .score.bad{background:rgba(239,68,68,.2);color:#ffa2a2}
+.weather-dot{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:middle;box-shadow:0 0 0 1px rgba(0,0,0,.12) inset}
+.weather-dot.good{background:#22c55e}
+.weather-dot.warn{background:#facc15}
+.weather-dot.bad{background:#ef4444}
 .window{font-size:12px;color:var(--dim)}
 .legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .legend span{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 8px}
@@ -58,6 +62,7 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .event-form{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
 .event-form input,.event-form select{background:#fff;border:1px solid #8fb7ff;color:#0c2148;padding:8px 10px;min-height:42px}
 .event-form input[type="date"]{font-family:'IBM Plex Mono',monospace;font-size:11px}
+.create-suggestions{margin-bottom:10px}
 .alert-item{border:1px solid #a8c8ff;background:#f4f9ff;padding:10px;margin-bottom:8px}
 .alert-top{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:4px}
 .alert-name{font-size:14px;font-weight:600}
@@ -169,6 +174,10 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
         <option value="asphalt_paving">Asphalt Paving</option>
       </select>
       <button class="btn" id="add-event">Add Scheduled Event</button>
+    </div>
+    <div class="create-suggestions">
+      <div class="suggestions-title">Best Days To Schedule</div>
+      <div class="suggestion-list" id="create-suggestion-list"></div>
     </div>
     <div id="alerts-list"></div>
   </div>
@@ -798,6 +807,57 @@ function findRescheduleSuggestions(eventItem) {
   return out.slice(0, 7);
 }
 
+function findCreateSuggestions(jobType) {
+  if (!forecast?.hourly?.time?.length) return [];
+  const out = [];
+  const seen = new Set();
+  for (const ts of forecast.hourly.time) {
+    const day = String(ts).slice(0, 10);
+    if (seen.has(day)) continue;
+    seen.add(day);
+    if (day < dateKey(new Date())) continue;
+    if (isDateOccupied(day, '')) continue;
+    const [y, m, d] = day.split('-').map(Number);
+    const info = generateDayData(new Date(y, m - 1, d), jobType);
+    if (info.score < 75) continue;
+    if (String(info.bestWindow || '').toLowerCase().includes('no safe')) continue;
+    out.push({ date: day, score: info.score, window: info.bestWindow, label: info.label });
+  }
+  out.sort((a, b) => b.score - a.score || a.date.localeCompare(b.date));
+  return out.slice(0, 6);
+}
+
+function renderCreateSuggestions() {
+  const list = document.getElementById('create-suggestion-list');
+  if (!list) return;
+  const jobType = String(document.getElementById('event-job-type')?.value || 'sealcoating');
+  const suggestions = findCreateSuggestions(jobType);
+  if (!suggestions.length) {
+    list.innerHTML = '<div class="suggestion-date muted">No strong open days yet. Load forecast or change job type.</div>';
+    return;
+  }
+  list.innerHTML = suggestions.map((s) => {
+    const dt = new Date(`${s.date}T12:00:00`);
+    const label = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    return `
+      <div class="suggestion">
+        <div>
+          <div class="suggestion-date">${label}</div>
+          <div class="suggestion-meta">Window ${s.window}</div>
+        </div>
+        <div class="suggestion-meta"><span class="weather-dot ${s.label}"></span> ${s.score}</div>
+        <button class="mini-btn" onclick="useCreateSuggestion('${s.date}')">Use Day</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function useCreateSuggestion(dateStr) {
+  const input = document.getElementById('event-date');
+  if (input) input.value = dateStr;
+}
+window.useCreateSuggestion = useCreateSuggestion;
+
 function renderRescheduleSuggestions(eventItem) {
   const list = document.getElementById('suggestion-list');
   const suggestions = findRescheduleSuggestions(eventItem);
@@ -890,7 +950,7 @@ function renderOutlookSelector() {
     el.className = `outlook-day ${selectedKey === key ? 'active' : ''}`;
     el.innerHTML = `
       <div class="outlook-date">${label}</div>
-      <div class="score ${info.label}">${info.score}</div>
+      <div><span class="weather-dot ${info.label}"></span> <span class="score ${info.label}">${info.score}</span></div>
       <div class="window" style="margin-top:6px">${info.bestWindow}</div>
     `;
     el.addEventListener('click', () => selectDay(d));
@@ -1096,6 +1156,7 @@ async function loadForecast() {
     document.getElementById('now-wind').textContent = `${wind} mph`;
   }
   renderOutlookSelector();
+  renderCreateSuggestions();
   selectDay(new Date());
 }
 
@@ -1125,6 +1186,8 @@ document.getElementById('job-type').addEventListener('change', () => {
     selectDay(new Date(y, m - 1, d));
   }
 });
+document.getElementById('event-job-type').addEventListener('change', renderCreateSuggestions);
+document.getElementById('event-location').addEventListener('change', renderCreateSuggestions);
 document.getElementById('add-event').addEventListener('click', async () => {
   const name = String(document.getElementById('event-name').value || '').trim();
   const location = String(document.getElementById('event-location').value || '').trim() || getMainLocation();
@@ -1145,6 +1208,7 @@ document.getElementById('add-event').addEventListener('click', async () => {
   }
   document.getElementById('event-name').value = '';
   document.getElementById('event-location').value = '';
+  renderCreateSuggestions();
   renderAlerts();
 });
 document.getElementById('modal-cancel').addEventListener('click', closeEventModal);
@@ -1177,6 +1241,7 @@ document.getElementById('event-modal').addEventListener('click', (e) => {
   document.getElementById('location-input').value = getMainLocation();
   await loadForecast();
   await ensureDemoSchedule();
+  renderCreateSuggestions();
   renderAlerts();
 })();
 </script>
