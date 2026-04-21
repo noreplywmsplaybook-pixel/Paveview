@@ -137,8 +137,10 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 </header>
 <main>
   <div class="status">Weather Calendar Active</div>
-  <div style="margin-bottom:8px">
+  <div style="margin-bottom:8px;display:flex;gap:6px;flex-wrap:wrap">
+    <button class="btn" id="open-schedule-new" style="min-height:34px;padding:6px 12px">Schedule New</button>
     <button class="btn" id="open-schedule" style="min-height:34px;padding:6px 12px">Schedule</button>
+    <button class="btn" id="open-notifications" style="min-height:34px;padding:6px 12px">Notifications</button>
   </div>
   <div class="hero-weather">
     <div class="panel map-panel">
@@ -214,9 +216,9 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
     </div>
   </div>
 </main>
-<div class="modal-backdrop" id="schedule-modal">
+<div class="modal-backdrop" id="schedule-new-modal">
   <div class="modal-card">
-    <div class="modal-title">Schedule Jobs</div>
+    <div class="modal-title">Schedule New Job</div>
     <div class="alerts-sub">Add events and pick the strongest weather windows.</div>
     <div class="event-form">
       <input id="event-name" placeholder="Job name (e.g. Walmart Lot A)">
@@ -234,11 +236,36 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
       <div class="suggestions-title">Best Days To Schedule</div>
       <div class="suggestion-list" id="create-suggestion-list"></div>
     </div>
-    <div id="alerts-list"></div>
+    <div class="modal-actions">
+      <div></div>
+      <div class="modal-actions-right">
+        <button class="mini-btn" id="close-schedule-new">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-backdrop" id="schedule-modal">
+  <div class="modal-card">
+    <div class="modal-title">Schedule</div>
+    <div class="alerts-sub">All upcoming scheduled jobs.</div>
+    <div id="schedule-list"></div>
     <div class="modal-actions">
       <div></div>
       <div class="modal-actions-right">
         <button class="mini-btn" id="close-schedule">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-backdrop" id="notifications-modal">
+  <div class="modal-card">
+    <div class="modal-title">Notifications</div>
+    <div class="alerts-sub">Medium and high weather risks only.</div>
+    <div id="notifications-list"></div>
+    <div class="modal-actions">
+      <div></div>
+      <div class="modal-actions-right">
+        <button class="mini-btn" id="close-notifications">Close</button>
       </div>
     </div>
   </div>
@@ -711,28 +738,32 @@ async function deleteEvent(eventId) {
   return true;
 }
 
-function renderAlerts() {
-  const box = document.getElementById('alerts-list');
-  if (!forecast) {
-    box.innerHTML = '<div class="alert-item"><div class="alert-meta">Load a forecast to generate alerts.</div></div>';
-    return;
-  }
+function getUpcomingEventAssessments() {
+  if (!forecast) return [];
   const todayKey = dateKey(new Date());
   const upcoming = scheduledEvents
     .filter((e) => e.date >= todayKey)
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  if (!upcoming.length) {
-    box.innerHTML = '<div class="alert-item"><div class="alert-meta">No future scheduled events. Add one above to track reschedule risk.</div></div>';
-    return;
-  }
-  box.innerHTML = upcoming.map((evt) => {
+  return upcoming.map((evt) => {
     const [y, m, d] = String(evt.date).split('-').map(Number);
     const info = generateDayData(new Date(y, m - 1, d), evt.jobType);
     const level = info.score < 70 ? 'high' : (info.score < 85 ? 'medium' : 'low');
     const message = level === 'high'
       ? 'Reschedule recommended.'
       : (level === 'medium' ? 'Possible weather impact. Consider backup window.' : 'Conditions currently acceptable.');
-    return `
+    return { evt, info, level, message };
+  });
+}
+
+function renderScheduleList() {
+  const box = document.getElementById('schedule-list');
+  const assessments = getUpcomingEventAssessments();
+  if (!box) return;
+  if (!assessments.length) {
+    box.innerHTML = '<div class="alert-item"><div class="alert-meta">No future scheduled events yet.</div></div>';
+    return;
+  }
+  box.innerHTML = assessments.map(({ evt, info, level, message }) => `
       <div class="alert-item">
         <div class="alert-top">
           <div class="alert-name">${evt.name}</div>
@@ -745,8 +776,27 @@ function renderAlerts() {
           <button class="mini-btn" onclick="removeEvent('${evt.id}')">Delete</button>
         </div>
       </div>
-    `;
-  }).join('');
+    `).join('');
+}
+
+function renderNotifications() {
+  const box = document.getElementById('notifications-list');
+  const assessments = getUpcomingEventAssessments().filter((x) => x.level === 'high' || x.level === 'medium');
+  if (!box) return;
+  if (!assessments.length) {
+    box.innerHTML = '<div class="alert-item"><div class="alert-meta">No medium/high notifications right now.</div></div>';
+    return;
+  }
+  box.innerHTML = assessments.map(({ evt, info, level, message }) => `
+    <div class="alert-item">
+      <div class="alert-top">
+        <div class="alert-name">${evt.name}</div>
+        <span class="alert-level ${level}">${level.toUpperCase()}</span>
+      </div>
+      <div class="alert-meta">${evt.date} · ${evt.location || getMainLocation()} · ${evt.jobType.replace('_', ' ')}</div>
+      <div style="font-size:12px;margin-top:6px">${message} Score ${info.score}.</div>
+    </div>
+  `).join('');
 }
 
 function setModalMsg(text) {
@@ -918,7 +968,8 @@ async function saveModalEvent() {
     return;
   }
   closeEventModal();
-  renderAlerts();
+  renderScheduleList();
+  renderNotifications();
 }
 
 async function deleteModalEvent() {
@@ -929,7 +980,8 @@ async function deleteModalEvent() {
     return;
   }
   closeEventModal();
-  renderAlerts();
+  renderScheduleList();
+  renderNotifications();
 }
 
 async function editEvent(eventId) {
@@ -940,7 +992,8 @@ async function removeEvent(eventId) {
   if (!confirm('Delete this scheduled event?')) return;
   const ok = await deleteEvent(eventId);
   if (!ok) alert('Unable to delete event.');
-  renderAlerts();
+  renderScheduleList();
+  renderNotifications();
 }
 window.editEvent = editEvent;
 window.removeEvent = removeEvent;
@@ -967,7 +1020,8 @@ function renderOutlookSelector() {
     el.addEventListener('click', () => selectDay(d));
     strip.appendChild(el);
   }
-  renderAlerts();
+  renderScheduleList();
+  renderNotifications();
 }
 
 function selectDay(date) {
@@ -1059,9 +1113,24 @@ function closeProfileModal() {
 }
 function openScheduleModal() {
   document.getElementById('schedule-modal').classList.add('open');
+  renderScheduleList();
 }
 function closeScheduleModal() {
   document.getElementById('schedule-modal').classList.remove('open');
+}
+function openScheduleNewModal() {
+  document.getElementById('schedule-new-modal').classList.add('open');
+  renderCreateSuggestions();
+}
+function closeScheduleNewModal() {
+  document.getElementById('schedule-new-modal').classList.remove('open');
+}
+function openNotificationsModal() {
+  document.getElementById('notifications-modal').classList.add('open');
+  renderNotifications();
+}
+function closeNotificationsModal() {
+  document.getElementById('notifications-modal').classList.remove('open');
 }
 async function saveProfile() {
   const email = String(document.getElementById('profile-email').value || '').trim();
@@ -1181,8 +1250,12 @@ document.getElementById('signout').addEventListener('click', async () => {
   await sb.auth.signOut();
   window.location.replace('/weather-calendar.html');
 });
+document.getElementById('open-schedule-new').addEventListener('click', openScheduleNewModal);
+document.getElementById('close-schedule-new').addEventListener('click', closeScheduleNewModal);
 document.getElementById('open-schedule').addEventListener('click', openScheduleModal);
 document.getElementById('close-schedule').addEventListener('click', closeScheduleModal);
+document.getElementById('open-notifications').addEventListener('click', openNotificationsModal);
+document.getElementById('close-notifications').addEventListener('click', closeNotificationsModal);
 document.getElementById('open-profile').addEventListener('click', openProfileModal);
 document.getElementById('profile-close').addEventListener('click', closeProfileModal);
 document.getElementById('profile-save').addEventListener('click', saveProfile);
@@ -1195,6 +1268,12 @@ document.getElementById('profile-modal').addEventListener('click', (e) => {
 });
 document.getElementById('schedule-modal').addEventListener('click', (e) => {
   if (e.target.id === 'schedule-modal') closeScheduleModal();
+});
+document.getElementById('schedule-new-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'schedule-new-modal') closeScheduleNewModal();
+});
+document.getElementById('notifications-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'notifications-modal') closeNotificationsModal();
 });
 
 document.getElementById('location-input').addEventListener('change', loadForecast);
@@ -1231,7 +1310,8 @@ document.getElementById('add-event').addEventListener('click', async () => {
   document.getElementById('event-name').value = '';
   document.getElementById('event-location').value = '';
   renderCreateSuggestions();
-  renderAlerts();
+  renderScheduleList();
+  renderNotifications();
 });
 document.getElementById('modal-cancel').addEventListener('click', closeEventModal);
 document.getElementById('modal-save').addEventListener('click', saveModalEvent);
@@ -1264,7 +1344,8 @@ document.getElementById('event-modal').addEventListener('click', (e) => {
   await loadForecast();
   await ensureDemoSchedule();
   renderCreateSuggestions();
-  renderAlerts();
+  renderScheduleList();
+  renderNotifications();
 })();
 </script>
 </body>
