@@ -7,14 +7,14 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0c0c0c;--card:#171717;--border:#2a2a2a;--accent:#5dd39e;--text:#e8e4dd;--dim:#7f7a72;--good:#22c55e;--warn:#f5c842;--bad:#ef4444}
+:root{--bg:#071423;--card:#0f2236;--border:#23435f;--accent:#38bdf8;--text:#e6f6ff;--dim:#8eb3cc;--good:#22c55e;--warn:#facc15;--bad:#ef4444}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif}
-header{display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-bottom:1px solid var(--border);background:#111}
-.logo{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.09em;color:var(--accent)}
+body{background:radial-gradient(circle at 20% 10%, #123a5a, #071423 42%),linear-gradient(180deg,#0b1f33,#071423);color:var(--text);font-family:'Barlow',sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-bottom:1px solid var(--border);background:rgba(9,24,40,.82);backdrop-filter:blur(8px)}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.09em;color:#7dd3fc;text-shadow:0 0 20px rgba(56,189,248,.35)}
 .logo span{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:.14em;margin-left:8px;text-transform:uppercase}
-.btn{border:1px solid var(--border);background:transparent;color:var(--text);padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;min-height:42px}
-.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn{border:1px solid #2f5777;background:linear-gradient(180deg,#12314f,#0e2640);color:var(--text);padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;min-height:42px}
+.btn:hover{border-color:#67d0ff;color:#cdefff;box-shadow:0 0 0 1px rgba(56,189,248,.25) inset}
 .btn:active{transform:translateY(1px);background:#1a1a1a}
 .btn.active{border-color:var(--accent);color:var(--accent)}
 main{max-width:1200px;margin:24px auto;padding:0 20px}
@@ -24,14 +24,14 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
 .toolbar-left{display:flex;align-items:center;gap:8px}
 .month-title{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:.03em}
 .layout{display:grid;grid-template-columns:2fr 1fr;gap:14px}
-.panel{background:var(--card);border:1px solid var(--border);padding:16px}
+.panel{background:linear-gradient(180deg,rgba(17,40,64,.9),rgba(12,29,47,.9));border:1px solid var(--border);padding:16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
 .calendar-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .weekdays,.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;min-width:700px}
 .weekday{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;padding:6px 4px}
-.day{background:#111;border:1px solid #252525;padding:8px;min-height:106px;cursor:pointer;touch-action:manipulation}
+.day{background:linear-gradient(180deg,#11304d,#0d243b);border:1px solid #2a4f70;padding:8px;min-height:106px;cursor:pointer;touch-action:manipulation;border-radius:8px}
 .day:active{background:#1b1b1b;transform:translateY(1px)}
 .day.other{opacity:.35}
-.day.selected{outline:1px solid var(--accent)}
+.day.selected{outline:2px solid #67d0ff;box-shadow:0 0 24px rgba(56,189,248,.28)}
 .day-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .day-num{font-family:'IBM Plex Mono',monospace;font-size:11px}
 .score{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 6px;border-radius:999px}
@@ -82,6 +82,15 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
 .modal-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px}
 .modal-actions-right{display:flex;gap:8px}
 .modal-msg{font-size:12px;color:#ff8b8b;margin-top:8px;display:none}
+.hero-weather{display:grid;grid-template-columns:1.15fr .85fr;gap:12px;margin-top:12px}
+.map-panel{padding:0;overflow:hidden}
+.map-head{padding:10px 12px;border-bottom:1px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#9ed8fb;background:rgba(11,29,47,.8)}
+.map-frame{height:290px;width:100%;border:0;display:block;background:#0a1d30}
+.map-empty{height:290px;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:13px}
+.current-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px}
+.chip{background:linear-gradient(180deg,#123556,#0f2b46);border:1px solid #2a4f70;border-radius:8px;padding:10px}
+.chip-k{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#9ac5de;text-transform:uppercase}
+.chip-v{font-size:19px;font-weight:600;color:#def6ff}
 .btn,.mini-btn,.day,.modal-input,.event-form input,.event-form select{-webkit-tap-highlight-color:rgba(93,211,158,.22)}
 @media (max-width:1000px){.layout{grid-template-columns:1fr}}
 @media (max-width:780px){
@@ -96,6 +105,7 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
   .event-form{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .event-form #event-name{grid-column:1/-1}
   .event-form #add-event{grid-column:1/-1}
+  .hero-weather{grid-template-columns:1fr}
   .modal-card{width:100vw;height:100vh;max-width:none;border:none;padding:16px;display:flex;flex-direction:column;justify-content:flex-start}
   .modal-grid{grid-template-columns:1fr}
   .modal-actions{margin-top:auto}
@@ -114,6 +124,26 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
   <div class="status">Weather Calendar Access Active</div>
   <h1 style="font-family:'Bebas Neue',sans-serif;font-size:58px;line-height:.95;letter-spacing:.02em">Contractor Weather Intelligence</h1>
   <p class="muted" style="margin-top:10px;max-width:760px">Calendar days are scored for contractor work viability. Click any day to view best work window, warnings, and hour-by-hour details.</p>
+  <div class="hero-weather">
+    <div class="panel map-panel">
+      <div class="map-head">Live Weather Map</div>
+      <iframe id="weather-map" class="map-frame" title="Weather radar map"></iframe>
+      <div id="map-empty" class="map-empty">Load a location to display interactive radar and weather map.</div>
+    </div>
+    <div class="panel">
+      <div class="map-head">Now Snapshot</div>
+      <div class="current-strip">
+        <div class="chip"><div class="chip-k">Air</div><div class="chip-v" id="now-air">-</div></div>
+        <div class="chip"><div class="chip-k">Cloud</div><div class="chip-v" id="now-cloud">-</div></div>
+        <div class="chip"><div class="chip-k">Rain</div><div class="chip-v" id="now-rain">-</div></div>
+      </div>
+      <div class="current-strip" style="padding-top:0">
+        <div class="chip"><div class="chip-k">UV</div><div class="chip-v" id="now-uv">-</div></div>
+        <div class="chip"><div class="chip-k">Dew Spread</div><div class="chip-v" id="now-dew">-</div></div>
+        <div class="chip"><div class="chip-k">Wind</div><div class="chip-v" id="now-wind">-</div></div>
+      </div>
+    </div>
+  </div>
   <div class="panel alerts">
     <div class="alerts-title">Future Schedule Alerts</div>
     <div class="alerts-sub">Alerts are generated from future scheduled jobs that may need rescheduling due to weather risk.</div>
@@ -232,6 +262,7 @@ let currentUserId = '';
 let weatherEventsTableReady = true;
 let modalEditingEventId = '';
 let radarUrl = '#';
+let mapUrl = '';
 
 function dateKey(d) {
   const y = d.getFullYear();
@@ -708,6 +739,36 @@ async function loadForecast() {
   radarUrl = Number.isFinite(lat) && Number.isFinite(lon)
     ? `https://www.windy.com/${lat.toFixed(4)}/${lon.toFixed(4)}?radar`
     : '#';
+  mapUrl = Number.isFinite(lat) && Number.isFinite(lon)
+    ? `https://embed.windy.com/embed2.html?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&detailLat=${lat.toFixed(4)}&detailLon=${lon.toFixed(4)}&width=100%25&height=290&zoom=8&level=surface&overlay=radar&product=ecmwf&menu=true&message=true&marker=true&calendar=now&pressure=true&type=map&location=coordinates&detail=true&metricWind=mph&metricTemp=%C2%B0F`
+    : '';
+  const mapFrame = document.getElementById('weather-map');
+  const mapEmpty = document.getElementById('map-empty');
+  if (mapUrl) {
+    mapFrame.src = mapUrl;
+    mapFrame.style.display = 'block';
+    mapEmpty.style.display = 'none';
+  } else {
+    mapFrame.style.display = 'none';
+    mapEmpty.style.display = 'flex';
+  }
+  if (payload.hourly?.time?.length) {
+    const nowIdx = 0;
+    const airF = Math.round(cToF(Number(payload.hourly.temperature_2m?.[nowIdx] ?? 0)));
+    const cloud = Math.round(Number(payload.hourly.cloud_cover?.[nowIdx] ?? 0));
+    const rainProb = Math.round(Number(payload.hourly.precipitation_probability?.[nowIdx] ?? 0));
+    const uv = Number(Number(payload.hourly.uv_index?.[nowIdx] ?? 0).toFixed(1));
+    const wind = Math.round(Number(payload.hourly.wind_speed_10m?.[nowIdx] ?? 0) * 0.621371);
+    const dewF = cToF(Number(payload.hourly.dew_point_2m?.[nowIdx] ?? 0));
+    const surf = calculateSurfaceTempF(airF, cloud);
+    const spread = Math.max(0, surf - dewF);
+    document.getElementById('now-air').textContent = `${airF}F`;
+    document.getElementById('now-cloud').textContent = `${cloud}%`;
+    document.getElementById('now-rain').textContent = `${rainProb}%`;
+    document.getElementById('now-uv').textContent = String(uv);
+    document.getElementById('now-dew').textContent = `${spread.toFixed(1)}F`;
+    document.getElementById('now-wind').textContent = `${wind} mph`;
+  }
   renderCalendar();
   selectDay(new Date());
 }
