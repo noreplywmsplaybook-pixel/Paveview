@@ -208,7 +208,18 @@ async function routeIfWeatherAccess(userId) {
     .limit(1);
 
   if (error || !Array.isArray(data) || !data.length) {
-    return false;
+    const sessionRes = await sb.auth.getSession();
+    const token = sessionRes.data?.session?.access_token || '';
+    if (!token) return false;
+    const adminGrant = await fetch('/api/weather-admin-access', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: '{}'
+    });
+    if (!adminGrant.ok) return false;
   }
   window.location.href = '/weather-dashboard.html';
   return true;

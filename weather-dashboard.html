@@ -318,7 +318,16 @@ async function enforceWeatherAccess() {
     .eq('status', 'active')
     .in('product', WEATHER_PRODUCTS)
     .limit(1);
-  if (error || !Array.isArray(data) || !data.length) {
+  if (!error && Array.isArray(data) && data.length) return;
+  const adminGrant = await fetch('/api/weather-admin-access', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`
+    },
+    body: '{}'
+  });
+  if (!adminGrant.ok) {
     await sb.auth.signOut();
     window.location.replace('/weather-calendar.html');
   }
