@@ -388,6 +388,7 @@ let mapLoadTimer = null;
 let mapPrimaryUrl = '';
 let mapFallbackUrl = '';
 let forecastTimezone = 'America/New_York';
+let isAdminUser = false;
 
 function dateKey(d) {
   const y = d.getFullYear();
@@ -406,7 +407,7 @@ function getMainLocation() {
   if (userValue) return normalizeMainLocation(userValue);
   const legacy = localStorage.getItem(MAIN_LOCATION_KEY);
   if (legacy) return normalizeMainLocation(legacy);
-  return 'Lynchburg, VA';
+  return '';
 }
 
 function setMainLocation(value) {
@@ -417,7 +418,7 @@ function setMainLocation(value) {
 
 function normalizeMainLocation(value) {
   const raw = String(value || '').trim();
-  if (!raw) return 'Lynchburg, VA';
+  if (!raw) return '';
   const lower = raw.toLowerCase();
   if (lower === 'lynchburg') return 'Lynchburg, VA';
   if (lower === 'lynchburg va') return 'Lynchburg, VA';
@@ -434,6 +435,19 @@ async function loadMainLocationFromProfile() {
   if (error) return;
   const saved = String(data?.weather_main_location || '').trim();
   if (saved) setMainLocation(saved);
+}
+
+async function detectAdminUser() {
+  if (!currentUserId) return false;
+  const { data, error } = await sb
+    .from('purchases')
+    .select('id')
+    .eq('user_id', currentUserId)
+    .eq('status', 'active')
+    .eq('product', 'weather_calendar')
+    .limit(1);
+  if (error) return false;
+  return Array.isArray(data) && data.length > 1;
 }
 
 async function saveMainLocationToProfile(location) {
@@ -752,6 +766,7 @@ function buildDemoEvents() {
 }
 
 async function ensureDemoSchedule() {
+  if (!isAdminUser) return;
   const todayKey = dateKey(new Date());
   const futureCount = scheduledEvents.filter((e) => e.date >= todayKey).length;
   if (futureCount >= 5) return;
@@ -1225,11 +1240,15 @@ function closeNotificationsModal() {
 }
 async function saveProfile() {
   const email = String(document.getElementById('profile-email').value || '').trim();
-  const mainLocation = String(document.getElementById('profile-location').value || '').trim() || 'Lynchburg, VA';
+  const mainLocation = String(document.getElementById('profile-location').value || '').trim();
   const p1 = String(document.getElementById('profile-pass1').value || '');
   const p2 = String(document.getElementById('profile-pass2').value || '');
   if (!email) {
     setProfileMsg('Email is required.');
+    return;
+  }
+  if (!mainLocation) {
+    setProfileMsg('Main location is required.');
     return;
   }
   setMainLocation(mainLocation);
@@ -1429,19 +1448,26 @@ document.getElementById('event-modal').addEventListener('click', (e) => {
   const allowed = await enforceWeatherAccess();
   if (!allowed) return;
   document.body.style.display = 'block';
-  if (!localStorage.getItem(getMainLocationKey()) && !localStorage.getItem(MAIN_LOCATION_KEY)) {
-    setMainLocation('Lynchburg, VA');
-  }
+  isAdminUser = await detectAdminUser();
   setHourlyOpen(false);
   await loadScheduledEvents();
-  upsertDefaultEvents();
-  if (scheduledEvents.length && weatherEventsTableReady && currentUserId) {
+  if (isAdminUser) upsertDefaultEvents();
+  if (isAdminUser && scheduledEvents.length && weatherEventsTableReady && currentUserId) {
     for (const evt of scheduledEvents) {
       if (String(evt.id).startsWith('evt-')) await persistEvent(evt);
     }
     await loadScheduledEvents();
   }
-  document.getElementById('location-input').value = getMainLocation();
+  const mainLocation = getMainLocation();
+  document.getElementById('location-input').value = mainLocation;
+  if (!mainLocation) {
+    openProfileModal();
+    setProfileMsg('Set your main location to start weather map and analytics.');
+    renderCreateSuggestions();
+    renderScheduleList();
+    renderNotifications();
+    return;
+  }
   await loadForecast();
   await ensureDemoSchedule();
   renderCreateSuggestions();
