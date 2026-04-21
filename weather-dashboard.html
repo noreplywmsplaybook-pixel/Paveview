@@ -13,8 +13,9 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif}
 header{display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-bottom:1px solid var(--border);background:#111}
 .logo{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.09em;color:var(--accent)}
 .logo span{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:.14em;margin-left:8px;text-transform:uppercase}
-.btn{border:1px solid var(--border);background:transparent;color:var(--text);padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+.btn{border:1px solid var(--border);background:transparent;color:var(--text);padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;min-height:42px}
 .btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn:active{transform:translateY(1px);background:#1a1a1a}
 .btn.active{border-color:var(--accent);color:var(--accent)}
 main{max-width:1200px;margin:24px auto;padding:0 20px}
 .muted{color:var(--dim)}
@@ -24,9 +25,11 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
 .month-title{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:.03em}
 .layout{display:grid;grid-template-columns:2fr 1fr;gap:14px}
 .panel{background:var(--card);border:1px solid var(--border);padding:16px}
-.weekdays,.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.calendar-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.weekdays,.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;min-width:700px}
 .weekday{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;padding:6px 4px}
-.day{background:#111;border:1px solid #252525;padding:8px;min-height:106px;cursor:pointer}
+.day{background:#111;border:1px solid #252525;padding:8px;min-height:106px;cursor:pointer;touch-action:manipulation}
+.day:active{background:#1b1b1b;transform:translateY(1px)}
 .day.other{opacity:.35}
 .day.selected{outline:1px solid var(--accent)}
 .day-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
@@ -52,7 +55,7 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
 .alerts-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.03em}
 .alerts-sub{font-size:13px;color:var(--dim);margin-bottom:10px}
 .event-form{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
-.event-form input,.event-form select{background:#111;border:1px solid #2a2a2a;color:#e8e4dd;padding:8px 10px}
+.event-form input,.event-form select{background:#111;border:1px solid #2a2a2a;color:#e8e4dd;padding:8px 10px;min-height:42px}
 .event-form input[type="date"]{font-family:'IBM Plex Mono',monospace;font-size:11px}
 .alert-item{border:1px solid #2a2a2a;background:#111;padding:10px;margin-bottom:8px}
 .alert-top{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:4px}
@@ -63,19 +66,37 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
 .alert-level.medium{background:rgba(245,200,66,.2);color:#f5c842}
 .alert-level.low{background:rgba(34,197,94,.2);color:#8de3ac}
 .alert-actions{display:flex;gap:8px;margin-top:8px}
-.mini-btn{border:1px solid #2a2a2a;background:transparent;color:#e8e4dd;padding:4px 8px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer}
+.mini-btn{border:1px solid #2a2a2a;background:transparent;color:#e8e4dd;padding:6px 10px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;min-height:38px}
 .mini-btn:hover{border-color:var(--accent);color:var(--accent)}
+.mini-btn:active{transform:translateY(1px);background:#1a1a1a}
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;z-index:400}
 .modal-backdrop.open{display:flex}
 .modal-card{width:min(560px,94vw);background:#121212;border:1px solid #2a2a2a;padding:14px}
 .modal-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.03em}
 .modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .modal-grid .full{grid-column:1/-1}
-.modal-input{background:#0f0f0f;border:1px solid #2a2a2a;color:#e8e4dd;padding:9px 10px}
+.modal-input{background:#0f0f0f;border:1px solid #2a2a2a;color:#e8e4dd;padding:9px 10px;min-height:42px}
 .modal-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px}
 .modal-actions-right{display:flex;gap:8px}
 .modal-msg{font-size:12px;color:#ff8b8b;margin-top:8px;display:none}
+.btn,.mini-btn,.day,.modal-input,.event-form input,.event-form select{-webkit-tap-highlight-color:rgba(93,211,158,.22)}
 @media (max-width:1000px){.layout{grid-template-columns:1fr}}
+@media (max-width:780px){
+  main{padding:0 12px;margin:14px auto}
+  header{padding:12px}
+  .logo{font-size:21px}
+  h1{font-size:44px !important;line-height:1.02 !important}
+  .toolbar{margin:10px 0}
+  .toolbar-left{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .toolbar-left .month-title{grid-column:1/-1;text-align:center;font-size:30px}
+  #location-input{min-width:0 !important;width:100%}
+  .event-form{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .event-form #event-name{grid-column:1/-1}
+  .event-form #add-event{grid-column:1/-1}
+  .modal-card{width:100vw;height:100vh;max-width:none;border:none;padding:16px;display:flex;flex-direction:column;justify-content:flex-start}
+  .modal-grid{grid-template-columns:1fr}
+  .modal-actions{margin-top:auto}
+}
 </style>
 </head>
 <body>
@@ -134,10 +155,12 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
 
   <div class="layout">
     <div class="panel">
-      <div class="weekdays">
-        <div class="weekday">Sun</div><div class="weekday">Mon</div><div class="weekday">Tue</div><div class="weekday">Wed</div><div class="weekday">Thu</div><div class="weekday">Fri</div><div class="weekday">Sat</div>
+      <div class="calendar-scroll">
+        <div class="weekdays">
+          <div class="weekday">Sun</div><div class="weekday">Mon</div><div class="weekday">Tue</div><div class="weekday">Wed</div><div class="weekday">Thu</div><div class="weekday">Fri</div><div class="weekday">Sat</div>
+        </div>
+        <div class="calendar-grid" id="calendar-grid"></div>
       </div>
-      <div class="calendar-grid" id="calendar-grid"></div>
       <div class="legend">
         <span class="l-good">Green - Ideal</span>
         <span class="l-warn">Yellow - Risky</span>
@@ -160,7 +183,7 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
 </main>
 <div class="modal-backdrop" id="event-modal">
   <div class="modal-card">
-    <div class="modal-title">Edit Scheduled Event</div>
+    <div class="modal-title">Reschedule Event</div>
     <div class="modal-grid">
       <input class="modal-input full" id="modal-event-name" placeholder="Job name">
       <input class="modal-input" id="modal-event-date" type="date">
@@ -430,7 +453,7 @@ function renderAlerts() {
         <div class="alert-meta">${evt.date} · ${evt.jobType.replace('_', ' ')} · Score ${info.score} · Best window ${info.bestWindow}</div>
         <div style="font-size:12px;margin-top:6px">${message}</div>
         <div class="alert-actions">
-          <button class="mini-btn" onclick="editEvent('${evt.id}')">Edit</button>
+          <button class="mini-btn" onclick="editEvent('${evt.id}')">Reschedule</button>
           <button class="mini-btn" onclick="removeEvent('${evt.id}')">Delete</button>
         </div>
       </div>
