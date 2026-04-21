@@ -77,8 +77,11 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .mini-btn:active{transform:translateY(1px);background:#1a1a1a}
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;z-index:400}
 .modal-backdrop.open{display:flex}
-.modal-card{width:min(560px,94vw);background:#121212;border:1px solid #2a2a2a;padding:14px}
-.modal-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.03em}
+.modal-card{width:min(560px,94vw);background:#121212;border:1px solid #2a2a2a;padding:16px;padding-top:18px;border-radius:10px}
+.modal-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.03em;margin-bottom:8px}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.modal-x{width:34px;height:34px;border:1px solid #2a2a2a;background:#1a1a1a;color:#fff;font-size:18px;line-height:1;cursor:pointer;border-radius:8px}
+.modal-x:active{transform:translateY(1px)}
 .modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .modal-grid .full{grid-column:1/-1}
 .modal-input{background:#0f0f0f;border:1px solid #2a2a2a;color:#e8e4dd;padding:9px 10px;min-height:42px}
@@ -121,7 +124,7 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
   .chip{padding:8px}
   .chip-v{font-size:16px}
   .hour-list{max-height:200px}
-  .modal-card{width:100vw;height:100vh;max-width:none;border:none;padding:16px;display:flex;flex-direction:column;justify-content:flex-start}
+  .modal-card{width:100vw;height:100vh;max-width:none;border:none;padding:16px;padding-top:calc(env(safe-area-inset-top) + 16px);display:flex;flex-direction:column;justify-content:flex-start;border-radius:0}
   .modal-grid{grid-template-columns:1fr}
   .modal-actions{margin-top:auto}
 }
@@ -218,7 +221,10 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 </main>
 <div class="modal-backdrop" id="schedule-new-modal">
   <div class="modal-card">
-    <div class="modal-title">Schedule New Job</div>
+    <div class="modal-head">
+      <div class="modal-title">Schedule New Job</div>
+      <button class="modal-x" id="close-schedule-new-x" aria-label="Close">×</button>
+    </div>
     <div class="alerts-sub">Add events and pick the strongest weather windows.</div>
     <div class="event-form">
       <input id="event-name" placeholder="Job name (e.g. Walmart Lot A)">
@@ -246,7 +252,10 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 </div>
 <div class="modal-backdrop" id="schedule-modal">
   <div class="modal-card">
-    <div class="modal-title">Schedule</div>
+    <div class="modal-head">
+      <div class="modal-title">Schedule</div>
+      <button class="modal-x" id="close-schedule-x" aria-label="Close">×</button>
+    </div>
     <div class="alerts-sub">All upcoming scheduled jobs.</div>
     <div id="schedule-list"></div>
     <div class="modal-actions">
@@ -259,7 +268,10 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 </div>
 <div class="modal-backdrop" id="notifications-modal">
   <div class="modal-card">
-    <div class="modal-title">Notifications</div>
+    <div class="modal-head">
+      <div class="modal-title">Notifications</div>
+      <button class="modal-x" id="close-notifications-x" aria-label="Close">×</button>
+    </div>
     <div class="alerts-sub">Medium and high weather risks only.</div>
     <div id="notifications-list"></div>
     <div class="modal-actions">
@@ -272,7 +284,10 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 </div>
 <div class="modal-backdrop" id="event-modal">
   <div class="modal-card">
-    <div class="modal-title">Reschedule Event</div>
+    <div class="modal-head">
+      <div class="modal-title">Reschedule Event</div>
+      <button class="modal-x" id="close-event-x" aria-label="Close">×</button>
+    </div>
     <div class="modal-grid">
       <input class="modal-input full" id="modal-event-name" placeholder="Job name">
       <input class="modal-input full" id="modal-event-location" placeholder="Event location (city/address)">
@@ -300,7 +315,10 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 </div>
 <div class="modal-backdrop" id="profile-modal">
   <div class="modal-card">
-    <div class="modal-title">Profile</div>
+    <div class="modal-head">
+      <div class="modal-title">Profile</div>
+      <button class="modal-x" id="close-profile-x" aria-label="Close">×</button>
+    </div>
     <div class="modal-grid">
       <input class="modal-input full" id="profile-email" type="email" placeholder="Email">
       <input class="modal-input full" id="profile-location" type="text" placeholder="Main location (city/address)">
@@ -437,6 +455,14 @@ function toAmericanHourLabel(timeText, timezone) {
   return `${hour12}:${mm} ${ampm} ${zone}`;
 }
 
+function hourToAmericanLabel(hour24, timezone) {
+  const h = Math.max(0, Math.min(23, Number(hour24) || 0));
+  const hour12 = ((h + 11) % 12) + 1;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const zone = getTimezoneAbbr(timezone, new Date());
+  return `${hour12}:00 ${ampm} ${zone}`;
+}
+
 function nearestHourlyIndex(hourlyTimes) {
   if (!Array.isArray(hourlyTimes) || !hourlyTimes.length) return 0;
   const now = Date.now();
@@ -556,7 +582,7 @@ function generateDayData(d, jobTypeOverride) {
   return {
     score,
     label,
-    bestWindow: bestStart === null ? 'No safe window' : `${bestStart}:00-${bestEnd}:00`,
+    bestWindow: bestStart === null ? 'No safe window' : `${hourToAmericanLabel(bestStart, forecastTimezone)}-${hourToAmericanLabel(bestEnd, forecastTimezone)}`,
     air: `${Math.round(Math.min(...airVals))}F-${Math.round(Math.max(...airVals))}F`,
     surface: `${Math.round(minSurface)}F-${Math.round(maxSurface)}F`,
     dewSpread: `${minSpread.toFixed(1)}F min`,
@@ -1277,17 +1303,22 @@ document.getElementById('signout').addEventListener('click', async () => {
 });
 document.getElementById('open-schedule-new').addEventListener('click', openScheduleNewModal);
 document.getElementById('close-schedule-new').addEventListener('click', closeScheduleNewModal);
+document.getElementById('close-schedule-new-x').addEventListener('click', closeScheduleNewModal);
 document.getElementById('open-schedule').addEventListener('click', openScheduleModal);
 document.getElementById('close-schedule').addEventListener('click', closeScheduleModal);
+document.getElementById('close-schedule-x').addEventListener('click', closeScheduleModal);
 document.getElementById('open-notifications').addEventListener('click', openNotificationsModal);
 document.getElementById('close-notifications').addEventListener('click', closeNotificationsModal);
+document.getElementById('close-notifications-x').addEventListener('click', closeNotificationsModal);
 document.getElementById('open-profile').addEventListener('click', openProfileModal);
 document.getElementById('profile-close').addEventListener('click', closeProfileModal);
+document.getElementById('close-profile-x').addEventListener('click', closeProfileModal);
 document.getElementById('profile-save').addEventListener('click', saveProfile);
 document.getElementById('profile-billing').addEventListener('click', openBilling);
 document.getElementById('toggle-hourly').addEventListener('click', () => {
   setHourlyOpen(!hourlyOpen);
 });
+document.getElementById('close-event-x').addEventListener('click', closeEventModal);
 document.getElementById('profile-modal').addEventListener('click', (e) => {
   if (e.target.id === 'profile-modal') closeProfileModal();
 });
