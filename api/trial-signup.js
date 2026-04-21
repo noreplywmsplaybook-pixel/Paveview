@@ -64,7 +64,10 @@ async function createAuthUser({ email, password, fullName, serviceRoleKey }) {
       email,
       password,
       email_confirm: true,
-      user_metadata: { full_name: fullName || '' }
+      user_metadata: {
+        full_name: fullName || '',
+        signup_source: 'paveview'
+      }
     }
   });
   if (!createAuth.ok) return createAuth;

@@ -198,7 +198,10 @@ async function handlePost(req, res, serviceRoleKey) {
       email,
       password,
       email_confirm: true,
-      user_metadata: { full_name: name || '' }
+      user_metadata: {
+        full_name: name || '',
+        signup_source: 'admin_created'
+      }
     }
   });
   if (!createAuth.ok) {

@@ -213,13 +213,14 @@ tr:hover td{background:#141414}
           <tr>
             <th>Name</th>
             <th>Email</th>
+            <th>Joined Via</th>
             <th>Joined Today</th>
             <th>Active Today</th>
             <th>Last Activity</th>
           </tr>
         </thead>
         <tbody id="today-body">
-          <tr><td colspan="5" class="empty">Loading…</td></tr>
+          <tr><td colspan="6" class="empty">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -247,6 +248,7 @@ tr:hover td{background:#141414}
           <tr>
             <th>Name</th>
             <th>Email</th>
+            <th>Joined Via</th>
             <th>Status</th>
             <th>Account Type</th>
             <th>Projects</th>
@@ -256,7 +258,7 @@ tr:hover td{background:#141414}
           </tr>
         </thead>
         <tbody id="active-body">
-          <tr><td colspan="8" class="empty">Loading…</td></tr>
+          <tr><td colspan="9" class="empty">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -273,6 +275,7 @@ tr:hover td{background:#141414}
           <tr>
             <th>Name</th>
             <th>Email</th>
+            <th>Joined Via</th>
             <th>Status</th>
             <th>Account Type</th>
             <th>Projects</th>
@@ -282,7 +285,7 @@ tr:hover td{background:#141414}
           </tr>
         </thead>
         <tbody id="inactive-body">
-          <tr><td colspan="8" class="empty">Loading…</td></tr>
+          <tr><td colspan="9" class="empty">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -856,9 +859,9 @@ document.addEventListener('keydown', e => {
 async function loadData() {
   if (loadingData) return;
   loadingData = true;
-  document.getElementById('today-body').innerHTML = '<tr><td colspan="5" class="empty">Loading…</td></tr>';
-  document.getElementById('active-body').innerHTML = '<tr><td colspan="8" class="empty">Loading…</td></tr>';
-  document.getElementById('inactive-body').innerHTML = '<tr><td colspan="8" class="empty">Loading…</td></tr>';
+  document.getElementById('today-body').innerHTML = '<tr><td colspan="6" class="empty">Loading…</td></tr>';
+  document.getElementById('active-body').innerHTML = '<tr><td colspan="9" class="empty">Loading…</td></tr>';
+  document.getElementById('inactive-body').innerHTML = '<tr><td colspan="9" class="empty">Loading…</td></tr>';
   try {
     let profileRows = [];
     let purchaseRows = [];
@@ -881,6 +884,7 @@ async function loadData() {
         id: u.id,
         email: u.email || '',
         full_name: u.full_name || u.user_metadata?.full_name || '',
+        signup_source: u.user_metadata?.signup_source || '',
         created_at: u.created_at || null,
         updated_at: u.last_sign_in_at || null
       })) : [];
@@ -948,6 +952,7 @@ async function loadData() {
         last_active_at: lastActivity ? lastActivity.toISOString() : null,
         is_active_tester: !!lastActivity && (Date.now() - lastActivity.getTime()) <= TRIAL_DURATION_MS,
         missing_profile: !profilesById[uid] && !supplementalById[uid],
+        signup_source: profile.signup_source || sup.signup_source || '',
         is_admin: isAdminAccountId(uid)
       };
     }).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
@@ -959,9 +964,9 @@ async function loadData() {
     updateStats(allCustomers, purchaseRows);
     updatePlatformAnalytics(profileRows, purchaseRows, projectRows);
   } catch (err) {
-    document.getElementById('today-body').innerHTML = '<tr><td colspan="5" class="empty">Failed to load today activity.</td></tr>';
-    document.getElementById('active-body').innerHTML = `<tr><td colspan="8" class="empty">Failed to load active members: ${err.message || err}</td></tr>`;
-    document.getElementById('inactive-body').innerHTML = '<tr><td colspan="8" class="empty">Failed to load inactive members.</td></tr>';
+    document.getElementById('today-body').innerHTML = '<tr><td colspan="6" class="empty">Failed to load today activity.</td></tr>';
+    document.getElementById('active-body').innerHTML = `<tr><td colspan="9" class="empty">Failed to load active members: ${err.message || err}</td></tr>`;
+    document.getElementById('inactive-body').innerHTML = '<tr><td colspan="9" class="empty">Failed to load inactive members.</td></tr>';
     const ltbody = document.getElementById('learning-body');
     if (ltbody) ltbody.innerHTML = '<tr><td colspan="8" class="empty">Failed to load learning samples.</td></tr>';
     resetAnalytics(err.message || String(err));
@@ -1051,6 +1056,17 @@ function accountTypeLabel(type) {
   return map[type] || type || 'Inactive';
 }
 
+function inferJoinSource(customer) {
+  const explicit = String(customer?.signup_source || '').trim().toLowerCase();
+  if (explicit === 'weather_calendar') return '<span class="badge badge-green">Weather Calendar</span>';
+  if (explicit === 'admin_created') return '<span class="badge badge-yellow">Admin Created</span>';
+  if (explicit === 'paveview') return '<span class="badge badge-gray">PaveView</span>';
+  const product = String(customer?.purchase?.product || '').toLowerCase();
+  if (product.includes('weather')) return '<span class="badge badge-green">Weather Calendar</span>';
+  if (product) return '<span class="badge badge-gray">PaveView</span>';
+  return '<span class="badge badge-gray">Unknown</span>';
+}
+
 function accountTypeOptions(selected) {
   const types = ['inactive','trial_24h','takeoff_tier1_monthly','takeoff_tier1_annual','takeoff_tier2_monthly','takeoff_tier2_annual','takeoff_tier3_monthly','takeoff_tier3_annual'];
   return types.map(type => `<option value="${type}" ${type===selected?'selected':''}>${accountTypeLabel(type)}</option>`).join('');
@@ -1092,12 +1108,13 @@ function renderTodayUsers(customers) {
   const rows = (customers || []).filter(c => isSameCalendarDay(c.created_at) || isSameCalendarDay(c.last_active_at)).sort((a,b)=>new Date(b.last_active_at||b.created_at||0)-new Date(a.last_active_at||a.created_at||0));
   if (summary) summary.textContent = `${rows.length} user${rows.length===1?'':'s'} joined or were active today`;
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="empty">No users joined or were active today.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No users joined or were active today.</td></tr>';
     return;
   }
   tbody.innerHTML = rows.map(c => `<tr>
     <td>${c.full_name || '—'}</td>
     <td class="mono">${c.email || '—'}</td>
+    <td>${inferJoinSource(c)}</td>
     <td>${isSameCalendarDay(c.created_at) ? '<span class="badge badge-green">Yes</span>' : '—'}</td>
     <td>${isSameCalendarDay(c.last_active_at) ? '<span class="badge badge-yellow">Yes</span>' : '—'}</td>
     <td>${c.last_active_at ? `<span class="mono">${formatRelative(c.last_active_at)}</span><div style="font-size:10px;color:#555">${formatDateTime(c.last_active_at)}</div>` : '<span style="color:#555">No activity</span>'}</td>
@@ -1375,7 +1392,7 @@ function renderCustomerRows(customers, tbodyId) {
   const tbody = document.getElementById(tbodyId);
   if (!tbody) return;
   if (!customers.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty">No users in this list.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="empty">No users in this list.</td></tr>`;
     return;
   }
   tbody.innerHTML = customers.map(c => {
@@ -1395,6 +1412,7 @@ function renderCustomerRows(customers, tbodyId) {
     return `<tr>
       <td>${c.full_name || '—'}${profileFlag}</td>
       <td class="mono">${c.email || '—'}</td>
+      <td>${inferJoinSource(c)}</td>
       <td>${status}</td>
       <td>
         <select id="acct-type-${c.id}" class="search-inp" style="width:170px;margin-bottom:6px">

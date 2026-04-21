@@ -79,7 +79,10 @@ async function createAuthUser({ email, password, name, serviceRoleKey }) {
       email,
       password,
       email_confirm: true,
-      user_metadata: { full_name: name || '' }
+      user_metadata: {
+        full_name: name || '',
+        signup_source: 'weather_calendar'
+      }
     }
   });
 }
