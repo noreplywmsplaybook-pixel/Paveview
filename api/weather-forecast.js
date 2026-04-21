@@ -58,7 +58,13 @@ module.exports = async (req, res) => {
     resolved = await geocode(address);
   }
 
-  if (!resolved) resolved = defaultLocation;
+  if (!resolved) {
+    if (address) {
+      sendJson(res, 400, { error: `Could not resolve location: ${address}` });
+      return;
+    }
+    resolved = defaultLocation;
+  }
 
   const data = await forecast(resolved.latitude, resolved.longitude);
   if (!data?.hourly?.time?.length) {

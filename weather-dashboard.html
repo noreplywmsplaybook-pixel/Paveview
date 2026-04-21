@@ -292,8 +292,23 @@ function dateKey(d) {
   return `${y}-${m}-${day}`;
 }
 
+function getMainLocationKey() {
+  return `${MAIN_LOCATION_KEY}_${currentUserId || 'anon'}`;
+}
+
 function getMainLocation() {
-  return localStorage.getItem(MAIN_LOCATION_KEY) || 'Lynchburg, VA';
+  const userKey = getMainLocationKey();
+  const userValue = localStorage.getItem(userKey);
+  if (userValue) return userValue;
+  const legacy = localStorage.getItem(MAIN_LOCATION_KEY);
+  if (legacy) return legacy;
+  return 'Lynchburg, VA';
+}
+
+function setMainLocation(value) {
+  const normalized = String(value || '').trim() || 'Lynchburg, VA';
+  localStorage.setItem(getMainLocationKey(), normalized);
+  localStorage.setItem(MAIN_LOCATION_KEY, normalized);
 }
 
 function fToC(f) {
@@ -866,7 +881,7 @@ async function saveProfile() {
     setProfileMsg('Email is required.');
     return;
   }
-  localStorage.setItem(MAIN_LOCATION_KEY, mainLocation);
+  setMainLocation(mainLocation);
   document.getElementById('location-input').value = mainLocation;
   await loadForecast();
   if ((p1 || p2) && p1 !== p2) {
@@ -921,6 +936,7 @@ async function loadForecast() {
   }
   forecast = payload;
   document.getElementById('location-label').textContent = payload.location?.label || q;
+  if (payload.location?.label) setMainLocation(payload.location.label);
   const lat = Number(payload.location?.latitude);
   const lon = Number(payload.location?.longitude);
   radarUrl = Number.isFinite(lat) && Number.isFinite(lon)
@@ -1023,8 +1039,8 @@ document.getElementById('event-modal').addEventListener('click', (e) => {
 
 (async () => {
   await enforceWeatherAccess();
-  if (!localStorage.getItem(MAIN_LOCATION_KEY)) {
-    localStorage.setItem(MAIN_LOCATION_KEY, 'Lynchburg, VA');
+  if (!localStorage.getItem(getMainLocationKey()) && !localStorage.getItem(MAIN_LOCATION_KEY)) {
+    setMainLocation('Lynchburg, VA');
   }
   setHourlyOpen(false);
   await loadScheduledEvents();
