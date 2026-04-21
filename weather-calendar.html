@@ -42,6 +42,15 @@ section{padding:72px 26px}
 .y{background:rgba(245,200,66,.14);color:#f5c842}
 .r{background:rgba(239,68,68,.14);color:#ff8d8d}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}
+.pricing{margin-top:28px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.price-card{background:var(--bg3);border:1px solid #2b2b2b;padding:24px;position:relative}
+.price-card.featured{border-color:var(--accent);box-shadow:0 0 0 1px rgba(93,211,158,.35) inset}
+.price-tag{font-family:'Bebas Neue',sans-serif;font-size:58px;line-height:.9;color:#fff}
+.price-tag span{font-size:24px;color:var(--dim)}
+.price-meta{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:8px 0 14px}
+.price-list{list-style:none;margin:0 0 18px;padding:0;display:grid;gap:8px}
+.price-list li{font-size:14px;color:var(--text)}
+.price-note{font-size:12px;color:var(--dim)}
 footer{padding:24px 26px;border-top:1px solid #1c1c1c;color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:10px}
 
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:200}
@@ -68,6 +77,7 @@ footer{padding:24px 26px;border-top:1px solid #1c1c1c;color:var(--dim);font-fami
   <div class="nav-links">
     <a href="#features" class="nav-btn">Features</a>
     <a href="#architecture" class="nav-btn">Architecture</a>
+    <a href="#pricing" class="nav-btn">Pricing</a>
     <a href="#" class="nav-btn nav-cta" id="open-auth">Login / Sign Up</a>
   </div>
 </nav>
@@ -122,6 +132,28 @@ footer{padding:24px 26px;border-top:1px solid #1c1c1c;color:var(--dim);font-fami
   </div>
 </section>
 
+<section id="pricing">
+  <div class="inner">
+    <div class="title">Simple Weather Calendar Pricing</div>
+    <p class="muted">Weather Planner is paid-only access. Subscribe first, then log in.</p>
+    <div class="pricing">
+      <div class="price-card featured">
+        <span class="pill">Weather Planner Pro</span>
+        <div class="price-tag">$20<span>/month</span></div>
+        <div class="price-meta">Contractor weather intelligence + scheduling</div>
+        <ul class="price-list">
+          <li>Go / No-Go scoring for sealcoat, striping, crack fill, and paving</li>
+          <li>Job-level forecast windows with risk-based alerts</li>
+          <li>2-week weather planning and rescheduling guidance</li>
+          <li>Live radar with map timeline playback</li>
+        </ul>
+        <a class="btn primary" href="https://buy.stripe.com/aFa7sM84F53Cfys6PS6Vq1a" target="_blank" rel="noopener">Subscribe Now</a>
+        <div class="price-note" style="margin-top:10px">Secure checkout powered by Stripe.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="architecture" style="background:var(--bg2)">
   <div class="inner">
     <div class="title">MVP Architecture</div>
@@ -168,7 +200,6 @@ footer{padding:24px 26px;border-top:1px solid #1c1c1c;color:var(--dim);font-fami
 <script>
 const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
-const WEATHER_TRIAL_PRODUCT = 'weather_calendar_trial_24h';
 if (!window.supabase) {
   alert('Weather Planner failed to load auth library. Refresh and try again.');
 }
@@ -203,24 +234,11 @@ async function routeIfWeatherAccess(userId) {
     .select('id,product,status,created_at')
     .eq('user_id', userId)
     .eq('status', 'active')
-    .in('product', [WEATHER_TRIAL_PRODUCT, 'weather_calendar'])
+    .eq('product', 'weather_calendar')
     .order('created_at', { ascending: false })
     .limit(1);
 
-  if (error || !Array.isArray(data) || !data.length) {
-    const sessionRes = await sb.auth.getSession();
-    const token = sessionRes.data?.session?.access_token || '';
-    if (!token) return false;
-    const adminGrant = await fetch('/api/weather-admin-access', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: '{}'
-    });
-    if (!adminGrant.ok) return false;
-  }
+  if (error || !Array.isArray(data) || !data.length) return false;
   window.location.href = '/weather-dashboard.html';
   return true;
 }
@@ -237,18 +255,19 @@ async function signupWeather() {
   btn.disabled = true;
   btn.textContent = 'Creating account...';
   try {
-    const resp = await fetch('/api/trial-signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password, product: WEATHER_TRIAL_PRODUCT })
+    const resp = await sb.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: name }
+      }
     });
-    const payload = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      throw new Error(payload.error || 'Signup failed.');
+    if (resp.error) {
+      throw new Error(resp.error.message || 'Signup failed.');
     }
-    const loginRes = await sb.auth.signInWithPassword({ email, password });
-    if (loginRes.error) throw new Error(loginRes.error.message || 'Account created, but sign in failed.');
-    window.location.href = '/weather-dashboard.html';
+    setMsg('signup-msg', 'Account created. Complete payment, then log in for dashboard access.', 'ok');
+    setTab('login');
+    document.getElementById('login-email').value = email;
   } catch (e) {
     setMsg('signup-msg', e.message || 'Unable to create account.', 'error');
   } finally {
@@ -273,7 +292,7 @@ async function loginWeather() {
     const hasWeather = await routeIfWeatherAccess(data.user.id);
     if (!hasWeather) {
       await sb.auth.signOut();
-      throw new Error('This account does not have Weather Calendar access.');
+      throw new Error('No active Weather Planner subscription found. Subscribe to unlock access.');
     }
   } catch (e) {
     setMsg('login-msg', e.message || 'Unable to sign in.', 'error');

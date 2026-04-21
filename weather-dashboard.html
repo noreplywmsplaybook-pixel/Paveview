@@ -9,7 +9,7 @@
 <style>
 :root{--bg:#1e5dff;--card:#e9f4ff;--border:#8fb7ff;--accent:#1d4ed8;--text:#0c2148;--dim:#4f6b9a;--good:#22c55e;--warn:#facc15;--bad:#ef4444}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:linear-gradient(180deg,#5da8ff 0%,#2d7dff 40%,#1e5dff 100%);color:var(--text);font-family:'Barlow',sans-serif}
+body{display:none;background:linear-gradient(180deg,#5da8ff 0%,#2d7dff 40%,#1e5dff 100%);color:var(--text);font-family:'Barlow',sans-serif}
 header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border);background:rgba(240,248,255,.95);backdrop-filter:blur(8px);position:sticky;top:0;z-index:20}
 .logo{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:.08em;color:#1d4ed8}
 .logo span{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:.14em;margin-left:8px;text-transform:uppercase}
@@ -53,7 +53,7 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .why-item{font-size:12px;color:var(--dim);padding:6px 0;border-bottom:1px dashed #2a2a2a}
 .why-item:last-child{border-bottom:none}
 .warn-list{margin-top:8px}
-.warn-item{font-size:12px;padding:7px 8px;background:#111;border:1px solid #252525;margin-bottom:6px}
+.warn-item{font-size:12px;padding:7px 8px;background:#111;border:1px solid #252525;margin-bottom:6px;color:#ffffff}
 .hour-list{margin-top:10px;max-height:280px;overflow:auto}
 .hour{display:grid;grid-template-columns:58px 1fr auto;gap:8px;padding:6px 0;border-bottom:1px solid #252525;font-size:12px}
 .hour-wrap{margin-top:8px}
@@ -372,7 +372,7 @@ if (!window.supabase) {
   alert('Weather Calendar failed to load auth library. Refresh and try again.');
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-const WEATHER_PRODUCTS = ['weather_calendar_trial_24h', 'weather_calendar'];
+const WEATHER_PRODUCTS = ['weather_calendar'];
 let selectedKey = '';
 let forecast = null;
 let scheduledEvents = [];
@@ -1171,7 +1171,7 @@ async function enforceWeatherAccess() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session?.user?.id) {
     window.location.replace('/weather-calendar.html');
-    return;
+    return false;
   }
   currentSession = session;
   currentUserId = session.user.id;
@@ -1185,19 +1185,10 @@ async function enforceWeatherAccess() {
     .eq('status', 'active')
     .in('product', WEATHER_PRODUCTS)
     .limit(1);
-  if (!error && Array.isArray(data) && data.length) return;
-  const adminGrant = await fetch('/api/weather-admin-access', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.access_token}`
-    },
-    body: '{}'
-  });
-  if (!adminGrant.ok) {
-    await sb.auth.signOut();
-    window.location.replace('/weather-calendar.html');
-  }
+  if (!error && Array.isArray(data) && data.length) return true;
+  await sb.auth.signOut();
+  window.location.replace('/weather-calendar.html');
+  return false;
 }
 function openProfileModal() {
   if (!currentSession) return;
@@ -1435,7 +1426,9 @@ document.getElementById('event-modal').addEventListener('click', (e) => {
 });
 
 (async () => {
-  await enforceWeatherAccess();
+  const allowed = await enforceWeatherAccess();
+  if (!allowed) return;
+  document.body.style.display = 'block';
   if (!localStorage.getItem(getMainLocationKey()) && !localStorage.getItem(MAIN_LOCATION_KEY)) {
     setMainLocation('Lynchburg, VA');
   }
