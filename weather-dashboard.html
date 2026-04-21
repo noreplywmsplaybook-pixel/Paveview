@@ -367,6 +367,23 @@ function cToF(c) {
   return (c * 9 / 5) + 32;
 }
 
+function nearestHourlyIndex(hourlyTimes) {
+  if (!Array.isArray(hourlyTimes) || !hourlyTimes.length) return 0;
+  const now = Date.now();
+  let bestIdx = 0;
+  let bestDiff = Infinity;
+  for (let i = 0; i < hourlyTimes.length; i += 1) {
+    const t = new Date(hourlyTimes[i]).getTime();
+    if (!Number.isFinite(t)) continue;
+    const diff = Math.abs(t - now);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
 function getRules(jobType) {
   if (jobType === 'line_striping') return { minTemp: 50, maxRain: 35, minDewSpread: 4, maxWind: 16 };
   if (jobType === 'crack_fill') return { minTemp: 45, maxRain: 40, minDewSpread: 3, maxWind: 18 };
@@ -1056,12 +1073,18 @@ async function loadForecast() {
     externalUrl: radarUrl
   });
   if (payload.hourly?.time?.length) {
-    const nowIdx = 0;
-    const airF = Math.round(cToF(Number(payload.hourly.temperature_2m?.[nowIdx] ?? 0)));
+    const nowIdx = nearestHourlyIndex(payload.hourly.time);
+    const currentTempC = Number(payload.current?.temperature_2m);
+    const currentWindKmh = Number(payload.current?.wind_speed_10m);
+    const airF = Number.isFinite(currentTempC)
+      ? Math.round(cToF(currentTempC))
+      : Math.round(cToF(Number(payload.hourly.temperature_2m?.[nowIdx] ?? 0)));
     const cloud = Math.round(Number(payload.hourly.cloud_cover?.[nowIdx] ?? 0));
     const rainProb = Math.round(Number(payload.hourly.precipitation_probability?.[nowIdx] ?? 0));
     const uv = Number(Number(payload.hourly.uv_index?.[nowIdx] ?? 0).toFixed(1));
-    const wind = Math.round(Number(payload.hourly.wind_speed_10m?.[nowIdx] ?? 0) * 0.621371);
+    const wind = Number.isFinite(currentWindKmh)
+      ? Math.round(currentWindKmh * 0.621371)
+      : Math.round(Number(payload.hourly.wind_speed_10m?.[nowIdx] ?? 0) * 0.621371);
     const dewF = cToF(Number(payload.hourly.dew_point_2m?.[nowIdx] ?? 0));
     const surf = calculateSurfaceTempF(airF, cloud);
     const spread = Math.max(0, surf - dewF);

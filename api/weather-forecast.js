@@ -38,6 +38,7 @@ async function forecast(latitude, longitude) {
     longitude: String(longitude),
     timezone: 'auto',
     forecast_days: '16',
+    current: 'temperature_2m,wind_speed_10m',
     hourly: [
       'temperature_2m',
       'dew_point_2m',
@@ -93,6 +94,7 @@ module.exports = async (req, res) => {
     ok: true,
     location: resolved,
     timezone: data.timezone,
+    current: data.current || null,
     hourly: data.hourly
   });
 };
