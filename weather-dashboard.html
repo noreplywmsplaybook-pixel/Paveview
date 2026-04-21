@@ -82,6 +82,13 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
 .modal-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px}
 .modal-actions-right{display:flex;gap:8px}
 .modal-msg{font-size:12px;color:#ff8b8b;margin-top:8px;display:none}
+.suggestions{margin-top:12px}
+.suggestions-title{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#9ed8fb;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.suggestion-list{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow:auto}
+.suggestion{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;border:1px solid #2a4f70;background:#0f2a44;border-radius:8px;padding:8px}
+.suggestion-date{font-size:12px}
+.suggestion-meta{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#9ac5de}
+.suggestion .mini-btn{min-height:30px;padding:4px 8px}
 .hero-weather{display:grid;grid-template-columns:1.15fr .85fr;gap:12px;margin-top:12px}
 .map-panel{padding:0;overflow:hidden}
 .map-head{padding:10px 12px;border-bottom:1px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#9ed8fb;background:rgba(11,29,47,.8)}
@@ -236,6 +243,10 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
       </select>
     </div>
     <div class="modal-msg" id="modal-msg"></div>
+    <div class="suggestions">
+      <div class="suggestions-title">Best Open Reschedule Days</div>
+      <div class="suggestion-list" id="suggestion-list"></div>
+    </div>
     <div class="modal-actions">
       <button class="mini-btn" id="modal-delete">Delete Event</button>
       <div class="modal-actions-right">
@@ -584,14 +595,73 @@ function openEventModal(eventId) {
   document.getElementById('modal-event-date').value = target.date;
   document.getElementById('modal-event-job-type').value = target.jobType;
   setModalMsg('');
+  renderRescheduleSuggestions(target);
   document.getElementById('event-modal').classList.add('open');
 }
 
 function closeEventModal() {
   modalEditingEventId = '';
   setModalMsg('');
+  document.getElementById('suggestion-list').innerHTML = '';
   document.getElementById('event-modal').classList.remove('open');
 }
+
+function isDateOccupied(dateStr, ignoreEventId) {
+  return scheduledEvents.some((e) => String(e.id) !== String(ignoreEventId) && String(e.date) === String(dateStr));
+}
+
+function findRescheduleSuggestions(eventItem) {
+  if (!forecast?.hourly?.time?.length) return [];
+  const out = [];
+  const seen = new Set();
+  for (const ts of forecast.hourly.time) {
+    const day = String(ts).slice(0, 10);
+    if (seen.has(day)) continue;
+    seen.add(day);
+    if (day < dateKey(new Date())) continue;
+    if (isDateOccupied(day, eventItem.id)) continue;
+    const [y, m, d] = day.split('-').map(Number);
+    const info = generateDayData(new Date(y, m - 1, d), eventItem.jobType);
+    if (info.score < 75) continue;
+    if (String(info.bestWindow || '').toLowerCase().includes('no safe')) continue;
+    out.push({
+      date: day,
+      score: info.score,
+      window: info.bestWindow
+    });
+  }
+  out.sort((a, b) => b.score - a.score || a.date.localeCompare(b.date));
+  return out.slice(0, 7);
+}
+
+function renderRescheduleSuggestions(eventItem) {
+  const list = document.getElementById('suggestion-list');
+  const suggestions = findRescheduleSuggestions(eventItem);
+  if (!suggestions.length) {
+    list.innerHTML = '<div class="suggestion-date muted">No strong open days found in current forecast horizon.</div>';
+    return;
+  }
+  list.innerHTML = suggestions.map((s) => {
+    const dt = new Date(`${s.date}T12:00:00`);
+    const label = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    return `
+      <div class="suggestion">
+        <div>
+          <div class="suggestion-date">${label}</div>
+          <div class="suggestion-meta">Window ${s.window}</div>
+        </div>
+        <div class="suggestion-meta">Score ${s.score}</div>
+        <button class="mini-btn" onclick="useSuggestion('${s.date}')">Use Day</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function useSuggestion(dateStr) {
+  document.getElementById('modal-event-date').value = dateStr;
+  setModalMsg('Suggested day applied. Save changes to confirm reschedule.');
+}
+window.useSuggestion = useSuggestion;
 
 async function saveModalEvent() {
   if (!modalEditingEventId) return;
@@ -862,6 +932,12 @@ document.getElementById('add-event').addEventListener('click', async () => {
 document.getElementById('modal-cancel').addEventListener('click', closeEventModal);
 document.getElementById('modal-save').addEventListener('click', saveModalEvent);
 document.getElementById('modal-delete').addEventListener('click', deleteModalEvent);
+document.getElementById('modal-event-job-type').addEventListener('change', () => {
+  const target = scheduledEvents.find((e) => String(e.id) === String(modalEditingEventId));
+  if (!target) return;
+  const updated = { ...target, jobType: String(document.getElementById('modal-event-job-type').value || target.jobType) };
+  renderRescheduleSuggestions(updated);
+});
 document.getElementById('event-modal').addEventListener('click', (e) => {
   if (e.target.id === 'event-modal') closeEventModal();
 });
