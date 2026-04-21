@@ -48,6 +48,23 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
 .warn-item{font-size:12px;padding:7px 8px;background:#111;border:1px solid #252525;margin-bottom:6px}
 .hour-list{margin-top:10px;max-height:280px;overflow:auto}
 .hour{display:grid;grid-template-columns:58px 1fr auto;gap:8px;padding:6px 0;border-bottom:1px solid #252525;font-size:12px}
+.alerts{margin-top:18px}
+.alerts-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.03em}
+.alerts-sub{font-size:13px;color:var(--dim);margin-bottom:10px}
+.event-form{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
+.event-form input,.event-form select{background:#111;border:1px solid #2a2a2a;color:#e8e4dd;padding:8px 10px}
+.event-form input[type="date"]{font-family:'IBM Plex Mono',monospace;font-size:11px}
+.alert-item{border:1px solid #2a2a2a;background:#111;padding:10px;margin-bottom:8px}
+.alert-top{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:4px}
+.alert-name{font-size:14px;font-weight:600}
+.alert-meta{font-size:11px;color:var(--dim)}
+.alert-level{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 7px}
+.alert-level.high{background:rgba(239,68,68,.2);color:#ffa2a2}
+.alert-level.medium{background:rgba(245,200,66,.2);color:#f5c842}
+.alert-level.low{background:rgba(34,197,94,.2);color:#8de3ac}
+.alert-actions{display:flex;gap:8px;margin-top:8px}
+.mini-btn{border:1px solid #2a2a2a;background:transparent;color:#e8e4dd;padding:4px 8px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer}
+.mini-btn:hover{border-color:var(--accent);color:var(--accent)}
 @media (max-width:1000px){.layout{grid-template-columns:1fr}}
 </style>
 </head>
@@ -63,6 +80,22 @@ main{max-width:1200px;margin:24px auto;padding:0 20px}
   <div class="status">Weather Calendar Access Active</div>
   <h1 style="font-family:'Bebas Neue',sans-serif;font-size:58px;line-height:.95;letter-spacing:.02em">Contractor Weather Intelligence</h1>
   <p class="muted" style="margin-top:10px;max-width:760px">Calendar days are scored for contractor work viability. Click any day to view best work window, warnings, and hour-by-hour details.</p>
+  <div class="panel alerts">
+    <div class="alerts-title">Future Schedule Alerts</div>
+    <div class="alerts-sub">Alerts are generated from future scheduled jobs that may need rescheduling due to weather risk.</div>
+    <div class="event-form">
+      <input id="event-name" placeholder="Job name (e.g. Walmart Lot A)">
+      <input id="event-date" type="date">
+      <select id="event-job-type">
+        <option value="sealcoating">Sealcoating</option>
+        <option value="crack_fill">Crack Fill</option>
+        <option value="line_striping">Line Striping</option>
+        <option value="asphalt_paving">Asphalt Paving</option>
+      </select>
+      <button class="btn" id="add-event">Add Scheduled Event</button>
+    </div>
+    <div id="alerts-list"></div>
+  </div>
 
   <div class="toolbar">
     <div class="toolbar-left">
@@ -127,6 +160,9 @@ let viewMode = 'month';
 let cursor = new Date();
 let selectedKey = '';
 let forecast = null;
+let scheduledEvents = [];
+let currentUserId = '';
+let weatherEventsTableReady = true;
 
 function dateKey(d) {
   const y = d.getFullYear();
@@ -164,12 +200,12 @@ function calculateSurfaceTempF(airF, cloud) {
   return airF + (8 - Math.min(8, cloud / 12.5));
 }
 
-function generateDayData(d) {
+function generateDayData(d, jobTypeOverride) {
   const idx = getDayIndices(d);
   if (!idx.length) {
     return { score: 0, label: 'bad', bestWindow: 'No data', surface: '-', dewSpread: '-', rainTiming: '-', warnings: ['No forecast data for this day.'], hours: [] };
   }
-  const rules = getRules(document.getElementById('job-type').value);
+  const rules = getRules(jobTypeOverride || document.getElementById('job-type').value);
   const h = forecast.hourly;
   const hours = [];
   let maxSurface = -Infinity;
@@ -232,6 +268,169 @@ function generateDayData(d) {
   };
 }
 
+function saveScheduledEventsLocal() {
+  localStorage.setItem('paveview_weather_scheduled_events', JSON.stringify(scheduledEvents));
+}
+
+function loadScheduledEventsLocal() {
+  try {
+    const raw = localStorage.getItem('paveview_weather_scheduled_events');
+    const parsed = raw ? JSON.parse(raw) : [];
+    scheduledEvents = Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    scheduledEvents = [];
+  }
+}
+
+function upsertDefaultEvents() {
+  if (scheduledEvents.length) return;
+  const today = new Date();
+  const d1 = new Date(today); d1.setDate(today.getDate() + 1);
+  const d2 = new Date(today); d2.setDate(today.getDate() + 2);
+  scheduledEvents = [
+    { id: `evt-${Date.now()}-1`, name: 'Scheduled Sealcoat Job', date: dateKey(d1), jobType: 'sealcoating' },
+    { id: `evt-${Date.now()}-2`, name: 'Scheduled Striping Job', date: dateKey(d2), jobType: 'line_striping' }
+  ];
+  saveScheduledEventsLocal();
+}
+
+async function loadScheduledEvents() {
+  if (!currentUserId) {
+    loadScheduledEventsLocal();
+    return;
+  }
+  const { data, error } = await sb
+    .from('weather_events')
+    .select('id,name,scheduled_date,job_type')
+    .eq('user_id', currentUserId)
+    .order('scheduled_date', { ascending: true });
+  if (error) {
+    weatherEventsTableReady = false;
+    loadScheduledEventsLocal();
+    return;
+  }
+  weatherEventsTableReady = true;
+  scheduledEvents = (Array.isArray(data) ? data : []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    date: row.scheduled_date,
+    jobType: row.job_type
+  }));
+}
+
+async function persistEvent(eventItem) {
+  if (!weatherEventsTableReady || !currentUserId) {
+    saveScheduledEventsLocal();
+    return true;
+  }
+  const { error } = await sb.from('weather_events').insert([{
+    user_id: currentUserId,
+    name: eventItem.name,
+    scheduled_date: eventItem.date,
+    job_type: eventItem.jobType
+  }]);
+  if (error) {
+    weatherEventsTableReady = false;
+    saveScheduledEventsLocal();
+    return false;
+  }
+  await loadScheduledEvents();
+  return true;
+}
+
+async function updateEvent(eventId, patch) {
+  if (!weatherEventsTableReady || !currentUserId) {
+    scheduledEvents = scheduledEvents.map((e) => (String(e.id) === String(eventId) ? { ...e, ...patch } : e));
+    saveScheduledEventsLocal();
+    return true;
+  }
+  const payload = {};
+  if (patch.name !== undefined) payload.name = patch.name;
+  if (patch.date !== undefined) payload.scheduled_date = patch.date;
+  if (patch.jobType !== undefined) payload.job_type = patch.jobType;
+  const { error } = await sb.from('weather_events').update(payload).eq('id', eventId).eq('user_id', currentUserId);
+  if (error) return false;
+  await loadScheduledEvents();
+  return true;
+}
+
+async function deleteEvent(eventId) {
+  if (!weatherEventsTableReady || !currentUserId) {
+    scheduledEvents = scheduledEvents.filter((e) => String(e.id) !== String(eventId));
+    saveScheduledEventsLocal();
+    return true;
+  }
+  const { error } = await sb.from('weather_events').delete().eq('id', eventId).eq('user_id', currentUserId);
+  if (error) return false;
+  await loadScheduledEvents();
+  return true;
+}
+
+function renderAlerts() {
+  const box = document.getElementById('alerts-list');
+  if (!forecast) {
+    box.innerHTML = '<div class="alert-item"><div class="alert-meta">Load a forecast to generate alerts.</div></div>';
+    return;
+  }
+  const todayKey = dateKey(new Date());
+  const upcoming = scheduledEvents
+    .filter((e) => e.date >= todayKey)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  if (!upcoming.length) {
+    box.innerHTML = '<div class="alert-item"><div class="alert-meta">No future scheduled events. Add one above to track reschedule risk.</div></div>';
+    return;
+  }
+  box.innerHTML = upcoming.map((evt) => {
+    const [y, m, d] = String(evt.date).split('-').map(Number);
+    const info = generateDayData(new Date(y, m - 1, d), evt.jobType);
+    const level = info.score < 70 ? 'high' : (info.score < 85 ? 'medium' : 'low');
+    const message = level === 'high'
+      ? 'Reschedule recommended.'
+      : (level === 'medium' ? 'Possible weather impact. Consider backup window.' : 'Conditions currently acceptable.');
+    return `
+      <div class="alert-item">
+        <div class="alert-top">
+          <div class="alert-name">${evt.name}</div>
+          <span class="alert-level ${level}">${level.toUpperCase()}</span>
+        </div>
+        <div class="alert-meta">${evt.date} · ${evt.jobType.replace('_', ' ')} · Score ${info.score} · Best window ${info.bestWindow}</div>
+        <div style="font-size:12px;margin-top:6px">${message}</div>
+        <div class="alert-actions">
+          <button class="mini-btn" onclick="editEvent('${evt.id}')">Edit</button>
+          <button class="mini-btn" onclick="removeEvent('${evt.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function editEvent(eventId) {
+  const target = scheduledEvents.find((e) => String(e.id) === String(eventId));
+  if (!target) return;
+  const name = prompt('Edit job name', target.name);
+  if (name === null) return;
+  const date = prompt('Edit date (YYYY-MM-DD)', target.date);
+  if (date === null) return;
+  const jobType = prompt('Edit job type (sealcoating|crack_fill|line_striping|asphalt_paving)', target.jobType);
+  if (jobType === null) return;
+  const ok = await updateEvent(eventId, {
+    name: String(name).trim() || target.name,
+    date: String(date).trim() || target.date,
+    jobType: String(jobType).trim() || target.jobType
+  });
+  if (!ok) alert('Unable to update event.');
+  renderAlerts();
+}
+
+async function removeEvent(eventId) {
+  if (!confirm('Delete this scheduled event?')) return;
+  const ok = await deleteEvent(eventId);
+  if (!ok) alert('Unable to delete event.');
+  renderAlerts();
+}
+window.editEvent = editEvent;
+window.removeEvent = removeEvent;
+
 function getCalendarDates(base, mode) {
   if (mode === 'week') {
     const start = new Date(base);
@@ -272,6 +471,7 @@ function renderCalendar() {
     cell.addEventListener('click', () => selectDay(date));
     grid.appendChild(cell);
   });
+  renderAlerts();
 }
 
 function selectDay(date) {
@@ -311,6 +511,7 @@ async function enforceWeatherAccess() {
     return;
   }
   document.getElementById('email').textContent = session.user.email || '';
+  currentUserId = session.user.id;
   const { data, error } = await sb
     .from('purchases')
     .select('id')
@@ -383,9 +584,36 @@ document.getElementById('job-type').addEventListener('change', () => {
     selectDay(new Date(y, m - 1, d));
   }
 });
+document.getElementById('add-event').addEventListener('click', async () => {
+  const name = String(document.getElementById('event-name').value || '').trim();
+  const date = String(document.getElementById('event-date').value || '').trim();
+  const jobType = String(document.getElementById('event-job-type').value || 'sealcoating');
+  if (!name || !date) return;
+  const newItem = {
+    id: `evt-${Date.now()}`,
+    name,
+    date,
+    jobType
+  };
+  scheduledEvents.push(newItem);
+  const ok = await persistEvent(newItem);
+  if (!ok) {
+    document.getElementById('location-label').textContent = 'Using local event storage (weather_events table unavailable).';
+  }
+  document.getElementById('event-name').value = '';
+  renderAlerts();
+});
 
 (async () => {
   await enforceWeatherAccess();
+  await loadScheduledEvents();
+  upsertDefaultEvents();
+  if (scheduledEvents.length && weatherEventsTableReady && currentUserId) {
+    for (const evt of scheduledEvents) {
+      if (String(evt.id).startsWith('evt-')) await persistEvent(evt);
+    }
+    await loadScheduledEvents();
+  }
   document.getElementById('location-input').value = 'Dallas, TX';
   await loadForecast();
 })();
