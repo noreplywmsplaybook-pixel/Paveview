@@ -22,18 +22,13 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
 .status{font-family:'IBM Plex Mono',monospace;font-size:10px;margin-bottom:6px;color:var(--accent)}
 .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0}
 .toolbar-left{display:flex;align-items:center;gap:8px}
-.month-title{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:.03em}
 .layout{display:grid;grid-template-columns:2fr 1fr;gap:14px}
 .panel{background:linear-gradient(180deg,rgba(17,40,64,.9),rgba(12,29,47,.9));border:1px solid var(--border);padding:16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
-.calendar-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-.weekdays,.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;min-width:700px}
-.weekday{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;padding:6px 4px}
-.day{background:linear-gradient(180deg,#11304d,#0d243b);border:1px solid #2a4f70;padding:8px;min-height:106px;cursor:pointer;touch-action:manipulation;border-radius:8px}
-.day:active{background:#1b1b1b;transform:translateY(1px)}
-.day.other{opacity:.35}
-.day.selected{outline:2px solid #67d0ff;box-shadow:0 0 24px rgba(56,189,248,.28)}
-.day-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-.day-num{font-family:'IBM Plex Mono',monospace;font-size:11px}
+.outlook-strip{display:grid;grid-template-columns:repeat(14,minmax(120px,1fr));gap:8px;overflow-x:auto;padding-bottom:4px}
+.outlook-day{background:linear-gradient(180deg,#11304d,#0d243b);border:1px solid #2a4f70;border-radius:8px;padding:8px;cursor:pointer;min-height:82px}
+.outlook-day:active{transform:translateY(1px)}
+.outlook-day.active{outline:2px solid #67d0ff;box-shadow:0 0 20px rgba(56,189,248,.25)}
+.outlook-date{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#b9deef;margin-bottom:6px}
 .score{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 6px;border-radius:999px}
 .score.good{background:rgba(34,197,94,.2);color:#8de3ac}
 .score.warn{background:rgba(245,200,66,.2);color:#f5c842}
@@ -106,7 +101,6 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
   .logo{font-size:17px}
   .toolbar{margin:8px 0}
   .toolbar-left{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .toolbar-left .month-title{grid-column:1/-1;text-align:center;font-size:24px}
   #location-input{min-width:0 !important;width:100%}
   .event-form{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .event-form #event-name{grid-column:1/-1}
@@ -170,17 +164,6 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
     <div id="alerts-list"></div>
   </div>
 
-  <div class="toolbar">
-    <div class="toolbar-left">
-      <button class="btn" id="prev">Prev</button>
-      <div class="month-title" id="month-title">Month</div>
-      <button class="btn" id="next">Next</button>
-    </div>
-    <div>
-      <button class="btn active" id="view-month">Month</button>
-      <button class="btn" id="view-week">Week</button>
-    </div>
-  </div>
   <div class="toolbar" style="margin-top:-2px">
     <div class="toolbar-left">
       <input id="location-input" placeholder="Job address (e.g. Dallas, TX)" style="background:#111;border:1px solid #2a2a2a;color:#e8e4dd;padding:8px 10px;min-width:280px">
@@ -194,22 +177,12 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
     </div>
     <div class="muted" id="location-label"></div>
   </div>
+  <div class="panel" style="margin-bottom:10px">
+    <div class="map-head">2-Week Outlook Selector</div>
+    <div class="outlook-strip" id="outlook-strip"></div>
+  </div>
 
   <div class="layout">
-    <div class="panel">
-      <div class="calendar-scroll">
-        <div class="weekdays">
-          <div class="weekday">Sun</div><div class="weekday">Mon</div><div class="weekday">Tue</div><div class="weekday">Wed</div><div class="weekday">Thu</div><div class="weekday">Fri</div><div class="weekday">Sat</div>
-        </div>
-        <div class="calendar-grid" id="calendar-grid"></div>
-      </div>
-      <div class="legend">
-        <span class="l-good">Green - Ideal</span>
-        <span class="l-warn">Yellow - Risky</span>
-        <span class="l-bad">Red - Do Not Schedule</span>
-      </div>
-    </div>
-
     <div class="panel">
       <div class="detail-title" id="detail-date">Select a Day</div>
       <div class="muted" id="detail-summary" style="margin-bottom:10px">Click a calendar day to inspect weather scheduling intelligence.</div>
@@ -228,6 +201,14 @@ main{max-width:1200px;margin:10px auto;padding:0 12px}
       <div class="why-list" id="detail-why"></div>
       <div class="warn-list" id="warn-list"></div>
       <div class="hour-list" id="hour-list"></div>
+    </div>
+    <div class="panel">
+      <div class="map-head">Scoring Legend</div>
+      <div class="legend">
+        <span class="l-good">Green - Ideal</span>
+        <span class="l-warn">Yellow - Risky</span>
+        <span class="l-bad">Red - Do Not Schedule</span>
+      </div>
     </div>
   </div>
 </main>
@@ -284,8 +265,6 @@ if (!window.supabase) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const WEATHER_PRODUCTS = ['weather_calendar_trial_24h', 'weather_calendar'];
-let viewMode = 'month';
-let cursor = new Date();
 let selectedKey = '';
 let forecast = null;
 let scheduledEvents = [];
@@ -740,46 +719,28 @@ async function removeEvent(eventId) {
 window.editEvent = editEvent;
 window.removeEvent = removeEvent;
 
-function getCalendarDates(base, mode) {
-  if (mode === 'week') {
-    const start = new Date(base);
-    start.setDate(start.getDate() - start.getDay());
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      return { date: d, inMonth: true };
-    });
-  }
-  const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
-  const start = new Date(monthStart);
-  start.setDate(monthStart.getDate() - monthStart.getDay());
-  return Array.from({ length: 42 }, (_, i) => {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    return { date: d, inMonth: d.getMonth() === base.getMonth() };
-  });
-}
-
-function renderCalendar() {
-  document.getElementById('month-title').textContent = cursor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const grid = document.getElementById('calendar-grid');
-  const dates = getCalendarDates(cursor, viewMode);
-  grid.innerHTML = '';
-  dates.forEach(({ date, inMonth }) => {
-    const key = dateKey(date);
-    const info = generateDayData(date);
-    const cell = document.createElement('div');
-    cell.className = `day ${inMonth ? '' : 'other'} ${selectedKey === key ? 'selected' : ''}`;
-    cell.innerHTML = `
-      <div class="day-head">
-        <span class="day-num">${date.getDate()}</span>
-        <span class="score ${info.label}">${info.score}</span>
-      </div>
-      <div class="window">${info.bestWindow}</div>
+function renderOutlookSelector() {
+  const strip = document.getElementById('outlook-strip');
+  if (!strip) return;
+  strip.innerHTML = '';
+  const now = new Date();
+  for (let i = 0; i < 14; i += 1) {
+    const d = new Date(now);
+    d.setDate(now.getDate() + i);
+    const key = dateKey(d);
+    const info = generateDayData(d);
+    const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = `outlook-day ${selectedKey === key ? 'active' : ''}`;
+    el.innerHTML = `
+      <div class="outlook-date">${label}</div>
+      <div class="score ${info.label}">${info.score}</div>
+      <div class="window" style="margin-top:6px">${info.bestWindow}</div>
     `;
-    cell.addEventListener('click', () => selectDay(date));
-    grid.appendChild(cell);
-  });
+    el.addEventListener('click', () => selectDay(d));
+    strip.appendChild(el);
+  }
   renderAlerts();
 }
 
@@ -823,7 +784,7 @@ function selectDay(date) {
     </div>
   `).join('');
 
-  renderCalendar();
+  renderOutlookSelector();
 }
 
 async function enforceWeatherAccess() {
@@ -961,7 +922,7 @@ async function loadForecast() {
     document.getElementById('now-dew').textContent = `${spread.toFixed(1)}F`;
     document.getElementById('now-wind').textContent = `${wind} mph`;
   }
-  renderCalendar();
+  renderOutlookSelector();
   selectDay(new Date());
 }
 
@@ -977,29 +938,9 @@ document.getElementById('profile-modal').addEventListener('click', (e) => {
   if (e.target.id === 'profile-modal') closeProfileModal();
 });
 
-document.getElementById('prev').addEventListener('click', () => {
-  cursor = new Date(cursor.getFullYear(), cursor.getMonth() + (viewMode === 'month' ? -1 : 0), cursor.getDate() + (viewMode === 'week' ? -7 : 0));
-  renderCalendar();
-});
-document.getElementById('next').addEventListener('click', () => {
-  cursor = new Date(cursor.getFullYear(), cursor.getMonth() + (viewMode === 'month' ? 1 : 0), cursor.getDate() + (viewMode === 'week' ? 7 : 0));
-  renderCalendar();
-});
-document.getElementById('view-month').addEventListener('click', () => {
-  viewMode = 'month';
-  document.getElementById('view-month').classList.add('active');
-  document.getElementById('view-week').classList.remove('active');
-  renderCalendar();
-});
-document.getElementById('view-week').addEventListener('click', () => {
-  viewMode = 'week';
-  document.getElementById('view-week').classList.add('active');
-  document.getElementById('view-month').classList.remove('active');
-  renderCalendar();
-});
 document.getElementById('load-weather').addEventListener('click', loadForecast);
 document.getElementById('job-type').addEventListener('change', () => {
-  renderCalendar();
+  renderOutlookSelector();
   if (selectedKey) {
     const [y, m, d] = selectedKey.split('-').map(Number);
     selectDay(new Date(y, m - 1, d));
