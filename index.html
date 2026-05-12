@@ -170,6 +170,7 @@ h1 em { color: var(--stripe); font-style:normal; }
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
+  justify-items: center;
 }
 .price-card {
   background: var(--asphalt3);
@@ -179,6 +180,8 @@ h1 em { color: var(--stripe); font-style:normal; }
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 440px;
 }
 .price-card::before {
   content: '';
@@ -204,17 +207,6 @@ h1 em { color: var(--stripe); font-style:normal; }
   text-align:center; transition:all .2s; cursor:pointer; border:none;
 }
 .price-cta:hover { background:#fff; }
-.price-cta.alt {
-  margin-top: 10px;
-  background: transparent;
-  color: var(--text);
-  border: 1px solid #2a2a2a;
-}
-.price-cta.alt:hover {
-  background: #181818;
-  color: var(--white);
-  border-color: rgba(245,200,66,.35);
-}
 .price-note { font-size:12px; color:var(--dim); text-align:center; margin-top:16px; line-height:1.6; }
 
 /* ── FAQ ── */
@@ -288,8 +280,8 @@ h1 { animation-delay:.2s; }
         <span class="price">Full access now · choose a plan later</span>
       </a>
       <a href="#pricing" class="btn-primary">
-        View Subscription Plans
-        <span class="price">Monthly or annual pricing</span>
+        View Pricing
+        <span class="price">$50/mo · unlimited projects</span>
       </a>
       <a href="#how" class="btn-secondary">See how it works →</a>
     </div>
@@ -303,8 +295,8 @@ h1 { animation-delay:.2s; }
         <div class="proof-label">measurement accuracy</div>
       </div>
       <div class="proof-item">
-        <div class="proof-num">15-60</div>
-        <div class="proof-label">proposals per month across plans</div>
+        <div class="proof-num">∞</div>
+        <div class="proof-label">proposal exports per month (unlimited plan)</div>
       </div>
     </div>
   </div>
@@ -421,52 +413,23 @@ h1 { animation-delay:.2s; }
 <section id="pricing">
   <div class="section-inner" style="text-align:center">
     <div class="section-tag">Pricing</div>
-    <div class="section-title">Pick the Plan That Fits<br>Your Monthly Proposal Volume</div>
+    <div class="section-title">One Simple Plan<br>Unlimited Projects</div>
     <div class="pricing-wrap">
       <div class="price-card">
-        <div class="price-label">Tier 1 — Starter</div>
-        <div class="price-main"><span>$</span>99.99</div>
-        <div class="price-sub">$999 annually · up to 15 proposals / month</div>
+        <div class="price-label">PaveView Takeoff</div>
+        <div class="price-main"><span>$</span>50</div>
+        <div class="price-sub">per month · unlimited projects</div>
         <ul class="price-features">
-          <li>15 proposals per month</li>
+          <li>Unlimited projects</li>
           <li>Upload PDF plans and site imagery</li>
           <li>Auto-suggestive parking lot features</li>
           <li>Easily editable stalls, markings, and site features</li>
           <li>Professional proposal exports</li>
         </ul>
-        <a href="https://buy.stripe.com/eVqdRabgR67G71W3DG6Vq15" class="price-cta">Tier 1 Monthly — $99.99</a>
-        <a href="https://buy.stripe.com/7sYeVe70B1Rqcmg2zC6Vq14" class="price-cta alt">Tier 1 Annual — $999</a>
-      </div>
-      <div class="price-card">
-        <div class="price-label">Tier 2 — Growth</div>
-        <div class="price-main"><span>$</span>199.99</div>
-        <div class="price-sub">$1999.99 annually · up to 30 proposals / month</div>
-        <ul class="price-features">
-          <li>30 proposals per month</li>
-          <li>Upload PDF plans and site imagery</li>
-          <li>Auto-suggestive parking lot features</li>
-          <li>Easily editable stalls, markings, and site features</li>
-          <li>Professional proposal exports</li>
-        </ul>
-        <a href="https://buy.stripe.com/aFa7sMacN9jS3PK0ru6Vq13" class="price-cta">Tier 2 Monthly — $199.99</a>
-        <a href="https://buy.stripe.com/28EbJ21Gh67G2LG3DG6Vq12" class="price-cta alt">Tier 2 Annual — $1999.99</a>
-      </div>
-      <div class="price-card">
-        <div class="price-label">Tier 3 — Scale</div>
-        <div class="price-main"><span>$</span>399.99</div>
-        <div class="price-sub">$3999.99 annually · up to 60 proposals / month</div>
-        <ul class="price-features">
-          <li>60 proposals per month</li>
-          <li>Upload PDF plans and site imagery</li>
-          <li>Auto-suggestive parking lot features</li>
-          <li>Easily editable stalls, markings, and site features</li>
-          <li>Professional proposal exports</li>
-        </ul>
-        <a href="https://buy.stripe.com/bJeeVe5WxgMk1HC4HK6Vq11" class="price-cta">Tier 3 Monthly — $399.99</a>
-        <a href="https://buy.stripe.com/6oU4gA4StfIggCw4HK6Vq10" class="price-cta alt">Tier 3 Annual — $3999.99</a>
+        <a href="https://buy.stripe.com/5kQbJ284F2Vu2LGb686Vq1d" class="price-cta">Subscribe — $50/month</a>
       </div>
     </div>
-    <p class="price-note">Need help picking monthly vs annual? Start a 24-hour free access first, then choose your tier.<br>Questions? Email <a href="/cdn-cgi/l/email-protection#3f4c4a4f4f504d4b7f4f5e495a49565a48115650" style="color:var(--stripe)"><span class="__cf_email__" data-cfemail="72010702021d00063202130417041b17055c1b1d">[email&#160;protected]</span></a></p>
+    <p class="price-note">Not sure yet? Start with <a href="/trial.html" style="color:var(--stripe)">24-hour free access</a> (full features), then subscribe when you are ready.<br>Questions? Email <a href="/cdn-cgi/l/email-protection#3f4c4a4f4f504d4b7f4f5e495a49565a48115650" style="color:var(--stripe)"><span class="__cf_email__" data-cfemail="72010702021d00063202130417041b17055c1b1d">[email&#160;protected]</span></a></p>
   </div>
 </section>
 
@@ -490,7 +453,7 @@ h1 { animation-delay:.2s; }
       </div>
       <div class="faq-item">
         <div class="faq-q">Is this a subscription?</div>
-        <div class="faq-a">Yes. PaveView Takeoff is now offered as a subscription with monthly and annual options. Choose the tier that matches your proposal volume: 15, 30, or 60 proposals per month.</div>
+        <div class="faq-a">Yes. PaveView Takeoff is $50 per month as a subscription with unlimited projects. You can also start with a 24-hour free trial (full access) before you subscribe.</div>
       </div>
       <div class="faq-item">
         <div class="faq-q">What if I need help getting started?</div>
