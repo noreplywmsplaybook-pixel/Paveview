@@ -238,6 +238,7 @@ tr:hover td{background:#141414}
       <span class="section-title">Active Members</span>
       <div class="section-hdr-right">
         <input type="text" class="search-inp" id="search" placeholder="Search name or email…" oninput="filterTable()">
+        <button class="btn" onclick="openMigrateUnlimitedModal()" title="Revoke current plan and grant paid unlimited monthly">Move to $50/mo</button>
         <button class="btn y" onclick="openAddModal()">+ Add Account</button>
         <button class="btn" onclick="loadData()">↺ Refresh</button>
       </div>
@@ -250,7 +251,7 @@ tr:hover td{background:#141414}
             <th>Email</th>
             <th>Joined Via</th>
             <th>Status</th>
-            <th>Account Type</th>
+            <th>Takeoff plan</th>
             <th>Projects</th>
             <th>Last Active</th>
             <th>Joined</th>
@@ -277,7 +278,7 @@ tr:hover td{background:#141414}
             <th>Email</th>
             <th>Joined Via</th>
             <th>Status</th>
-            <th>Account Type</th>
+            <th>Takeoff plan</th>
             <th>Projects</th>
             <th>Last Active</th>
             <th>Joined</th>
@@ -378,33 +379,39 @@ tr:hover td{background:#141414}
     <div class="field">
       <label>Grant Access To</label>
       <select id="add-product">
-        <option value="takeoff_tier1_monthly">Tier 1 Monthly — $99.99</option>
-        <option value="takeoff_tier1_annual">Tier 1 Annual — $999</option>
-        <option value="takeoff_tier2_monthly">Tier 2 Monthly — $199.99</option>
-        <option value="takeoff_tier2_annual">Tier 2 Annual — $1999.99</option>
-        <option value="takeoff_tier3_monthly">Tier 3 Monthly — $399.99</option>
-        <option value="takeoff_tier3_annual">Tier 3 Annual — $3999.99</option>
-        <option value="takeoff">Legacy Lifetime — $5,000</option>
+        <option value="takeoff_unlimited_monthly">Unlimited Monthly — $50 (current)</option>
         <option value="takeoff_trial_24h">24-Hour Free Trial</option>
+        <optgroup label="Legacy Takeoff (existing customers only)">
+          <option value="takeoff_tier1_monthly">Tier 1 Monthly — $99.99</option>
+          <option value="takeoff_tier1_annual">Tier 1 Annual — $999</option>
+          <option value="takeoff_tier2_monthly">Tier 2 Monthly — $199.99</option>
+          <option value="takeoff_tier2_annual">Tier 2 Annual — $1999.99</option>
+          <option value="takeoff_tier3_monthly">Tier 3 Monthly — $399.99</option>
+          <option value="takeoff_tier3_annual">Tier 3 Annual — $3999.99</option>
+          <option value="takeoff">Lifetime — $5,000</option>
+        </optgroup>
       </select>
     </div>
     <div class="field">
       <label>Access Type</label>
       <select id="add-plan" onchange="onPlanChange()">
-        <option value="takeoff_tier1_monthly">Tier 1 Monthly — $99.99</option>
-        <option value="takeoff_tier1_annual">Tier 1 Annual — $999</option>
-        <option value="takeoff_tier2_monthly">Tier 2 Monthly — $199.99</option>
-        <option value="takeoff_tier2_annual">Tier 2 Annual — $1999.99</option>
-        <option value="takeoff_tier3_monthly">Tier 3 Monthly — $399.99</option>
-        <option value="takeoff_tier3_annual">Tier 3 Annual — $3999.99</option>
+        <option value="takeoff_unlimited_monthly">Unlimited Monthly — $50 (current)</option>
         <option value="trial_24h">24-Hour Free Trial</option>
+        <optgroup label="Legacy Takeoff (existing customers only)">
+          <option value="takeoff_tier1_monthly">Tier 1 Monthly — $99.99</option>
+          <option value="takeoff_tier1_annual">Tier 1 Annual — $999</option>
+          <option value="takeoff_tier2_monthly">Tier 2 Monthly — $199.99</option>
+          <option value="takeoff_tier2_annual">Tier 2 Annual — $1999.99</option>
+          <option value="takeoff_tier3_monthly">Tier 3 Monthly — $399.99</option>
+          <option value="takeoff_tier3_annual">Tier 3 Annual — $3999.99</option>
+        </optgroup>
       </select>
     </div>
     <div class="field">
       <label>Payment Amount</label>
-      <input type="number" id="add-amount" placeholder="99" value="99">
+      <input type="number" id="add-amount" placeholder="50" value="50">
     </div>
-    <div class="small-note" id="add-plan-note" style="margin-top:-6px;margin-bottom:8px">Tier 1 Monthly — $99.99.</div>
+    <div class="small-note" id="add-plan-note" style="margin-top:-6px;margin-bottom:8px">Unlimited Monthly — $50.</div>
     <div class="msg" id="add-msg"></div>
     <div class="mfooter">
       <button class="btn" onclick="closeModal('add-modal')">Cancel</button>
@@ -437,18 +444,35 @@ tr:hover td{background:#141414}
   </div>
 </div>
 
+<!-- MIGRATE TO UNLIMITED $50/MO -->
+<div class="modal" id="migrate-unlimited-modal">
+  <div class="mbox">
+    <h3>Move to unlimited ($50/mo)</h3>
+    <p style="font-size:13px;color:#6e6a63;margin-bottom:14px;line-height:1.6">Finds the profile by name or email, revokes any <strong style="color:#e8e4dc">active</strong> purchase, then inserts a paid <code style="color:#f5c842">takeoff_unlimited_monthly</code> row (5000 cents). Use for legacy tier customers moving to the current plan.</p>
+    <div class="field"><label>Full name (partial match)</label><input type="text" id="migrate-fullname" placeholder="Hurley Johnson" value="Hurley Johnson"></div>
+    <div class="field"><label>Email (optional, exact match)</label><input type="email" id="migrate-email" placeholder="client@example.com"></div>
+    <div class="field"><label>User ID (optional; skips name/email lookup)</label><input type="text" id="migrate-userid" class="mono" placeholder="uuid from Supabase"></div>
+    <div class="msg" id="migrate-msg"></div>
+    <div class="mfooter">
+      <button class="btn" onclick="closeModal('migrate-unlimited-modal')">Cancel</button>
+      <button class="btn y" id="migrate-unlimited-btn" onclick="submitMigrateUnlimited()">Run migration</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZ3lxcXl4bHdqcGJka2FwdnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDIxNzAsImV4cCI6MjA4OTE3ODE3MH0.DmBw-rXJOQo8FI1L0Fe2JnQ0PIzCqp6sXaJzgafUw5A';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-const DEFAULT_TAKEOFF_PRICE_CENTS = 9999; // Tier 1 monthly
+const DEFAULT_TAKEOFF_PRICE_CENTS = 5000; // Unlimited monthly
 const SUBSCRIPTION_PRODUCTS = {
-  takeoff_tier1_monthly: { amountCents: 9999, label: 'Tier 1 Monthly — $99.99' },
-  takeoff_tier1_annual: { amountCents: 99900, label: 'Tier 1 Annual — $999' },
-  takeoff_tier2_monthly: { amountCents: 19999, label: 'Tier 2 Monthly — $199.99' },
-  takeoff_tier2_annual: { amountCents: 199999, label: 'Tier 2 Annual — $1999.99' },
-  takeoff_tier3_monthly: { amountCents: 39999, label: 'Tier 3 Monthly — $399.99' },
-  takeoff_tier3_annual: { amountCents: 399999, label: 'Tier 3 Annual — $3999.99' },
+  takeoff_unlimited_monthly: { amountCents: 5000, label: 'Unlimited Monthly — $50' },
+  takeoff_tier1_monthly: { amountCents: 9999, label: '(Legacy) Tier 1 Monthly — $99.99' },
+  takeoff_tier1_annual: { amountCents: 99900, label: '(Legacy) Tier 1 Annual — $999' },
+  takeoff_tier2_monthly: { amountCents: 19999, label: '(Legacy) Tier 2 Monthly — $199.99' },
+  takeoff_tier2_annual: { amountCents: 199999, label: '(Legacy) Tier 2 Annual — $1999.99' },
+  takeoff_tier3_monthly: { amountCents: 39999, label: '(Legacy) Tier 3 Monthly — $399.99' },
+  takeoff_tier3_annual: { amountCents: 399999, label: '(Legacy) Tier 3 Annual — $3999.99' },
   takeoff: { amountCents: 500000, label: 'Legacy Lifetime — $5,000' }
 };
 const TRIAL_PRODUCT_KEY = 'takeoff_trial_24h';
@@ -1046,12 +1070,14 @@ function accountTypeLabel(type) {
   const map = {
     inactive: 'Inactive',
     trial_24h: 'Free Trial (24h)',
-    takeoff_tier1_monthly: 'Tier 1 Monthly',
-    takeoff_tier1_annual: 'Tier 1 Annual',
-    takeoff_tier2_monthly: 'Tier 2 Monthly',
-    takeoff_tier2_annual: 'Tier 2 Annual',
-    takeoff_tier3_monthly: 'Tier 3 Monthly',
-    takeoff_tier3_annual: 'Tier 3 Annual'
+    takeoff_unlimited_monthly: 'Unlimited — $50/mo (current)',
+    takeoff_tier1_monthly: 'Tier 1 Monthly (legacy)',
+    takeoff_tier1_annual: 'Tier 1 Annual (legacy)',
+    takeoff_tier2_monthly: 'Tier 2 Monthly (legacy)',
+    takeoff_tier2_annual: 'Tier 2 Annual (legacy)',
+    takeoff_tier3_monthly: 'Tier 3 Monthly (legacy)',
+    takeoff_tier3_annual: 'Tier 3 Annual (legacy)',
+    takeoff: 'Lifetime (legacy)'
   };
   return map[type] || type || 'Inactive';
 }
@@ -1068,7 +1094,7 @@ function inferJoinSource(customer) {
 }
 
 function accountTypeOptions(selected) {
-  const types = ['inactive','trial_24h','takeoff_tier1_monthly','takeoff_tier1_annual','takeoff_tier2_monthly','takeoff_tier2_annual','takeoff_tier3_monthly','takeoff_tier3_annual'];
+  const types = ['inactive','trial_24h','takeoff_unlimited_monthly','takeoff_tier1_monthly','takeoff_tier1_annual','takeoff_tier2_monthly','takeoff_tier2_annual','takeoff_tier3_monthly','takeoff_tier3_annual','takeoff'];
   return types.map(type => `<option value="${type}" ${type===selected?'selected':''}>${accountTypeLabel(type)}</option>`).join('');
 }
 
@@ -1415,10 +1441,10 @@ function renderCustomerRows(customers, tbodyId) {
       <td>${inferJoinSource(c)}</td>
       <td>${status}</td>
       <td>
-        <select id="acct-type-${c.id}" class="search-inp" style="width:170px;margin-bottom:6px">
+        <select id="acct-type-${c.id}" class="search-inp" style="width:220px;margin-bottom:6px">
           ${accountTypeOptions(selectedType)}
         </select>
-        <select id="acct-billing-${c.id}" class="search-inp" style="width:170px">
+        <select id="acct-billing-${c.id}" class="search-inp" style="width:220px">
           ${billingTypeOptions(selectedBilling)}
         </select>
       </td>
@@ -1494,7 +1520,7 @@ function openAddModal() {
 }
 
 function onPlanChange() {
-  const plan = document.getElementById('add-plan')?.value || 'takeoff_tier1_monthly';
+  const plan = document.getElementById('add-plan')?.value || 'takeoff_unlimited_monthly';
   const productEl = document.getElementById('add-product');
   const amountEl = document.getElementById('add-amount');
   const noteEl = document.getElementById('add-plan-note');
@@ -1505,7 +1531,7 @@ function onPlanChange() {
     amountEl.disabled = true;
     noteEl.textContent = 'Trial accounts are free and expire automatically after 24 hours.';
   } else {
-    const selected = SUBSCRIPTION_PRODUCTS[plan] || SUBSCRIPTION_PRODUCTS.takeoff_tier1_monthly;
+    const selected = SUBSCRIPTION_PRODUCTS[plan] || SUBSCRIPTION_PRODUCTS.takeoff_unlimited_monthly;
     productEl.value = plan;
     amountEl.disabled = false;
     const dollars = Number(selected.amountCents || 0) / 100;
@@ -1520,7 +1546,7 @@ async function addAccount() {
   const pass = document.getElementById('add-pass').value;
   const plan = document.getElementById('add-plan').value;
   const product = plan === 'trial_24h' ? TRIAL_PRODUCT_KEY : plan;
-  const selected = SUBSCRIPTION_PRODUCTS[plan] || SUBSCRIPTION_PRODUCTS.takeoff_tier1_monthly;
+  const selected = SUBSCRIPTION_PRODUCTS[plan] || SUBSCRIPTION_PRODUCTS.takeoff_unlimited_monthly;
   const amount = plan === 'trial_24h'
     ? 0
     : (parseFloat(document.getElementById('add-amount').value) || (Number(selected.amountCents || 0) / 100));
@@ -1621,7 +1647,7 @@ async function confirmRestore() {
 
 // ── GRANT ACCESS (no purchase yet) ──
 async function grantAccess(userId, email) {
-  const { error } = await sb.from('purchases').insert({ user_id: userId, product: 'takeoff_tier1_monthly', amount_paid: DEFAULT_TAKEOFF_PRICE_CENTS, status: 'active' });
+  const { error } = await sb.from('purchases').insert({ user_id: userId, product: 'takeoff_unlimited_monthly', amount_paid: DEFAULT_TAKEOFF_PRICE_CENTS, status: 'active' });
   if (error) alert('Error: ' + error.message);
   else loadData();
 }
@@ -1636,6 +1662,49 @@ async function grantTrialAccess(userId, email) {
   });
   if (error) alert('Error: ' + error.message);
   else loadData();
+}
+
+function openMigrateUnlimitedModal() {
+  const msg = document.getElementById('migrate-msg');
+  if (msg) { msg.style.display = 'none'; msg.textContent = ''; }
+  openModal('migrate-unlimited-modal');
+}
+
+async function submitMigrateUnlimited() {
+  const btn = document.getElementById('migrate-unlimited-btn');
+  const msgEl = document.getElementById('migrate-msg');
+  const userId = (document.getElementById('migrate-userid')?.value || '').trim();
+  const fullName = (document.getElementById('migrate-fullname')?.value || '').trim();
+  const email = (document.getElementById('migrate-email')?.value || '').trim().toLowerCase();
+  if (!userId && !fullName && !email) {
+    showMsg('migrate-msg', 'Enter a full name, email, or user id.', 'err');
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (msgEl) { msgEl.style.display = 'none'; }
+  try {
+    const body = { action: 'migrate_user_to_unlimited_monthly' };
+    if (userId) body.userId = userId;
+    if (fullName) body.fullName = fullName;
+    if (email) body.email = email;
+    const resp = await fetch(ADMIN_API_URL, {
+      method: 'PATCH',
+      headers: adminAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body)
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(payload.error || `Migration failed (${resp.status})`);
+    const note = payload.skipped === 'already_unlimited_monthly_paid'
+      ? 'Already on paid unlimited monthly — no change.'
+      : (payload.previousProduct ? `Done. Previous product: ${payload.previousProduct}` : 'Migrated to unlimited monthly ($50 paid).');
+    alert(note);
+    closeModal('migrate-unlimited-modal');
+    loadData();
+  } catch (e) {
+    showMsg('migrate-msg', e.message || String(e), 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Run migration'; }
+  }
 }
 
 async function applyAccountType(userId, name) {

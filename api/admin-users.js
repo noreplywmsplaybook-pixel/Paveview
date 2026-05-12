@@ -1,5 +1,5 @@
 const DEFAULT_SUPABASE_URL = 'https://rqgyqqyxlwjpbdkapvpz.supabase.co';
-const DEFAULT_PRODUCT = 'takeoff_tier1_monthly';
+const DEFAULT_PRODUCT = 'takeoff_unlimited_monthly';
 
 function sendJson(res, statusCode, payload) {
   res.statusCode = statusCode;
@@ -336,12 +336,14 @@ async function handlePatch(req, res, serviceRoleKey) {
     const PRODUCT_MAP = {
       inactive: null,
       trial_24h: { product: 'takeoff_trial_24h', amount_paid: 0 },
+      takeoff_unlimited_monthly: { product: 'takeoff_unlimited_monthly', amount_paid: 5000 },
       takeoff_tier1_monthly: { product: 'takeoff_tier1_monthly', amount_paid: 9999 },
       takeoff_tier1_annual: { product: 'takeoff_tier1_annual', amount_paid: 99900 },
       takeoff_tier2_monthly: { product: 'takeoff_tier2_monthly', amount_paid: 19999 },
       takeoff_tier2_annual: { product: 'takeoff_tier2_annual', amount_paid: 199999 },
       takeoff_tier3_monthly: { product: 'takeoff_tier3_monthly', amount_paid: 39999 },
-      takeoff_tier3_annual: { product: 'takeoff_tier3_annual', amount_paid: 399999 }
+      takeoff_tier3_annual: { product: 'takeoff_tier3_annual', amount_paid: 399999 },
+      takeoff: { product: 'takeoff', amount_paid: 500000 }
     };
     if (!Object.prototype.hasOwnProperty.call(PRODUCT_MAP, accountType)) {
       sendJson(res, 400, { error: 'Invalid accountType.' });
@@ -387,6 +389,101 @@ async function handlePatch(req, res, serviceRoleKey) {
       return;
     }
     sendJson(res, 200, { ok: true, userId, accountType, billingType, amount_paid: amountPaid });
+    return;
+  }
+
+  if (action === 'migrate_user_to_unlimited_monthly') {
+    let userId = String(body.userId || '').trim();
+    const fullName = String(body.fullName || '').trim();
+    const email = String(body.email || '').trim().toLowerCase();
+
+    if (!userId) {
+      if (email) {
+        const byEmail = await supabaseFetch(
+          `/rest/v1/profiles?select=id,full_name,email&email=eq.${encodeURIComponent(email)}&limit=5`,
+          { serviceRoleKey }
+        );
+        const emailRows = Array.isArray(byEmail.payload) ? byEmail.payload : [];
+        if (emailRows.length === 1) {
+          userId = String(emailRows[0].id || '').trim();
+        } else if (emailRows.length > 1) {
+          sendJson(res, 400, { error: 'Multiple profiles match that email; pass userId instead.', matches: emailRows });
+          return;
+        }
+      }
+      if (!userId && fullName) {
+        const tokens = fullName.split(/\s+/).filter(Boolean).map((t) => t.replace(/%/g, '\\%').replace(/_/g, '\\_'));
+        const pattern = `%${tokens.join('%')}%`;
+        const byName = await supabaseFetch(
+          `/rest/v1/profiles?select=id,full_name,email&full_name=ilike.${encodeURIComponent(pattern)}&limit=10`,
+          { serviceRoleKey }
+        );
+        const nameRows = Array.isArray(byName.payload) ? byName.payload : [];
+        if (!nameRows.length) {
+          sendJson(res, 404, { error: 'No profile matches that name or email.' });
+          return;
+        }
+        if (nameRows.length > 1) {
+          sendJson(res, 400, {
+            error: 'Multiple profiles match that name; pass userId or a more specific fullName.',
+            matches: nameRows.map((r) => ({ id: r.id, full_name: r.full_name, email: r.email }))
+          });
+          return;
+        }
+        userId = String(nameRows[0].id || '').trim();
+      }
+    }
+
+    if (!userId) {
+      sendJson(res, 400, { error: 'Provide userId, email, or fullName (e.g. Hurley Johnson).' });
+      return;
+    }
+
+    const activeList = await supabaseFetch(
+      `/rest/v1/purchases?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=id,product,amount_paid`,
+      { serviceRoleKey }
+    );
+    const activeRows = Array.isArray(activeList.payload) ? activeList.payload : [];
+    const active = activeRows[0] || null;
+    if (!active) {
+      sendJson(res, 400, { error: 'No active purchase for this user. Grant access from the admin UI instead.' });
+      return;
+    }
+    const prod = String(active.product || '').toLowerCase();
+    const amt = Number(active.amount_paid || 0);
+    if (prod === 'takeoff_unlimited_monthly' && amt === 5000) {
+      sendJson(res, 200, { ok: true, userId, skipped: 'already_unlimited_monthly_paid' });
+      return;
+    }
+
+    const revoke = await supabaseFetch(
+      `/rest/v1/purchases?user_id=eq.${encodeURIComponent(userId)}&status=eq.active`,
+      {
+        method: 'PATCH',
+        serviceRoleKey,
+        body: { status: 'revoked' }
+      }
+    );
+    if (!revoke.ok) {
+      sendJson(res, revoke.status || 500, { error: revoke.payload?.message || 'Failed to revoke current access.' });
+      return;
+    }
+
+    const insert = await supabaseFetch('/rest/v1/purchases', {
+      method: 'POST',
+      serviceRoleKey,
+      body: [{
+        user_id: userId,
+        product: 'takeoff_unlimited_monthly',
+        amount_paid: 5000,
+        status: 'active'
+      }]
+    });
+    if (!insert.ok) {
+      sendJson(res, insert.status || 500, { error: insert.payload?.message || 'Failed to create unlimited monthly purchase.' });
+      return;
+    }
+    sendJson(res, 200, { ok: true, userId, product: 'takeoff_unlimited_monthly', amount_paid: 5000, previousProduct: active.product });
     return;
   }
 
