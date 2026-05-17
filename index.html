@@ -226,13 +226,24 @@ h1 em { color: var(--stripe); font-style:normal; }
 /* ── FOOTER ── */
 footer {
   padding: 40px; border-top: 1px solid #1a1a1a;
+  display:flex; flex-direction:column; gap:20px;
+}
+.footer-row {
   display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;
+  width:100%;
 }
 .footer-logo { font-family:'Bebas Neue',sans-serif; font-size:18px; color:var(--stripe); letter-spacing:.1em; }
 .footer-copy { font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:.08em; }
 .footer-links { display:flex; gap:20px; }
 .footer-links a { font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--dim); text-decoration:none; text-transform:uppercase; letter-spacing:.08em; transition:color .2s; }
 .footer-links a:hover { color:var(--stripe); }
+.footer-powered {
+  width:100%; margin:0; padding-top:16px; border-top:1px solid #1a1a1a;
+  text-align:center; font-family:'IBM Plex Mono',monospace; font-size:10px;
+  color:var(--dim); letter-spacing:.08em;
+}
+.footer-powered a { color:var(--dim); text-decoration:none; transition:color .2s; }
+.footer-powered a:hover { color:var(--stripe); }
 
 /* Animations */
 @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
@@ -468,12 +479,15 @@ h1 { animation-delay:.2s; }
 </section>
 
 <footer>
-  <div class="footer-logo">PaveView</div>
-  <div class="footer-copy">© 2025 PaveView · All rights reserved</div>
-  <div class="footer-links">
-    <a href="/login.html">Login</a>
-    <a href="/cdn-cgi/l/email-protection#a9dadcd9d9c6dbdde9d9c8dfccdfc0ccde87c0c6">Support</a>
+  <div class="footer-row">
+    <div class="footer-logo">PaveView</div>
+    <div class="footer-copy">© 2025 PaveView · All rights reserved</div>
+    <div class="footer-links">
+      <a href="/login.html">Login</a>
+      <a href="/cdn-cgi/l/email-protection#a9dadcd9d9c6dbdde9d9c8dfccdfc0ccde87c0c6">Support</a>
+    </div>
   </div>
+  <p class="footer-powered">Powered by <a href="https://donewrightsoftware.com/" target="_blank" rel="noopener noreferrer">Wright Software Solutions</a></p>
 </footer>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
